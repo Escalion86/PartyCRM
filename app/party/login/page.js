@@ -11,8 +11,8 @@ export const metadata = {
 }
 
 const normalizeCallbackUrl = (value) => {
-  if (typeof value !== 'string') return '/company'
-  if (!value.startsWith('/') || value.startsWith('//')) return '/company'
+  if (typeof value !== 'string') return '/party/entry'
+  if (!value.startsWith('/') || value.startsWith('//')) return '/party/entry'
   return value
 }
 

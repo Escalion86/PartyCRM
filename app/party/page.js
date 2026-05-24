@@ -261,7 +261,7 @@ export default function PartyCrmLandingPage() {
           </span>
         </Link>
         <Link
-          href="/party/login?callbackUrl=/company"
+          href="/party/login?callbackUrl=/party/entry"
           className="cursor-pointer ui-btn ui-btn-primary"
         >
           Войти в систему
@@ -303,7 +303,7 @@ export default function PartyCrmLandingPage() {
           </div>
           <div className="flex flex-wrap items-center gap-4 mt-8 landing-reveal">
             <Link
-              href="/party/login?callbackUrl=/company"
+              href="/party/login?callbackUrl=/party/entry"
               className="cursor-pointer ui-btn ui-btn-primary"
             >
               Попробовать бесплатно
@@ -531,7 +531,7 @@ export default function PartyCrmLandingPage() {
           </p>
           <div className="flex flex-wrap justify-center gap-4 mt-8">
             <Link
-              href="/party/login?callbackUrl=/company"
+              href="/party/login?callbackUrl=/party/entry"
               className="cursor-pointer ui-btn ui-btn-primary"
             >
               Попробовать бесплатно

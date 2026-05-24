@@ -39,7 +39,16 @@ const partyUsersSchema = {
   interfaceRoles: {
     type: [String],
     enum: ["company", "performer"],
-    default: ["company", "performer"],
+    default: [],
+  },
+  lastWorkspace: {
+    type: String,
+    enum: ["", "company", "performer"],
+    default: "",
+  },
+  performerOnboardingCompletedAt: {
+    type: Date,
+    default: null,
   },
   status: {
     type: String,

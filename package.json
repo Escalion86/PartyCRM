@@ -1,6 +1,6 @@
 {
-  "name": "ArtistCRM",
-  "version": "1.4.6",
+  "name": "PartyCRM",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",

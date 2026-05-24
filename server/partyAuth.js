@@ -20,7 +20,7 @@ export const normalizePartyEmail = (email) =>
 export const normalizePartyInterfaceRoles = (value) => {
   const source = Array.isArray(value) ? value : []
   const roles = source.filter((role) => ['company', 'performer'].includes(role))
-  return roles.length ? [...new Set(roles)] : ['company', 'performer']
+  return [...new Set(roles)]
 }
 
 const getSecret = () => {
@@ -89,6 +89,10 @@ export const getPartySessionUser = async () => {
     ...user,
     _id: String(user._id),
     interfaceRoles: normalizePartyInterfaceRoles(user.interfaceRoles),
+    lastWorkspace: ['company', 'performer'].includes(user.lastWorkspace)
+      ? user.lastWorkspace
+      : '',
+    performerOnboardingCompletedAt: user.performerOnboardingCompletedAt || null,
   }
 }
 

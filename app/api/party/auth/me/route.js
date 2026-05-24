@@ -4,6 +4,21 @@ import {
   getPartySessionUser,
   normalizePartyInterfaceRoles,
 } from '@server/partyAuth'
+import { normalizePartyWorkspace } from '@server/partyEntry'
+
+const sanitizeText = (value, maxLength = 100) =>
+  typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+
+const serializePartyUser = (user) => ({
+  _id: String(user._id),
+  phone: user.phone || '',
+  email: user.email || '',
+  firstName: user.firstName || '',
+  secondName: user.secondName || '',
+  interfaceRoles: normalizePartyInterfaceRoles(user.interfaceRoles),
+  lastWorkspace: normalizePartyWorkspace(user.lastWorkspace),
+  performerOnboardingCompletedAt: user.performerOnboardingCompletedAt || null,
+})
 
 export async function GET() {
   const user = await getPartySessionUser()
@@ -18,14 +33,7 @@ export async function GET() {
   return NextResponse.json({
     success: true,
     data: {
-      user: {
-        _id: String(user._id),
-        phone: user.phone || '',
-        email: user.email || '',
-        firstName: user.firstName || '',
-        secondName: user.secondName || '',
-        interfaceRoles: normalizePartyInterfaceRoles(user.interfaceRoles),
-      },
+      user: serializePartyUser(user),
     },
   })
 }
@@ -41,25 +49,40 @@ export async function PATCH(req) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const interfaceRoles = normalizePartyInterfaceRoles(body.interfaceRoles)
+  const lastWorkspace = normalizePartyWorkspace(body.lastWorkspace)
+  const update = {}
+
+  if (Object.prototype.hasOwnProperty.call(body, 'interfaceRoles')) {
+    update.interfaceRoles = normalizePartyInterfaceRoles(body.interfaceRoles)
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'firstName')) {
+    update.firstName = sanitizeText(body.firstName, 100)
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'secondName')) {
+    update.secondName = sanitizeText(body.secondName, 100)
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'lastWorkspace')) {
+    update.lastWorkspace = lastWorkspace
+  }
+  if (body.performerOnboardingCompleted === true) {
+    update.performerOnboardingCompletedAt = new Date()
+  }
+  if (body.performerOnboardingCompleted === false) {
+    update.performerOnboardingCompletedAt = null
+  }
+
   const PartyUsers = await getPartyUserModel()
   const updatedUser = await PartyUsers.findByIdAndUpdate(
     user._id,
-    { $set: { interfaceRoles } },
+    { $set: update },
     { new: true }
   ).lean()
 
   return NextResponse.json({
     success: true,
     data: {
-      user: {
-        _id: String(updatedUser._id),
-        phone: updatedUser.phone || '',
-        email: updatedUser.email || '',
-        firstName: updatedUser.firstName || '',
-        secondName: updatedUser.secondName || '',
-        interfaceRoles: normalizePartyInterfaceRoles(updatedUser.interfaceRoles),
-      },
+      user: serializePartyUser(updatedUser),
     },
   })
 }

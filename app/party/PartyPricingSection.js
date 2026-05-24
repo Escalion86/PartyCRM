@@ -44,7 +44,7 @@ export default function PartyPricingSection() {
           </p>
         </div>
         <Link
-          href="/party/login?callbackUrl=/company"
+          href="/party/login?callbackUrl=/party/entry"
           className="cursor-pointer ui-btn ui-btn-primary"
         >
           Попробовать бесплатно
