@@ -24,12 +24,9 @@ export const normalizePartyInterfaceRoles = (value) => {
 }
 
 const getSecret = () => {
-  const secret =
-    process.env.PARTYCRM_AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.SECRET
+  const secret = process.env.AUTH_SECRET
   if (!secret) {
-    throw new Error('PARTYCRM_AUTH_SECRET is not configured')
+    throw new Error('AUTH_SECRET is not configured')
   }
   return secret
 }

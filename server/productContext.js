@@ -30,7 +30,7 @@ export const getProductByHost = (host) => {
   const normalizedHost = normalizeHost(host)
   if (!normalizedHost || normalizedHost === 'localhost') return null
 
-  const partyDomain = normalizeDomain(process.env.PARTYCRM_DOMAIN || 'partycrm.ru')
+  const partyDomain = normalizeDomain(process.env.DOMAIN || 'partycrm.ru')
   const artistDomain = normalizeDomain(process.env.DOMAIN || 'artistcrm.ru')
 
   if (partyDomain && normalizedHost === partyDomain) return PRODUCTS.PARTYCRM

@@ -28,7 +28,7 @@ http://localhost:3000/performer  кабинет исполнителя PartyCRM
 И временно указать:
 
 ```env
-PARTYCRM_DOMAIN=partycrm.local
+DOMAIN=partycrm.local
 ```
 
 Тогда `http://partycrm.local:3000` откроет PartyCRM landing.
@@ -53,10 +53,10 @@ DOMAIN=artistcrm.ru
 PartyCRM использует отдельные переменные:
 
 ```env
-PARTYCRM_MONGODB_URI=...
-PARTYCRM_MONGODB_DBNAME=partycrm_dev
-PARTYCRM_DOMAIN=partycrm.ru
-PARTYCRM_AUTH_SECRET=local-partycrm-secret
+MONGODB_URI=...
+MONGODB_DBNAME=partycrm_dev
+DOMAIN=partycrm.ru
+AUTH_SECRET=local-partycrm-secret
 ```
 
 Для локальной проверки подключения:

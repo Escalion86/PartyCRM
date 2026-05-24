@@ -1,7 +1,7 @@
 ﻿import Link from 'next/link'
 import PartyPricingSection from './PartyPricingSection'
 
-const rawPartyDomain = process.env.PARTYCRM_DOMAIN || 'partycrm.ru'
+const rawPartyDomain = process.env.DOMAIN || 'partycrm.ru'
 const partyUrl = rawPartyDomain.startsWith('http')
   ? rawPartyDomain
   : `https://${rawPartyDomain}`

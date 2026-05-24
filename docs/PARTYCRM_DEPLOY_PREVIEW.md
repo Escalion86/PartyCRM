@@ -12,8 +12,8 @@ PartyCRM пока деплоится из того же репозитория �
 artistcrm.ru -> текущий ArtistCRM
 partycrm.ru  -> PartyCRM landing через rewrite на /party
 
-ArtistCRM DB -> MONGODB_URI / MONGODB_DBNAME
-PartyCRM DB  -> PARTYCRM_MONGODB_URI / PARTYCRM_MONGODB_DBNAME
+ArtistCRM DB -> отдельный env набор ArtistCRM
+PartyCRM DB  -> MONGODB_URI / MONGODB_DBNAME
 ```
 
 Для текущего сервера:
@@ -52,10 +52,10 @@ NEXTAUTH_SECRET=...
 Новые переменные PartyCRM:
 
 ```env
-PARTYCRM_DOMAIN=partycrm.ru
-PARTYCRM_MONGODB_URI=...
-PARTYCRM_MONGODB_DBNAME=...
-PARTYCRM_AUTH_SECRET=...
+DOMAIN=partycrm.ru
+MONGODB_URI=...
+MONGODB_DBNAME=...
+AUTH_SECRET=...
 ```
 
 Auth-переменные ArtistCRM остаются привязаны к `artistcrm.ru`:
@@ -65,7 +65,7 @@ NEXTAUTH_URL=https://artistcrm.ru
 NEXTAUTH_URL_INTERNAL=http://127.0.0.1:3006
 ```
 
-PartyCRM использует отдельный вход `/party/login`, отдельные endpoints `/api/party/auth/*`, отдельную модель `PartyUsers` и отдельную cookie `partycrm_session`. `PARTYCRM_AUTH_SECRET` должен отличаться от публичных значений и не должен переиспользоваться как обычный пароль.
+PartyCRM использует отдельный вход `/party/login`, отдельные endpoints `/api/party/auth/*`, отдельную модель `PartyUsers` и отдельную cookie `partycrm_session`. `AUTH_SECRET` должен отличаться от публичных значений и не должен переиспользоваться как обычный пароль.
 
 ## Reverse proxy
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 const PRODUCTION_HOST = 'artistcrm.ru'
 const LEGACY_HOSTS = new Set(['www.artistcrm.ru'])
-const PARTYCRM_HOST = process.env.PARTYCRM_DOMAIN || 'partycrm.ru'
+const PARTYCRM_HOST = process.env.DOMAIN || 'partycrm.ru'
 const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0'])
 
 const normalizeHost = (host) =>

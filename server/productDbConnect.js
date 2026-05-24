@@ -7,8 +7,8 @@ const getProductDbConfig = (product) => {
   if (normalizedProduct === PRODUCTS.PARTYCRM) {
     return {
       product: PRODUCTS.PARTYCRM,
-      uri: process.env.PARTYCRM_MONGODB_URI,
-      dbName: process.env.PARTYCRM_MONGODB_DBNAME,
+      uri: process.env.MONGODB_URI,
+      dbName: process.env.MONGODB_DBNAME,
     }
   }
 

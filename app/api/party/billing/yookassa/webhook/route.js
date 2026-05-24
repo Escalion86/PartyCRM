@@ -5,7 +5,7 @@ import dbConnect from "@server/dbConnect"
 
 export const POST = async (req) => {
   const secret = String(
-    process.env.PARTYCRM_YOOKASSA_WEBHOOK_SECRET || ""
+    process.env.YOOKASSA_WEBHOOK_SECRET || ""
   ).trim()
   if (secret) {
     const url = new URL(req.url)

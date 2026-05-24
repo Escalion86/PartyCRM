@@ -5,7 +5,7 @@ export async function POST(req) {
   const body = await req.json().catch(() => ({}))
   const secret = body.secret || req.headers.get('x-seed-secret')
   
-  if (secret !== process.env.PARTYCRM_BOOTSTRAP_SECRET) {
+  if (secret !== process.env.PARTYCRM_SECRET) {
     return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 })
   }
 

@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // Use the same connection string pattern as the app
-// The app uses PARTYCRM_MONGODB_URI which resolves to mongodb://admin:PASSWORD@127.0.0.1:27017/?authSource=admin
+// The app uses MONGODB_URI which resolves to mongodb://admin:PASSWORD@127.0.0.1:27017/?authSource=admin
 // We need to read the actual password from the running process
 
 const { execSync } = require('child_process');
@@ -13,7 +13,7 @@ try {
   const envStr = execSync('cat /proc/' + pid + '/environ 2>/dev/null | tr "\\0" "\\n"').toString();
   const lines = envStr.split('\n');
   for (const line of lines) {
-    if (line.startsWith('PARTYCRM_MONGODB_URI=')) {
+    if (line.startsWith('MONGODB_URI=')) {
       mongoUri = line.split('=').slice(1).join('=');
       break;
     }
@@ -43,7 +43,7 @@ if (!mongoUri) {
   if (fs.existsSync(envLocal)) {
     console.log('Found .env.local');
     const content = fs.readFileSync(envLocal, 'utf8');
-    const match = content.match(/PARTYCRM_MONGODB_URI='([^']+)'/);
+    const match = content.match(/MONGODB_URI='([^']+)'/);
     if (match) mongoUri = match[1];
   }
 }

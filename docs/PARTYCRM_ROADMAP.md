@@ -80,7 +80,7 @@ ArtistCRM
 PartyCRM
 - домен: partycrm.ru
 - БД: PartyCRM production database
-- env: PARTYCRM_MONGODB_URI / PARTYCRM_MONGODB_DBNAME
+- env: MONGODB_URI / MONGODB_DBNAME
 ```
 
 Правила:
