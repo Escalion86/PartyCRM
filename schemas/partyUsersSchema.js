@@ -39,7 +39,16 @@ const partyUsersSchema = {
   interfaceRoles: {
     type: [String],
     enum: ["company", "performer"],
-    default: ["company", "performer"],
+    default: [],
+  },
+  lastWorkspace: {
+    type: String,
+    enum: ["", "company", "performer"],
+    default: "",
+  },
+  performerOnboardingCompletedAt: {
+    type: Date,
+    default: null,
   },
   status: {
     type: String,
@@ -69,7 +78,7 @@ const partyUsersSchema = {
   // Biллинг (PartyCRM subscription)
   tariffId: {
     type: Schema.Types.ObjectId,
-    ref: "PartyTariffs",
+    ref: "Tariff",
     default: null,
   },
   balance: {

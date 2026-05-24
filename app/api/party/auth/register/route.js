@@ -8,6 +8,7 @@ import {
   setPartySessionCookie,
 } from '@server/partyAuth'
 import { applyPartyTariffPurchase } from '@server/partyBilling'
+import { PARTY_WORKSPACE_TYPES } from '@server/partyEntry'
 
 const assignDefaultFreeTariff = async (userId) => {
   const PartyTariffs = await getPartyTariffModel()
@@ -85,6 +86,11 @@ export async function POST(req) {
   let user = null
   try {
     const now = new Date()
+    const lastWorkspace = interfaceRoles.includes(PARTY_WORKSPACE_TYPES.COMPANY)
+      ? PARTY_WORKSPACE_TYPES.COMPANY
+      : interfaceRoles.includes(PARTY_WORKSPACE_TYPES.PERFORMER)
+        ? PARTY_WORKSPACE_TYPES.PERFORMER
+        : ''
     user = await PartyUsers.create({
       phone,
       email: normalizePartyEmail(body.email),
@@ -92,6 +98,7 @@ export async function POST(req) {
       firstName: String(body.firstName || '').trim().slice(0, 100),
       secondName: String(body.secondName || '').trim().slice(0, 100),
       interfaceRoles,
+      lastWorkspace,
       consentPrivacyPolicyAccepted: true,
       consentPersonalDataAccepted: true,
       privacyPolicyAcceptedAt: now,
@@ -127,6 +134,9 @@ export async function POST(req) {
           firstName: user.firstName,
           secondName: user.secondName,
           interfaceRoles: normalizePartyInterfaceRoles(user.interfaceRoles),
+          lastWorkspace: user.lastWorkspace || '',
+          performerOnboardingCompletedAt:
+            user.performerOnboardingCompletedAt || null,
         },
       },
     },

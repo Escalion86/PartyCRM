@@ -133,14 +133,14 @@ export default function PartyAppShell({ variant = 'company', children }) {
           if (Array.isArray(roles) && roles.length > 0) {
             setInterfaceRoles(roles)
           } else {
-            setInterfaceRoles(['company', 'performer'])
+            setInterfaceRoles([])
           }
           setProfileLoaded(true)
         })
         .catch(() => {
           setPartyUser(null)
           setMemberships([])
-          setInterfaceRoles(['company', 'performer'])
+          setInterfaceRoles([])
           setProfileLoaded(true)
         })
     }
@@ -164,6 +164,21 @@ export default function PartyAppShell({ variant = 'company', children }) {
     }
   }, [canUseCompany, canUsePerformer, profileLoaded, router, variant])
 
+  useEffect(() => {
+    if (!profileLoaded) return
+    if (!['company', 'performer'].includes(variant)) return
+
+    fetch('/api/party/auth/me', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lastWorkspace: variant }),
+    })
+      .then(() => {
+        window.dispatchEvent(new Event('partycrm:profile-updated'))
+      })
+      .catch(() => null)
+  }, [profileLoaded, variant])
+
   const isActive = (href) => {
     const [path, hash] = href.split('#')
     if (pathname !== path) return false
@@ -173,7 +188,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   const logout = async () => {
     await fetch('/api/party/auth/logout', { method: 'POST' }).catch(() => null)
-    router.replace('/party/login?callbackUrl=/company')
+    router.replace('/party/login?callbackUrl=/party/entry')
   }
 
   return (

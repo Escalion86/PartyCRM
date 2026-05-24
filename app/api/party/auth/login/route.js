@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPartyUserModel } from '@server/partyModels'
 import {
+  normalizePartyInterfaceRoles,
   normalizePartyPhone,
   setPartySessionCookie,
   validatePartyPassword,
@@ -44,6 +45,12 @@ export async function POST(req) {
         email: user.email,
         firstName: user.firstName,
         secondName: user.secondName,
+        interfaceRoles: normalizePartyInterfaceRoles(user.interfaceRoles),
+        lastWorkspace: ['company', 'performer'].includes(user.lastWorkspace)
+          ? user.lastWorkspace
+          : '',
+        performerOnboardingCompletedAt:
+          user.performerOnboardingCompletedAt || null,
       },
     },
   })

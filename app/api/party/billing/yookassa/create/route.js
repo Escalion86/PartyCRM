@@ -13,7 +13,7 @@ const MAX_TOPUP_AMOUNT = 300000
 
 const resolveReturnUrl = (req) => {
   const url = new URL(req.url)
-  const domain = process.env.PARTYCRM_DOMAIN || "partycrm.ru"
+  const domain = process.env.DOMAIN || "partycrm.ru"
   const origin = domain.startsWith("http")
     ? domain
     : `https://${domain.replace(/\/$/, "")}`

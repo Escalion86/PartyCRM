@@ -1,4 +1,4 @@
-const rawDomain = process.env.DOMAIN || 'https://artistcrm.com'
+const rawDomain = process.env.DOMAIN || 'https://partycrm.ru'
 const siteUrl = rawDomain.startsWith('http') ? rawDomain : `https://${rawDomain}`
 const normalizedSiteUrl = siteUrl.replace(/\/$/, '')
 

@@ -1,12 +1,12 @@
 import Link from 'next/link'
 
-const siteUrl = (process.env.DOMAIN || 'https://artistcrm.ru').replace(/\/$/, '')
+const siteUrl = (process.env.DOMAIN || 'https://partycrm.ru').replace(/\/$/, '')
 const pageUrl = `${siteUrl}/terms`
 const ogImage = `${siteUrl}/og-image.jpg`
 
 export const metadata = {
-  title: 'Пользовательское соглашение — ArtistCRM',
-  description: 'Пользовательское соглашение сервиса ArtistCRM.',
+  title: 'Пользовательское соглашение — PartyCRM',
+  description: 'Пользовательское соглашение сервиса PartyCRM.',
   alternates: {
     canonical: pageUrl,
   },
@@ -14,22 +14,22 @@ export const metadata = {
     type: 'website',
     locale: 'ru_RU',
     url: pageUrl,
-    siteName: 'ArtistCRM',
-    title: 'Пользовательское соглашение — ArtistCRM',
-    description: 'Пользовательское соглашение сервиса ArtistCRM.',
+    siteName: 'PartyCRM',
+    title: 'Пользовательское соглашение — PartyCRM',
+    description: 'Пользовательское соглашение сервиса PartyCRM.',
     images: [
       {
         url: ogImage,
         width: 1200,
         height: 630,
-        alt: 'ArtistCRM — Пользовательское соглашение',
+        alt: 'PartyCRM — Пользовательское соглашение',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Пользовательское соглашение — ArtistCRM',
-    description: 'Пользовательское соглашение сервиса ArtistCRM.',
+    title: 'Пользовательское соглашение — PartyCRM',
+    description: 'Пользовательское соглашение сервиса PartyCRM.',
     images: [ogImage],
   },
   robots: {

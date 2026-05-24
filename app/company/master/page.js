@@ -1,39 +1,40 @@
 import { redirect } from 'next/navigation'
-import CompanyPageShell from '../../CompanyPageShell'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { getPartyEntryState } from '@server/partyEntry'
+import CompanyMasterClient from './CompanyMasterClient'
+
+export const dynamic = 'force-dynamic'
 
 export const metadata = {
-  title: 'PartyCRM - архив точек',
+  title: 'PartyCRM - мастер настройки компании',
   applicationName: 'PartyCRM',
-  manifest: '/manifest.json',
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: 'default',
-    title: 'PartyCRM',
-  },
   robots: {
     index: false,
     follow: false,
   },
 }
 
-export const dynamic = 'force-dynamic'
-
-export default async function CompanyLocationsArchivePage() {
+export default async function CompanyMasterPage() {
   const { sessionUser, memberships } = await getPartyMembershipContext()
 
   if (!sessionUser?._id) {
-    redirect('/party/login?callbackUrl=/company/locations/archive')
+    redirect('/party/login?callbackUrl=/company/master')
   }
 
   const state = getPartyEntryState({ user: sessionUser, memberships })
   if (!state.canUseCompany) {
     redirect('/party/entry')
   }
-  if (!state.companyReady) {
-    redirect('/company/master')
+  if (state.companyReady) {
+    redirect('/company')
   }
 
-  return <CompanyPageShell section="locationsArchive" />
+  return (
+    <CompanyMasterClient
+      user={{
+        firstName: sessionUser.firstName || '',
+        secondName: sessionUser.secondName || '',
+      }}
+    />
+  )
 }

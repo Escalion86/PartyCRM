@@ -90,12 +90,12 @@ const Field = ({ label, value, onChange, type = 'text' }) => {
 
 const safeCallbackUrl = (value) => {
   if (!value || !value.startsWith('/') || value.startsWith('//'))
-    return '/company'
-  if (value.startsWith('/login') || value.startsWith('/api/')) return '/company'
+    return '/party/entry'
+  if (value.startsWith('/login') || value.startsWith('/api/')) return '/party/entry'
   return value
 }
 
-export default function PartyLoginClient({ callbackUrl = '/company' }) {
+export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
   const [mode, setMode] = useState('login')
   const [interfaceRoleMode, setInterfaceRoleMode] = useState('both')
   const [phone, setPhone] = useState('')
@@ -158,11 +158,7 @@ export default function PartyLoginClient({ callbackUrl = '/company' }) {
         setError(payload?.error || 'Не удалось войти')
         return
       }
-      const nextUrl =
-        mode === 'register' && interfaceRoleMode === 'performer'
-          ? '/performer'
-          : normalizedCallbackUrl
-      window.location.replace(nextUrl)
+      window.location.replace(normalizedCallbackUrl)
     } finally {
       setLoading(false)
     }

@@ -7,8 +7,8 @@ const getProductDbConfig = (product) => {
   if (normalizedProduct === PRODUCTS.PARTYCRM) {
     return {
       product: PRODUCTS.PARTYCRM,
-      uri: process.env.PARTYCRM_MONGODB_URI,
-      dbName: process.env.PARTYCRM_MONGODB_DBNAME,
+      uri: process.env.MONGODB_URI,
+      dbName: process.env.MONGODB_DBNAME,
     }
   }
 
@@ -63,6 +63,7 @@ export const getProductDbConnection = async (product = PRODUCTS.ARTISTCRM) => {
 export const getProductModel = async ({
   product = PRODUCTS.ARTISTCRM,
   name,
+  collectionName,
   schemaDefinition,
   schemaOptions = {},
   configureSchema,
@@ -82,5 +83,5 @@ export const getProductModel = async ({
     configureSchema(schema)
   }
 
-  return connection.model(name, schema)
+  return connection.model(name, schema, collectionName)
 }

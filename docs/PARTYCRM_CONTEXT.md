@@ -31,8 +31,8 @@ PartyCRM пока живет в том же Next.js приложении, что
 artistcrm.ru -> ArtistCRM
 partycrm.ru  -> PartyCRM
 
-ArtistCRM DB -> MONGODB_URI / MONGODB_DBNAME
-PartyCRM DB  -> PARTYCRM_MONGODB_URI / PARTYCRM_MONGODB_DBNAME
+ArtistCRM DB -> отдельный env набор ArtistCRM
+PartyCRM DB  -> MONGODB_URI / MONGODB_DBNAME
 ```
 
 Auth/users тоже разделены:
@@ -131,7 +131,7 @@ Deploy/docs:
 
 - `docs/PARTYCRM_DEPLOY_PREVIEW.md`
 - `docs/PARTYCRM_LOCAL_DEV.md`
-- `docs/PARTYCRM_NGINX_PREVIEW.conf`
+- `docs/PARTYCRM_NGINX.conf`
 - `docs/PRODUCTION_ENV_CHECKLIST.md`
 
 ## Активная компания

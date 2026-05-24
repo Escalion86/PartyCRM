@@ -3,7 +3,7 @@ import { Schema } from 'mongoose'
 const partyAssignmentsSchema = {
   tenantId: {
     type: Schema.Types.ObjectId,
-    ref: 'PartyCompanies',
+    ref: 'Company',
     required: true,
     index: true,
   },
@@ -15,7 +15,7 @@ const partyAssignmentsSchema = {
   },
   staffId: {
     type: Schema.Types.ObjectId,
-    ref: 'PartyStaff',
+    ref: 'Staff',
     required: true,
     index: true,
   },

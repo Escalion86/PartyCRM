@@ -1,38 +1,16 @@
-import { getServerSession } from 'next-auth'
-import LoginInputs from './loginInputs'
 import { redirect } from 'next/navigation'
-import authOptions from '../api/auth/[...nextauth]/_options'
-// import { signIn } from 'next-auth/react'
 
 export const dynamic = 'force-dynamic'
 
-export const metadata = {
-  title: 'Вход в ArtistCRM',
-  robots: {
-    index: false,
-    follow: false,
-  },
-}
-
 const normalizeCallbackUrl = (value) => {
-  if (typeof value !== 'string') return '/cabinet'
-  if (!value.startsWith('/')) return '/cabinet'
-  if (value.startsWith('//')) return '/cabinet'
+  if (typeof value !== 'string') return '/party/entry'
+  if (!value.startsWith('/')) return '/party/entry'
+  if (value.startsWith('//')) return '/party/entry'
   return value
 }
 
-export default async function Login({ searchParams }) {
-  let session = null
+export default async function LoginRedirectPage({ searchParams }) {
   const params = await searchParams
   const callbackUrl = normalizeCallbackUrl(params?.callbackUrl)
-
-  try {
-    session = await getServerSession(authOptions)
-  } catch (error) {
-    console.error('Ошибка получения сессии в /login', error)
-  }
-
-  if (session) return redirect(callbackUrl)
-
-  return <LoginInputs callbackUrl={callbackUrl} />
+  redirect(`/party/login?callbackUrl=${encodeURIComponent(callbackUrl)}`)
 }

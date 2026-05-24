@@ -20,16 +20,13 @@ export const normalizePartyEmail = (email) =>
 export const normalizePartyInterfaceRoles = (value) => {
   const source = Array.isArray(value) ? value : []
   const roles = source.filter((role) => ['company', 'performer'].includes(role))
-  return roles.length ? [...new Set(roles)] : ['company', 'performer']
+  return [...new Set(roles)]
 }
 
 const getSecret = () => {
-  const secret =
-    process.env.PARTYCRM_AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.SECRET
+  const secret = process.env.AUTH_SECRET
   if (!secret) {
-    throw new Error('PARTYCRM_AUTH_SECRET is not configured')
+    throw new Error('AUTH_SECRET is not configured')
   }
   return secret
 }
@@ -89,6 +86,10 @@ export const getPartySessionUser = async () => {
     ...user,
     _id: String(user._id),
     interfaceRoles: normalizePartyInterfaceRoles(user.interfaceRoles),
+    lastWorkspace: ['company', 'performer'].includes(user.lastWorkspace)
+      ? user.lastWorkspace
+      : '',
+    performerOnboardingCompletedAt: user.performerOnboardingCompletedAt || null,
   }
 }
 

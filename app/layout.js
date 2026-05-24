@@ -10,16 +10,16 @@ import AppSnackbarProvider from '@components/AppSnackbarProvider'
 import AppQueryProvider from '@components/AppQueryProvider'
 import Script from 'next/script'
 
-const rawDomain = process.env.DOMAIN || 'https://artistcrm.ru'
+const rawDomain = process.env.DOMAIN || 'https://partycrm.ru'
 const siteUrl = rawDomain.startsWith('http') ? rawDomain : `https://${rawDomain}`
 const normalizedSiteUrl = siteUrl.replace(/\/$/, '')
 
 export const metadata = {
   metadataBase: new URL(normalizedSiteUrl),
-  title: 'ArtistCRM — CRM для артистов',
+  title: 'PartyCRM — CRM для event-компаний',
   description:
-    'CRM-система для артистов: заявки, мероприятия, финансы, договоры и напоминания.',
-  applicationName: 'ArtistCRM',
+    'CRM-система для event-компаний: заказы, площадки, исполнители, финансы и операционная работа.',
+  applicationName: 'PartyCRM',
   manifest: '/manifest.json',
   verification: {
     yandex: 'f559d6455245a7c5',
@@ -27,7 +27,7 @@ export const metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'ArtistCRM',
+    title: 'PartyCRM',
   },
   icons: {
     icon: [
