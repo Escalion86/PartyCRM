@@ -131,7 +131,7 @@ Deploy/docs:
 
 - `docs/PARTYCRM_DEPLOY_PREVIEW.md`
 - `docs/PARTYCRM_LOCAL_DEV.md`
-- `docs/PARTYCRM_NGINX_PREVIEW.conf`
+- `docs/PARTYCRM_NGINX.conf`
 - `docs/PRODUCTION_ENV_CHECKLIST.md`
 
 ## Активная компания

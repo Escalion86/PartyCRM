@@ -3,17 +3,17 @@ import { Schema } from "mongoose"
 const partyPaymentsSchema = {
   tenantId: {
     type: Schema.Types.ObjectId,
-    ref: "PartyUsers",
+    ref: "User",
     default: null,
   },
   userId: {
     type: Schema.Types.ObjectId,
-    ref: "PartyUsers",
+    ref: "User",
     required: true,
   },
   tariffId: {
     type: Schema.Types.ObjectId,
-    ref: "PartyTariffs",
+    ref: "Tariff",
     default: null,
   },
   amount: {

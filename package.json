@@ -7,6 +7,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
+    "party:migrate-collections": "node scripts/partyRenameCollections.js",
     "tochka:discover": "node scripts/tochkaDiscover.js",
     "postinstall": "node scripts/postinstall.js"
   },

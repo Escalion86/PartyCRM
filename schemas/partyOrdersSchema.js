@@ -4,7 +4,7 @@ const assignedStaffSchema = new Schema(
   {
     staffId: {
       type: Schema.Types.ObjectId,
-      ref: 'PartyStaff',
+      ref: 'Staff',
       required: true,
     },
     role: {
@@ -92,7 +92,7 @@ const partyOrderAdditionalEventSchema = new Schema(
 const partyOrdersSchema = {
   tenantId: {
     type: Schema.Types.ObjectId,
-    ref: 'PartyCompanies',
+    ref: 'Company',
     required: true,
     index: true,
   },
@@ -110,7 +110,7 @@ const partyOrdersSchema = {
   },
   clientId: {
     type: Schema.Types.ObjectId,
-    ref: 'PartyClients',
+    ref: 'Client',
     default: null,
     index: true,
   },
@@ -141,7 +141,7 @@ const partyOrdersSchema = {
   },
   locationId: {
     type: Schema.Types.ObjectId,
-    ref: 'PartyLocations',
+    ref: 'Location',
     default: null,
     index: true,
   },

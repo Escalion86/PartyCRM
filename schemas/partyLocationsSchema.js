@@ -3,7 +3,7 @@ import { Schema } from 'mongoose'
 const partyLocationsSchema = {
   tenantId: {
     type: Schema.Types.ObjectId,
-    ref: 'PartyCompanies',
+    ref: 'Company',
     required: true,
     index: true,
   },

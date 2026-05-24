@@ -78,7 +78,7 @@ const partyUsersSchema = {
   // Biллинг (PartyCRM subscription)
   tariffId: {
     type: Schema.Types.ObjectId,
-    ref: "PartyTariffs",
+    ref: "Tariff",
     default: null,
   },
   balance: {

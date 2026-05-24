@@ -371,7 +371,7 @@ PartyStaff
 - 2026-05-09: начат PC-CW3 — добавлен `getPartyTenantContext`, endpoint `/api/party/me` и защищенный bootstrap первой компании/owner-записи PartyCRM.
 - 2026-05-09: завершены PC-CW2 и PC-LB1, начат PC-SA1 — добавлены tenant-scoped CRUD API для точек и сотрудников PartyCRM с role-based управлением.
 - 2026-05-09: завершены PC-CW4 и PC-SA1 — `/company` получил technical preview UI для bootstrap компании, точек и сотрудников; добавлен документ деплоя `docs/PARTYCRM_DEPLOY_PREVIEW.md`.
-- 2026-05-09: подготовлены production deployment материалы для technical preview: nginx-конфиг `docs/PARTYCRM_NGINX_PREVIEW.conf` и env checklist `docs/PRODUCTION_ENV_CHECKLIST.md`.
+- 2026-05-09: подготовлены production deployment материалы для technical preview: nginx-конфиг `docs/PARTYCRM_NGINX.conf` и env checklist `docs/PRODUCTION_ENV_CHECKLIST.md`.
 - 2026-05-09: добавлен базовый слой заказов PartyCRM: модель `PartyOrders`, API `/api/party/orders`, выбор точки/выезда, назначения исполнителей, выплаты и суммы клиента в `/company`.
 - 2026-05-09: завершены PC-LB4, PC-LB5 и PC-SA5 — добавлена проверка пересечений заказов по точке и исполнителям, endpoint `/api/party/orders/check-conflicts` и проверка в `/company`.
 - 2026-05-09: завершены PC-SA6 и PC-PF1..PC-PF4 — `/performer` стал рабочим кабинетом исполнителя с назначенными заказами, адресом, клиентом и выплатой без полной клиентской суммы.

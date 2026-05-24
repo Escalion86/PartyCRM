@@ -84,13 +84,13 @@ partycrm.ru  -> http://127.0.0.1:3006
 Готовый HTTP-only nginx-конфиг без сертификатов лежит в:
 
 ```txt
-docs/PARTYCRM_NGINX_PREVIEW.conf
+docs/PARTYCRM_NGINX.conf
 ```
 
 Установка на сервер:
 
 ```bash
-sudo cp docs/PARTYCRM_NGINX_PREVIEW.conf /etc/nginx/sites-available/artistcrm
+sudo cp docs/PARTYCRM_NGINX.conf /etc/nginx/sites-available/partycrm
 sudo ln -s /etc/nginx/sites-available/artistcrm /etc/nginx/sites-enabled/artistcrm
 sudo nginx -t
 sudo systemctl reload nginx

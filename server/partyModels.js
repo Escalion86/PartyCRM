@@ -30,7 +30,8 @@ export const PARTY_CONTRACTOR_RULE =
 export const getPartyCompanyModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyCompanies",
+    name: "Company",
+    collectionName: "companies",
     schemaDefinition: partyCompaniesSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -42,7 +43,8 @@ export const getPartyCompanyModel = () =>
 export const getPartyUserModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyUsers",
+    name: "User",
+    collectionName: "users",
     schemaDefinition: partyUsersSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -55,7 +57,8 @@ export const getPartyUserModel = () =>
 export const getPartyStaffModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyStaff",
+    name: "Staff",
+    collectionName: "staff",
     schemaDefinition: partyStaffSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -70,7 +73,8 @@ export const getPartyStaffModel = () =>
 export const getPartyLocationModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyLocations",
+    name: "Location",
+    collectionName: "locations",
     schemaDefinition: partyLocationsSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -81,7 +85,8 @@ export const getPartyLocationModel = () =>
 export const getPartyClientModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyClients",
+    name: "Client",
+    collectionName: "clients",
     schemaDefinition: partyClientsSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -97,7 +102,8 @@ export const getPartyClientModel = () =>
 export const getPartyAssignmentModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyAssignments",
+    name: "Assignment",
+    collectionName: "assignments",
     schemaDefinition: partyAssignmentsSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -110,7 +116,8 @@ export const getPartyAssignmentModel = () =>
 export const getPartyServiceModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyServices",
+    name: "Service",
+    collectionName: "services",
     schemaDefinition: partyServicesSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -122,7 +129,8 @@ export const getPartyServiceModel = () =>
 export const getPartyOrderModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyOrders",
+    name: "Order",
+    collectionName: "orders",
     schemaDefinition: partyOrdersSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -136,7 +144,8 @@ export const getPartyOrderModel = () =>
 export const getPartyTariffModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyTariffs",
+    name: "Tariff",
+    collectionName: "tariffs",
     schemaDefinition: partyTariffsSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
@@ -148,7 +157,8 @@ export const getPartyTariffModel = () =>
 export const getPartyPaymentModel = () =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: "PartyPayments",
+    name: "Payment",
+    collectionName: "payments",
     schemaDefinition: partyPaymentsSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
