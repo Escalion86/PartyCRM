@@ -1,0 +1,66 @@
+const sortFunctions = {
+  eventsUserCount: {
+    asc: (a, b) => (a.eventsUserCount < b.eventsUserCount ? -1 : 1),
+    desc: (a, b) => (a.eventsUserCount > b.eventsUserCount ? -1 : 1),
+  },
+  date: {
+    asc: (a, b) =>
+      new Date(a.date).getTime() < new Date(b.date).getTime() ? -1 : 1,
+    desc: (a, b) =>
+      new Date(a.date).getTime() > new Date(b.date).getTime() ? -1 : 1,
+  },
+  eventDate: {
+    asc: (a, b) =>
+      new Date(a.eventDate).getTime() < new Date(b.eventDate).getTime()
+        ? -1
+        : 1,
+    desc: (a, b) =>
+      new Date(a.eventDate).getTime() > new Date(b.eventDate).getTime()
+        ? -1
+        : 1,
+  },
+  dateEnd: {
+    asc: (a, b) =>
+      new Date(a.dateEnd).getTime() < new Date(b.dateEnd).getTime() ? -1 : 1,
+    desc: (a, b) =>
+      new Date(a.dateEnd).getTime() > new Date(b.dateEnd).getTime() ? -1 : 1,
+  },
+  payAt: {
+    asc: (a, b) =>
+      new Date(a.payAt).getTime() < new Date(b.payAt).getTime() ? -1 : 1,
+    desc: (a, b) =>
+      new Date(a.payAt).getTime() > new Date(b.payAt).getTime() ? -1 : 1,
+  },
+  name: {
+    asc: (a, b) =>
+      a.firstName.toLowerCase() < b.firstName.toLowerCase() ? -1 : 1,
+    desc: (a, b) =>
+      a.firstName.toLowerCase() > b.firstName.toLowerCase() ? -1 : 1,
+  },
+  birthday: {
+    asc: (a, b) =>
+      !a.birthday
+        ? -1
+        : new Date(a.birthday).getTime() > new Date(b.birthday).getTime()
+        ? -1
+        : 1,
+    desc: (a, b) =>
+      !a.birthday
+        ? 1
+        : new Date(a.birthday).getTime() < new Date(b.birthday).getTime()
+        ? -1
+        : 1,
+  },
+  createdAt: {
+    asc: (a, b) =>
+      new Date(a.createdAt).getTime() < new Date(b.createdAt).getTime()
+        ? -1
+        : 1,
+    desc: (a, b) =>
+      new Date(a.createdAt).getTime() > new Date(b.createdAt).getTime()
+        ? -1
+        : 1,
+  },
+}
+
+export default sortFunctions

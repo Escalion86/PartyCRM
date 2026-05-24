@@ -1,0 +1,10 @@
+import mongoose from 'mongoose'
+import clientsSchema from '@schemas/clientsSchema'
+
+const ClientsSchema = new mongoose.Schema(clientsSchema, { timestamps: true })
+ClientsSchema.index({ tenantId: 1, phone: 1 })
+ClientsSchema.index({ tenantId: 1, vk: 1 })
+ClientsSchema.index({ tenantId: 1, createdAt: -1 })
+
+export default mongoose.models.Clients ||
+  mongoose.model('Clients', ClientsSchema)

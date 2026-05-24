@@ -1,0 +1,31 @@
+{
+  "name": "PartyCRM",
+  "short_name": "PartyCRM",
+  "description": "CRM для event-команд, площадок и праздничных агентств",
+  "start_url": "/company",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#eaf6ff",
+  "background_color": "#eaf6ff",
+  "icons": [
+    {
+      "src": "/icons/AppImages/android/android-launchericon-192-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/AppImages/android/android-launchericon-512-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/AppImages/ios/180.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

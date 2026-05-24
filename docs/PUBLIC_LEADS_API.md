@@ -1,0 +1,263 @@
+# Public Leads API
+
+## Назначение
+
+Публичный API принимает входящие заявки с сайта/форм и сразу создает заявку в ArtistCRM.
+
+Основной endpoint:
+- `POST /api/public/lead`
+
+Адаптер под формы Tilda:
+- `POST /api/public/lead/tilda`
+
+Результат успешного запроса:
+- создается (или дополняется) клиент;
+- создается мероприятие со статусом `draft`.
+
+---
+
+## Быстрый старт
+
+1. Откройте `Настройки -> Интеграции`.
+2. Включите `Принимать заявки через API`.
+3. Создайте API-ключ для нужного источника и задайте ему понятное название, например `Сайт`, `Tilda`, `Лендинг`.
+4. Отправьте тестовый `POST` на `/api/public/lead`.
+5. Проверьте в CRM, что появилась новая заявка со статусом `draft`.
+
+---
+
+## Авторизация
+
+Передайте ключ одним из способов:
+- заголовок `X-Public-Api-Key` (рекомендуется)
+- заголовок `X-Api-Key`
+- поле `apiKey` в JSON body
+
+Для Tilda adapter дополнительно поддерживается `api_key` в body.
+
+Если ключ не передан: `401`.
+Если ключ неверный или отключен: `403`.
+
+---
+
+## Ограничения доступа
+
+API примет заявку только если:
+- в настройках включен флаг `Принимать заявки через API`;
+- у пользователя активен пробный период или тариф.
+
+Иначе вернется `403`.
+
+---
+
+## Endpoint: `POST /api/public/lead`
+
+### Технические параметры
+
+- Method: `POST`
+- URL: `/api/public/lead`
+- Content-Type: `application/json`
+- CORS: `OPTIONS`, `POST`
+
+### Минимально обязательные поля
+
+Нужно передать хотя бы один контакт:
+- `name` (или `clientName`)
+- `phone` (или `clientPhone`)
+- `telegram`
+- `whatsapp`
+
+Если нет ни одного контакта: `400`.
+
+### Поддерживаемые поля body
+
+- `name` / `clientName` — имя клиента
+- `phone` / `clientPhone` — телефон
+- `telegram` — Telegram
+- `whatsapp` — WhatsApp
+- `comment` / `description` / `message` — комментарий
+- `eventDate` — дата начала (ISO)
+- `dateEnd` — дата окончания (ISO)
+- `contractSum` — договорная сумма
+- `servicesIds` — массив id услуг
+- `town` / `city` — город
+- `address` / `location` — адрес
+- `source` — источник заявки (по умолчанию `public_api`)
+
+### Валидация дат
+
+Если переданы и `eventDate`, и `dateEnd`, тогда `eventDate` не может быть позже `dateEnd`.
+При нарушении вернется `400`.
+
+### Пример запроса
+
+```bash
+curl -X POST "https://YOUR_DOMAIN/api/public/lead" \
+  -H "Content-Type: application/json" \
+  -H "X-Public-Api-Key: YOUR_API_KEY" \
+  -d '{
+    "name": "Иван",
+    "phone": "+7 (999) 123-45-67",
+    "comment": "Нужен артист на день рождения",
+    "eventDate": "2026-03-10T15:00:00.000Z",
+    "dateEnd": "2026-03-10T16:00:00.000Z",
+    "town": "Красноярск",
+    "address": "ул. Ленина, 10",
+    "source": "site_form"
+  }'
+```
+
+### Успешный ответ (`201`)
+
+```json
+{
+  "success": true,
+  "data": {
+    "eventId": "65f...",
+    "clientId": "65e...",
+    "status": "draft",
+    "push": {
+      "enabled": true,
+      "sent": 1,
+      "failed": 0,
+      "deactivated": 0,
+      "skippedReason": "",
+      "reason": ""
+    }
+  }
+}
+```
+
+`data.push.skippedReason` помогает диагностировать уведомления:
+`disabled` — push выключен в настройках, `no_active_subscriptions` — нет активной
+браузерной подписки, `notify_error` — ошибка при отправке.
+
+---
+
+## Endpoint: `POST /api/public/lead/tilda`
+
+Этот endpoint нужен, если форма Tilda отдает нестандартные имена полей.
+Адаптер нормализует payload в формат CRM.
+
+### Технические параметры
+
+- Method: `POST`
+- URL: `/api/public/lead/tilda`
+- Content-Type:
+  - `application/json`
+  - `application/x-www-form-urlencoded`
+- CORS: `OPTIONS`, `POST`
+
+### Поддерживаемые алиасы полей
+
+Имя:
+- `name`, `clientName`, `client_name`, `fio`, `fullname`, `Имя`, `ФИО`
+
+Телефон:
+- `phone`, `clientPhone`, `client_phone`, `tel`, `Телефон`
+
+Комментарий:
+- `comment`, `description`, `message`, `text`, `Комментарий`
+
+Город:
+- `town`, `city`, `gorod`, `Город`
+
+Адрес:
+- `address`, `location`, `Адрес`
+
+Дата начала:
+- `eventDate`, `event_date`, `date`, `Дата`
+
+Дата окончания:
+- `dateEnd`, `date_end`, `end_date`
+
+Сумма:
+- `contractSum`, `sum`, `amount`, `budget`
+
+Сервисы:
+- `servicesIds`, `services_ids`
+
+Источник:
+- `source` (если не передан, используется `tilda`)
+
+### Рекомендуемое сопоставление для Tilda
+
+- `name` -> `name`
+- `phone` -> `phone`
+- `message` -> `comment`
+- `city` -> `town`
+- `event_date` -> `eventDate` (ISO)
+- `source` -> `source` (например `tilda`)
+
+### Пример запроса
+
+```bash
+curl -X POST "https://YOUR_DOMAIN/api/public/lead/tilda" \
+  -H "Content-Type: application/json" \
+  -H "X-Public-Api-Key: YOUR_API_KEY" \
+  -d '{
+    "name": "Иван",
+    "phone": "+7 (999) 123-45-67",
+    "message": "Нужен артист на выпускной",
+    "city": "Красноярск",
+    "event_date": "2026-04-20T14:00:00.000Z",
+    "source": "tilda"
+  }'
+```
+
+### Минимальный payload
+
+```json
+{
+  "name": "Иван",
+  "phone": "+79991234567",
+  "message": "Нужен артист",
+  "source": "tilda"
+}
+```
+
+---
+
+## Коды ошибок
+
+Для обоих endpoint'ов:
+
+- `401` — API key не передан
+- `403` — неверный API key
+- `403` — прием заявок через API отключен
+- `403` — не выбран тариф / нет активного trial
+- `400` — нет обязательного контактного поля
+- `400` — `eventDate` позже `dateEnd`
+- `500` — внутренняя ошибка сервера
+
+Текущий формат ошибок в ответе:
+
+```json
+{
+  "success": false,
+  "error": "Текст ошибки"
+}
+```
+
+---
+
+## Что происходит в CRM после импорта
+
+- Создается или переиспользуется клиент (по телефону в рамках tenant).
+- Если клиент найден, пустые поля клиента могут быть дополнены (например, имя/telegram/whatsapp).
+- Создается мероприятие со статусом `draft`.
+- На карточке такого мероприятия отображается бейдж с названием API-ключа, например `Сайт` или `Tilda`.
+- Если дата мероприятия не передана, заявка отображается в разделе `Предстоящие` в верхней части списка как входящая API-заявка без даты.
+- Оригинальный payload сохраняется в `event.clientData.lead.raw`.
+
+---
+
+## Где смотреть инструкцию в UI
+
+- `Настройки -> Интеграции -> Открыть инструкцию API`
+- Для push-уведомлений по новым API-заявкам:
+  - `Настройки -> Уведомления`
+  - нажмите `Включить push` и разрешите уведомления в браузере;
+  - для проверки используйте кнопку `Тест push`.
+
+Эта кнопка открывает содержимое файла `docs/PUBLIC_LEADS_API.md`.

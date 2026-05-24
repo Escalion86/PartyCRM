@@ -1,0 +1,207 @@
+import { Schema } from 'mongoose'
+
+const assignedStaffSchema = new Schema(
+  {
+    staffId: {
+      type: Schema.Types.ObjectId,
+      ref: 'PartyStaff',
+      required: true,
+    },
+    role: {
+      type: String,
+      enum: ['performer', 'admin', 'assistant'],
+      default: 'performer',
+    },
+    payoutAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    payoutStatus: {
+      type: String,
+      enum: ['planned', 'ready', 'paid', 'canceled'],
+      default: 'planned',
+    },
+    confirmationStatus: {
+      type: String,
+      enum: ['pending', 'confirmed', 'declined', 'done'],
+      default: 'pending',
+    },
+  },
+  { _id: false }
+)
+
+const partyOrderTransactionSchema = new Schema(
+  {
+    amount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    type: {
+      type: String,
+      enum: ['income', 'expense'],
+      default: 'income',
+    },
+    category: {
+      type: String,
+      enum: [
+        'deposit',
+        'final_payment',
+        'client_payment',
+        'payout',
+        'refund',
+        'taxes',
+        'materials',
+        'travel',
+        'other',
+      ],
+      default: 'deposit',
+    },
+    date: {
+      type: Date,
+      default: null,
+    },
+    comment: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 1000,
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['transfer', 'account', 'cash', 'barter'],
+      default: 'transfer',
+    },
+  },
+  { _id: true }
+)
+
+const partyOrderAdditionalEventSchema = new Schema(
+  {
+    title: { type: String, trim: true, default: '', maxlength: 180 },
+    description: { type: String, trim: true, default: '', maxlength: 1000 },
+    date: { type: Date, default: null },
+    done: { type: Boolean, default: false },
+    doneAt: { type: Date, default: null },
+    googleCalendarEventId: { type: String, default: '' },
+  },
+  { _id: true }
+)
+
+const partyOrdersSchema = {
+  tenantId: {
+    type: Schema.Types.ObjectId,
+    ref: 'PartyCompanies',
+    required: true,
+    index: true,
+  },
+  title: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 180,
+  },
+  status: {
+    type: String,
+    enum: ['draft', 'active', 'canceled', 'closed'],
+    default: 'draft',
+    index: true,
+  },
+  clientId: {
+    type: Schema.Types.ObjectId,
+    ref: 'PartyClients',
+    default: null,
+    index: true,
+  },
+  client: {
+    name: { type: String, trim: true, default: '', maxlength: 160 },
+    phone: { type: String, trim: true, default: '', maxlength: 40 },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: '',
+      maxlength: 160,
+    },
+  },
+  eventDate: {
+    type: Date,
+    default: null,
+    index: true,
+  },
+  dateEnd: {
+    type: Date,
+    default: null,
+  },
+  placeType: {
+    type: String,
+    enum: ['company_location', 'client_address'],
+    default: 'company_location',
+  },
+  locationId: {
+    type: Schema.Types.ObjectId,
+    ref: 'PartyLocations',
+    default: null,
+    index: true,
+  },
+  customAddress: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 500,
+  },
+  clientAddress: {
+    town: { type: String, trim: true, default: '', maxlength: 120 },
+    street: { type: String, trim: true, default: '', maxlength: 180 },
+    house: { type: String, trim: true, default: '', maxlength: 60 },
+    room: { type: String, trim: true, default: '', maxlength: 120 },
+    comment: { type: String, trim: true, default: '', maxlength: 500 },
+  },
+  servicesIds: {
+    type: [Schema.Types.ObjectId],
+    default: [],
+    index: true,
+  },
+  serviceTitle: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 180,
+  },
+  contractAmount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  transactions: {
+    type: [partyOrderTransactionSchema],
+    default: [],
+  },
+  additionalEvents: {
+    type: [partyOrderAdditionalEventSchema],
+    default: [],
+  },
+  // Legacy field kept for backward-compatible reads of early PartyCRM orders.
+  clientPayment: {
+    totalAmount: { type: Number, default: 0, min: 0 },
+    prepaidAmount: { type: Number, default: 0, min: 0 },
+    status: {
+      type: String,
+      enum: ['none', 'wait_prepayment', 'prepaid', 'paid'],
+      default: 'none',
+    },
+  },
+  assignedStaff: {
+    type: [assignedStaffSchema],
+    default: [],
+  },
+  adminComment: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 2000,
+  },
+}
+
+export default partyOrdersSchema
