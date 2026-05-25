@@ -6,6 +6,7 @@ import '../fonts/FuturaPT.css'
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter'
 import ClientErrorLogger from '@components/ClientErrorLogger'
 import DevelopmentServiceWorkerCleanup from '@components/DevelopmentServiceWorkerCleanup'
+import ServiceWorkerRegistration from '@components/ServiceWorkerRegistration'
 import AppSnackbarProvider from '@components/AppSnackbarProvider'
 import AppQueryProvider from '@components/AppQueryProvider'
 import Script from 'next/script'
@@ -62,6 +63,7 @@ export default function RootLayout({ children }) {
         <AppRouterCacheProvider options={{ enableCssLayer: true }}>
           <ClientErrorLogger enabled={isProduction} />
           {!isProduction && <DevelopmentServiceWorkerCleanup />}
+          {isProduction && <ServiceWorkerRegistration />}
           {isProduction && (
             <>
               <Script id="yandex-metrika" strategy="afterInteractive">

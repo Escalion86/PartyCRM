@@ -19,7 +19,13 @@ const DevelopmentServiceWorkerCleanup = () => {
           .then((keys) =>
             Promise.all(
               keys
-                .filter((key) => key.includes('workbox') || key.includes('precache'))
+                .filter(
+                  (key) =>
+                    key.includes('workbox') ||
+                    key.includes('precache') ||
+                    key.includes('crm-app-shell') ||
+                    key.includes('crm-runtime')
+                )
                 .map((key) => window.caches.delete(key))
             )
           )
