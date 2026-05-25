@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import Calls from '@models/Calls'
 import dbConnect from '@server/dbConnect'
 import { normalizeCallInput, processCallRecording } from '@server/calls'
-import { notifyCallRecordingReady } from '@server/callPush'
 import { isTelephonyTariffAllowedForTenant } from '@server/telephonyAccess'
 import { logTelephonyWebhook } from '@server/telephonyWebhookLogger'
 import {
@@ -64,6 +63,8 @@ const logNovofonWebhook = (entry) =>
     provider: 'novofon',
     ...entry,
   })
+
+const notifyCallRecordingReady = async () => {}
 
 const handleNovofonWebhook = async (req) => {
   const { searchParams } = new URL(req.url)

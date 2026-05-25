@@ -1,38 +1,56 @@
-import {
-  SEO_LAST_MODIFIED,
-  normalizedSiteUrl,
-  seoLandingSlugs,
-} from '@helpers/seoLandingPages'
+const rawDomain = process.env.DOMAIN || 'https://partycrm.ru'
+const normalizedSiteUrl = rawDomain.startsWith('http')
+  ? rawDomain.replace(/\/$/, '')
+  : `https://${rawDomain.replace(/\/$/, '')}`
+const LAST_MODIFIED = '2026-05-25'
 
 export default function sitemap() {
   return [
     {
       url: `${normalizedSiteUrl}/`,
-      lastModified: SEO_LAST_MODIFIED,
+      lastModified: LAST_MODIFIED,
       changeFrequency: 'weekly',
       priority: 1,
     },
-    ...seoLandingSlugs.map((slug) => ({
-      url: `${normalizedSiteUrl}/${slug}`,
-      lastModified: SEO_LAST_MODIFIED,
+    {
+      url: `${normalizedSiteUrl}/party`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: 'weekly',
+      priority: 0.95,
+    },
+    {
+      url: `${normalizedSiteUrl}/party/login`,
+      lastModified: LAST_MODIFIED,
       changeFrequency: 'monthly',
-      priority: 0.85,
-    })),
+      priority: 0.7,
+    },
+    {
+      url: `${normalizedSiteUrl}/company`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
+    {
+      url: `${normalizedSiteUrl}/performer`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
     {
       url: `${normalizedSiteUrl}/privacy`,
-      lastModified: SEO_LAST_MODIFIED,
+      lastModified: LAST_MODIFIED,
       changeFrequency: 'yearly',
       priority: 0.4,
     },
     {
       url: `${normalizedSiteUrl}/terms`,
-      lastModified: SEO_LAST_MODIFIED,
+      lastModified: LAST_MODIFIED,
       changeFrequency: 'yearly',
       priority: 0.4,
     },
     {
       url: `${normalizedSiteUrl}/payment`,
-      lastModified: SEO_LAST_MODIFIED,
+      lastModified: LAST_MODIFIED,
       changeFrequency: 'yearly',
       priority: 0.4,
     },
