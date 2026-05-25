@@ -19,11 +19,11 @@ const assignDefaultFreeTariff = async (userId) => {
 
   if (!freeTariff) {
     freeTariff = await PartyTariffs.create({
-      title: '╨С╨╡╤Б╨┐╨╗╨░╤В╨╜╤Л╨╣',
-      subtitle: '╨С╨░╨╖╨╛╨▓╤Л╨╡ ╨▓╨╛╨╖╨╝╨╛╨╢╨╜╨╛╤Б╤В╨╕',
+      title: 'Бесплатный',
+      subtitle: 'Базовые возможности',
       price: 0,
-      description: '╨С╨╡╤Б╨┐╨╗╨░╤В╨╜╤Л╨╣ ╤В╨░╤А╨╕╤Д ╨┤╨╗╤П ╨╜╨░╤З╨░╨╗╨░ ╤А╨░╨▒╨╛╤В╤Л',
-      features: ['╨Ф╨╛ 3 ╤Б╨╛╤В╤А╤Г╨┤╨╜╨╕╨║╨╛╨▓', '╨Ф╨╛ 30 ╨╖╨░╨║╨░╨╖╨╛╨▓ ╨▓ ╨╝╨╡╤Б╤П╤Ж', '╨г╤З╤С╤В ╨║╨╗╨╕╨╡╨╜╤В╨╛╨▓'],
+      description: 'Бесплатный тариф для начала работы',
+      features: ['До 3 сотрудников', 'До 30 заказов в месяц', 'Учет клиентов'],
       hidden: false,
     })
   }
@@ -33,7 +33,11 @@ const assignDefaultFreeTariff = async (userId) => {
     tariffId: freeTariff._id,
   })
   if (!result.ok) {
-    console.error('╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╨╜╨░╨╖╨╜╨░╤З╨╕╤В╤М ╨▒╨╡╤Б╨┐╨╗╨░╤В╨╜╤Л╨╣ ╤В╨░╤А╨╕╤Д ╨┐╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╨╡╨╗╤О', userId, result.error)
+    console.error(
+      'Не удалось назначить бесплатный тариф пользователю',
+      userId,
+      result.error
+    )
   }
 }
 
@@ -47,19 +51,19 @@ export async function POST(req) {
 
   if (!phone || !password) {
     return NextResponse.json(
-      { success: false, error: '╨г╨║╨░╨╢╨╕╤В╨╡ ╤В╨╡╨╗╨╡╤Д╨╛╨╜ ╨╕ ╨┐╨░╤А╨╛╨╗╤М' },
+      { success: false, error: 'Укажите телефон и пароль' },
       { status: 400 }
     )
   }
   if (phone.length !== 11) {
     return NextResponse.json(
-      { success: false, error: '╨Э╨╡╨║╨╛╤А╤А╨╡╨║╤В╨╜╤Л╨╣ ╨╜╨╛╨╝╨╡╤А ╤В╨╡╨╗╨╡╤Д╨╛╨╜╨░' },
+      { success: false, error: 'Некорректный номер телефона' },
       { status: 400 }
     )
   }
   if (password.length < 8) {
     return NextResponse.json(
-      { success: false, error: '╨Я╨░╤А╨╛╨╗╤М ╨┤╨╛╨╗╨╢╨╡╨╜ ╨▒╤Л╤В╤М ╨╜╨╡ ╨╝╨╡╨╜╨╡╨╡ 8 ╤Б╨╕╨╝╨▓╨╛╨╗╨╛╨▓' },
+      { success: false, error: 'Пароль должен быть не менее 8 символов' },
       { status: 400 }
     )
   }
@@ -68,7 +72,7 @@ export async function POST(req) {
       {
         success: false,
         error:
-          '╨Ф╨╗╤П ╤А╨╡╨│╨╕╤Б╤В╤А╨░╤Ж╨╕╨╕ ╤В╤А╨╡╨▒╤Г╨╡╤В╤Б╤П ╤Б╨╛╨│╨╗╨░╤Б╨╕╨╡ ╤Б ╨Я╨╛╨╗╨╕╤В╨╕╨║╨╛╨╣ ╨║╨╛╨╜╤Д╨╕╨┤╨╡╨╜╤Ж╨╕╨░╨╗╤М╨╜╨╛╤Б╤В╨╕ ╨╕ ╨╛╨▒╤А╨░╨▒╨╛╤В╨║╨╛╨╣ ╨┐╨╡╤А╤Б╨╛╨╜╨░╨╗╤М╨╜╤Л╤Е ╨┤╨░╨╜╨╜╤Л╤Е',
+          'Для регистрации требуется согласие с Политикой конфиденциальности и обработкой персональных данных',
       },
       { status: 400 }
     )
@@ -78,7 +82,10 @@ export async function POST(req) {
   const existingUser = await PartyUsers.findOne({ phone }).lean()
   if (existingUser) {
     return NextResponse.json(
-      { success: false, error: '╨Я╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╨╡╨╗╤М PartyCRM ╤Б ╤В╨░╨║╨╕╨╝ ╨╜╨╛╨╝╨╡╤А╨╛╨╝ ╤Г╨╢╨╡ ╤Б╤Г╤Й╨╡╤Б╤В╨▓╤Г╨╡╤В' },
+      {
+        success: false,
+        error: 'Пользователь PartyCRM с таким номером уже существует',
+      },
       { status: 409 }
     )
   }
@@ -110,7 +117,7 @@ export async function POST(req) {
       return NextResponse.json(
         {
           success: false,
-          error: '╨Я╨╛╨╗╤М╨╖╨╛╨▓╨░╤В╨╡╨╗╤М PartyCRM ╤Б ╤В╨░╨║╨╕╨╝ ╨╜╨╛╨╝╨╡╤А╨╛╨╝ ╤Г╨╢╨╡ ╤Б╤Г╤Й╨╡╤Б╤В╨▓╤Г╨╡╤В',
+          error: 'Пользователь PartyCRM с таким номером уже существует',
         },
         { status: 409 }
       )
@@ -118,7 +125,7 @@ export async function POST(req) {
     throw error
   }
 
-  // ╨Э╨░╨╖╨╜╨░╤З╨░╨╡╨╝ ╨▒╨╡╤Б╨┐╨╗╨░╤В╨╜╤Л╨╣ ╤В╨░╤А╨╕╤Д ╨┐╨╛ ╤Г╨╝╨╛╨╗╤З╨░╨╜╨╕╤О (╨╜╨╡ ╨▒╨╗╨╛╨║╨╕╤А╤Г╨╡╨╝ ╤А╨╡╨│╨╕╤Б╤В╤А╨░╤Ж╨╕╤О ╨┐╤А╨╕ ╨╛╤И╨╕╨▒╨║╨╡)
+  // Назначаем бесплатный тариф по умолчанию, но не блокируем регистрацию при ошибке.
   assignDefaultFreeTariff(user._id).catch((err) =>
     console.error('assignDefaultFreeTariff error:', err)
   )

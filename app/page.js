@@ -1,7 +1,7 @@
-import { redirect } from 'next/navigation'
+import PartyCrmLandingPage, { metadata as partyMetadata } from './party/page'
 
-export const dynamic = 'force-dynamic'
+export const metadata = partyMetadata
 
 export default function RootPage() {
-  redirect('/party')
+  return <PartyCrmLandingPage />
 }

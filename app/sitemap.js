@@ -49,6 +49,12 @@ export default function sitemap() {
       priority: 0.4,
     },
     {
+      url: `${normalizedSiteUrl}/personal-data-consent`,
+      lastModified: LAST_MODIFIED,
+      changeFrequency: 'yearly',
+      priority: 0.4,
+    },
+    {
       url: `${normalizedSiteUrl}/payment`,
       lastModified: LAST_MODIFIED,
       changeFrequency: 'yearly',

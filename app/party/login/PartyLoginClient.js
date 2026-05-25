@@ -257,7 +257,15 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
                 }
                 className="mt-1"
               />
-              <span>Согласен на обработку персональных данных</span>
+              <span>
+                Согласен с{' '}
+                <Link
+                  href="/personal-data-consent"
+                  className="underline text-sky-700"
+                >
+                  Согласием на обработку персональных данных
+                </Link>
+              </span>
             </label>
           </>
         )}

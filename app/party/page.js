@@ -1,5 +1,6 @@
 ﻿import Link from 'next/link'
 import PartyPricingSection from './PartyPricingSection'
+import Image from 'next/image'
 
 const rawPartyDomain = process.env.DOMAIN || 'partycrm.ru'
 const partyUrl = rawPartyDomain.startsWith('http')
@@ -255,14 +256,19 @@ export default function PartyCrmLandingPage() {
 
       {/* Header */}
       <div className="relative z-20 flex items-center justify-between w-full max-w-6xl px-6 pt-6 mx-auto">
-        <Link href="/party" className="flex items-center gap-3 cursor-pointer">
-          <span className="text-lg font-semibold text-sky-700 font-futuraPT">
-            PartyCRM
-          </span>
+        <Link href="/party" className="flex items-center cursor-pointer">
+          <Image
+            src="/img/logo_horizontal.png"
+            alt="PartyCRM"
+            width={623}
+            height={134}
+            priority
+            className="h-8 w-auto sm:h-9"
+          />
         </Link>
         <Link
           href="/party/login?callbackUrl=/party/entry"
-          className="cursor-pointer ui-btn ui-btn-primary"
+          className="cursor-pointer ui-btn party-cta-primary"
         >
           Войти в систему
         </Link>
@@ -304,13 +310,13 @@ export default function PartyCrmLandingPage() {
           <div className="flex flex-wrap items-center gap-4 mt-8 landing-reveal">
             <Link
               href="/party/login?callbackUrl=/party/entry"
-              className="cursor-pointer ui-btn ui-btn-primary"
+              className="cursor-pointer ui-btn party-cta-primary"
             >
               Попробовать бесплатно
             </Link>
             <Link
               href="#pricing"
-              className="cursor-pointer ui-btn ui-btn-secondary"
+              className="cursor-pointer ui-btn party-cta-secondary"
             >
               Посмотреть тарифы
             </Link>
@@ -532,13 +538,13 @@ export default function PartyCrmLandingPage() {
           <div className="flex flex-wrap justify-center gap-4 mt-8">
             <Link
               href="/party/login?callbackUrl=/party/entry"
-              className="cursor-pointer ui-btn ui-btn-primary"
+              className="cursor-pointer ui-btn party-cta-primary"
             >
               Попробовать бесплатно
             </Link>
             <Link
               href="#pricing"
-              className="cursor-pointer ui-btn ui-btn-secondary"
+              className="cursor-pointer ui-btn party-cta-secondary"
             >
               Сравнить тарифы
             </Link>

@@ -45,7 +45,7 @@ export default function PartyPricingSection() {
         </div>
         <Link
           href="/party/login?callbackUrl=/party/entry"
-          className="cursor-pointer ui-btn ui-btn-primary"
+          className="cursor-pointer ui-btn party-cta-primary"
         >
           Попробовать бесплатно
         </Link>
