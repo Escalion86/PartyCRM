@@ -3,7 +3,7 @@ import PartySettingsClient from './PartySettingsClient'
 export const metadata = {
   title: 'PartyCRM - настройки',
   applicationName: 'PartyCRM',
-  manifest: '/manifest.json',
+  manifest: '/manifest.json?v=2026-05-27-logo-png',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',

@@ -14,8 +14,6 @@ compression.
 - `img/logo-72.avif` (2.7 KB) — AVIF retina version
 - `og-image-1200.webp` (1.6 KB) — 82.6% smaller than PNG
 - `og-image-1200.avif` (606 B) — 93.5% smaller than PNG
-- `logo.webp` (2.9 KB) — root logo, 72.4% smaller
-- `logo.avif` (2.4 KB) — root logo, 77.6% smaller
 
 ### 2. Optimized existing files
 - `og-image.png` — reduced from 12.6 KB to 9.1 KB (28% smaller) using 2-color

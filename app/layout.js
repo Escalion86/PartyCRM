@@ -14,6 +14,7 @@ import Script from 'next/script'
 const rawDomain = process.env.DOMAIN || 'https://partycrm.ru'
 const siteUrl = rawDomain.startsWith('http') ? rawDomain : `https://${rawDomain}`
 const normalizedSiteUrl = siteUrl.replace(/\/$/, '')
+const ASSET_VERSION = '2026-05-27-logo-png'
 
 export const metadata = {
   metadataBase: new URL(normalizedSiteUrl),
@@ -21,7 +22,7 @@ export const metadata = {
   description:
     'CRM-система для event-компаний: заказы, площадки, исполнители, финансы и операционная работа.',
   applicationName: 'PartyCRM',
-  manifest: '/manifest.json',
+  manifest: `/manifest.json?v=${ASSET_VERSION}`,
   verification: {
     yandex: 'f559d6455245a7c5',
   },
@@ -33,18 +34,27 @@ export const metadata = {
   icons: {
     icon: [
       {
-        url: '/icons/AppImages/android/android-launchericon-192-192.png',
+        url: `/favicon.png?v=${ASSET_VERSION}`,
+        sizes: '32x32',
+        type: 'image/png',
+      },
+      {
+        url: `/icons/AppImages/android/android-launchericon-192-192.png?v=${ASSET_VERSION}`,
         sizes: '192x192',
         type: 'image/png',
       },
       {
-        url: '/icons/AppImages/android/android-launchericon-512-512.png',
+        url: `/icons/AppImages/android/android-launchericon-512-512.png?v=${ASSET_VERSION}`,
         sizes: '512x512',
         type: 'image/png',
       },
     ],
     apple: [
-      { url: '/icons/AppImages/ios/180.png', sizes: '180x180', type: 'image/png' },
+      {
+        url: `/icons/AppImages/ios/180.png?v=${ASSET_VERSION}`,
+        sizes: '180x180',
+        type: 'image/png',
+      },
     ],
   },
 }

@@ -93,16 +93,6 @@ async function main() {
     ],
   });
 
-  // 3. Root logo.png (10.6KB)
-  await optimize({
-    input: 'logo.png',
-    label: 'Root Logo (10.6KB)',
-    outputs: [
-      { path: 'logo.webp', format: 'webp', options: { quality: 80 } },
-      { path: 'logo.avif', format: 'avif', options: { quality: 65 } },
-    ],
-  });
-
   // Summary
   console.log('\n=== Summary ===');
   const totalOriginal = results.reduce((sum, r) => sum + r.inputSize, 0);

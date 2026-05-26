@@ -9,6 +9,7 @@ const partyUrl = rawPartyDomain.startsWith('http')
 const normalizedPartyUrl = partyUrl.replace(/\/$/, '')
 const partyHomeUrl = `${normalizedPartyUrl}/`
 const partyOgImageUrl = `${normalizedPartyUrl}/opengraph-image`
+const ASSET_VERSION = '2026-05-27-logo-png'
 
 export const metadata = {
   title: 'PartyCRM — CRM для праздничных агентств, event-команд и игровых комнат',
@@ -25,7 +26,7 @@ export const metadata = {
     'учёт заявок ивент',
   ],
   applicationName: 'PartyCRM',
-  manifest: '/manifest.json',
+  manifest: `/manifest.json?v=${ASSET_VERSION}`,
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -72,18 +73,27 @@ export const metadata = {
   icons: {
     icon: [
       {
-        url: '/icons/AppImages/android/android-launchericon-192-192.png',
+        url: `/favicon.png?v=${ASSET_VERSION}`,
+        sizes: '32x32',
+        type: 'image/png',
+      },
+      {
+        url: `/icons/AppImages/android/android-launchericon-192-192.png?v=${ASSET_VERSION}`,
         sizes: '192x192',
         type: 'image/png',
       },
       {
-        url: '/icons/AppImages/android/android-launchericon-512-512.png',
+        url: `/icons/AppImages/android/android-launchericon-512-512.png?v=${ASSET_VERSION}`,
         sizes: '512x512',
         type: 'image/png',
       },
     ],
     apple: [
-      { url: '/icons/AppImages/ios/180.png', sizes: '180x180', type: 'image/png' },
+      {
+        url: `/icons/AppImages/ios/180.png?v=${ASSET_VERSION}`,
+        sizes: '180x180',
+        type: 'image/png',
+      },
     ],
   },
 }

@@ -6,7 +6,7 @@ import { getPartyEntryState } from '@server/partyEntry'
 export const metadata = {
   title: 'PartyCRM - кабинет компании',
   applicationName: 'PartyCRM',
-  manifest: '/manifest.json',
+  manifest: '/manifest.json?v=2026-05-27-logo-png',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
