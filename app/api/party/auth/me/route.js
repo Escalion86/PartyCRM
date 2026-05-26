@@ -11,6 +11,7 @@ const sanitizeText = (value, maxLength = 100) =>
 
 const serializePartyUser = (user) => ({
   _id: String(user._id),
+  role: user.role || 'user',
   phone: user.phone || '',
   email: user.email || '',
   firstName: user.firstName || '',

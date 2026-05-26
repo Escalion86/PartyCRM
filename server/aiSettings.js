@@ -13,10 +13,7 @@ const normalizeStringList = (items) =>
         .filter(Boolean)
     : []
 
-export const getTenantAiSettings = async (tenantId) => {
-  if (!tenantId) return {}
-  const siteSettings = await SiteSettings.findOne({ tenantId }).lean()
-  const custom = siteSettings?.custom ?? {}
+export const normalizeAiSettings = (custom) => {
   const aitunnelKey = String(getCustomValue(custom, 'aitunnelKey') || '').trim()
   const defaultProvider = aitunnelKey ? 'aitunnel' : ''
   return {
@@ -33,4 +30,10 @@ export const getTenantAiSettings = async (tenantId) => {
     ).trim(),
     eventTypes: normalizeStringList(getCustomValue(custom, 'eventTypes')),
   }
+}
+
+export const getTenantAiSettings = async (tenantId) => {
+  if (!tenantId) return {}
+  const siteSettings = await SiteSettings.findOne({ tenantId }).lean()
+  return normalizeAiSettings(siteSettings?.custom ?? {})
 }

@@ -1,20 +1,14 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
+
+import { getInitialCompanyTitle } from './companyMasterDefaults'
 
 const buttonClass =
   'cursor-pointer rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60'
 
-export default function CompanyMasterClient({ user }) {
-  const suggestedTitle = useMemo(() => {
-    const displayName = [user?.firstName, user?.secondName]
-      .filter(Boolean)
-      .join(' ')
-      .trim()
-    return displayName ? `Компания ${displayName}` : ''
-  }, [user?.firstName, user?.secondName])
-
-  const [title, setTitle] = useState(suggestedTitle)
+export default function CompanyMasterClient() {
+  const [title, setTitle] = useState(getInitialCompanyTitle)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 

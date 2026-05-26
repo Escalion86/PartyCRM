@@ -73,10 +73,7 @@ export const getNovofonWebhookSecret = (req, body, searchParams) =>
 export const isValidTenantId = (tenantId) =>
   Boolean(tenantId && mongoose.Types.ObjectId.isValid(String(tenantId)))
 
-export const getNovofonSettings = async (tenantId) => {
-  if (!isValidTenantId(tenantId)) return null
-  const siteSettings = await SiteSettings.findOne({ tenantId }).lean()
-  const custom = siteSettings?.custom ?? {}
+export const normalizeNovofonSettings = (custom = {}) => {
   const getValue = (key) =>
     typeof custom?.get === 'function' ? custom.get(key) : custom?.[key]
 
@@ -85,6 +82,12 @@ export const getNovofonSettings = async (tenantId) => {
     webhookSecret: getFirstString(getValue('novofonWebhookSecret')),
     apiKey: getFirstString(getValue('novofonApiKey')),
   }
+}
+
+export const getNovofonSettings = async (tenantId) => {
+  if (!isValidTenantId(tenantId)) return null
+  const siteSettings = await SiteSettings.findOne({ tenantId }).lean()
+  return normalizeNovofonSettings(siteSettings?.custom ?? {})
 }
 
 export const normalizeNovofonWebhook = (body = {}) => {

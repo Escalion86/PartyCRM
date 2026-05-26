@@ -166,6 +166,13 @@ const isOrderPast = (order, now = new Date()) => {
 const canClosePastOrder = (order, now = new Date()) =>
   ['draft', 'active'].includes(order?.status) && isOrderPast(order, now)
 
+const createEmptyOrderDraft = (companySettings = {}) => ({
+  ...EMPTY_ORDER,
+  durationMinutes: String(
+    Number(companySettings?.defaultOrderDurationMinutes || 60) || 60
+  ),
+})
+
 export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [context, setContext] = useState(null)
   const [memberships, setMemberships] = useState([])
@@ -177,7 +184,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [services, setServices] = useState([])
   const [orders, setOrders] = useState([])
   const [companySettings, setCompanySettings] = useState({})
-  const [orderDraft, setOrderDraft] = useState(EMPTY_ORDER)
+  const [orderDraft, setOrderDraft] = useState(() => createEmptyOrderDraft())
   const [clientDraft, setClientDraft] = useState(EMPTY_PARTY_CLIENT)
   const [staffDraft, setStaffDraft] = useState(EMPTY_STAFF)
   const [locationDraft, setLocationDraft] = useState(EMPTY_LOCATION)
@@ -428,12 +435,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       if (response.data) {
         setOrders((prev) => [...prev, response.data])
         setActiveModal('')
-        setOrderDraft(EMPTY_ORDER)
+        setOrderDraft(createEmptyOrderDraft(companySettings))
       }
     } finally {
       setSaving(false)
     }
-  }, [orderDraft, activeCompanyId])
+  }, [orderDraft, activeCompanyId, companySettings])
 
   const editOrder = useCallback(async () => {
     if (!editingOrderId) return
@@ -454,12 +461,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )
         setActiveModal('')
         setEditingOrderId('')
-        setOrderDraft(EMPTY_ORDER)
+        setOrderDraft(createEmptyOrderDraft(companySettings))
       }
     } finally {
       setSaving(false)
     }
-  }, [orderDraft, editingOrderId, activeCompanyId])
+  }, [orderDraft, editingOrderId, activeCompanyId, companySettings])
 
   const updateOrder = useCallback(
     async (nextOrder) => {
@@ -804,7 +811,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                   type="button"
                   className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
                   onClick={() => {
-                    setOrderDraft(EMPTY_ORDER)
+                    setOrderDraft(createEmptyOrderDraft(companySettings))
                     setActiveModal('order')
                   }}
                 >
@@ -850,7 +857,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               orderFilters={orderFilters}
               ordersCount={filteredOrders.length}
               onCreateClick={() => {
-                setOrderDraft(EMPTY_ORDER)
+                setOrderDraft(createEmptyOrderDraft(companySettings))
                 setActiveModal('order')
               }}
               onUpcomingClick={() => setActiveModal('upcoming-events')}

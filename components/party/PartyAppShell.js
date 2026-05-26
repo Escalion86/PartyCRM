@@ -2,6 +2,7 @@
 
 import {
   faAddressBook,
+  faAngleDown,
   faBriefcase,
   faCalendarCheck,
   faChartLine,
@@ -9,15 +10,20 @@ import {
   faHome,
   faLocationDot,
   faRightFromBracket,
+  faStar,
   faUserGroup,
   faUserTie,
   faClockRotateLeft,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import {
+  COMPANY_SETTINGS_ACCESS,
+  getVisibleCompanySettingsTabs,
+} from '../../app/company/settings/companySettingsTabs'
 import cn from 'classnames'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const companyMenu = [
   { href: '/company', label: 'Обзор', icon: faHome },
@@ -27,6 +33,7 @@ const companyMenu = [
   { href: '/company/finance', label: 'Финансы', icon: faChartLine },
   { href: '/company/locations', label: 'Точки', icon: faLocationDot },
   { href: '/company/staff', label: 'Сотрудники', icon: faUserGroup },
+  { href: '/company/settings', label: 'Настройки компании', icon: faGear },
 ]
 
 const performerMenu = [
@@ -44,6 +51,9 @@ const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
 const getDisplayName = (user) =>
   [user?.firstName, user?.secondName].filter(Boolean).join(' ').trim()
 
+const isCompanySettingsPath = (pathname = '') =>
+  pathname === '/company/settings' || pathname.startsWith('/company/settings/')
+
 const MenuLink = ({ item, active, onClick }) => (
   <Link
     href={item.href}
@@ -60,27 +70,103 @@ const MenuLink = ({ item, active, onClick }) => (
   </Link>
 )
 
+const MenuGroupButton = ({ item, active, open, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={cn(
+      'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors',
+      active
+        ? 'bg-sky-500 text-white'
+        : 'text-white/80 hover:bg-white/10 hover:text-white'
+    )}
+  >
+    <FontAwesomeIcon icon={item.icon} className="h-4 w-4 min-w-4" />
+    <span className="flex-1 whitespace-nowrap text-left">{item.label}</span>
+    <FontAwesomeIcon
+      icon={faAngleDown}
+      className={cn('h-3.5 w-3.5 min-w-3.5 transition-transform', {
+        'rotate-180': open,
+      })}
+    />
+  </button>
+)
+
+const accessMarkerClassName = {
+  [COMPANY_SETTINGS_ACCESS.ADMIN_DEV]: 'text-amber-300',
+  [COMPANY_SETTINGS_ACCESS.DEV]: 'text-violet-300',
+}
+
+const SubMenuLink = ({ item, active, onClick }) => (
+  <Link
+    href={item.href}
+    onClick={onClick}
+    className={cn(
+      'ml-6 flex min-h-8 items-center rounded-md border-l-2 px-3 py-1.5 text-sm font-medium transition-colors',
+      active
+        ? 'border-sky-300 bg-white/10 text-sky-100'
+        : 'border-white/10 text-white/65 hover:border-white/25 hover:bg-white/6 hover:text-white'
+    )}
+  >
+    <span className="flex min-w-0 items-center gap-1.5">
+      <span className="truncate">{item.label}</span>
+      {item.access !== COMPANY_SETTINGS_ACCESS.PUBLIC ? (
+        <FontAwesomeIcon
+          icon={faStar}
+          className={cn(
+            'h-3 w-3 min-w-3',
+            accessMarkerClassName[item.access]
+          )}
+          title={
+            item.access === COMPANY_SETTINGS_ACCESS.DEV
+              ? 'Только для dev'
+              : 'Только для admin и dev'
+          }
+        />
+      ) : null}
+    </span>
+  </Link>
+)
+
 export default function PartyAppShell({ variant = 'company', children }) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [companySettingsExpanded, setCompanySettingsExpanded] = useState(null)
   const [currentHash, setCurrentHash] = useState('')
   const [interfaceRoles, setInterfaceRoles] = useState([])
   const [partyUser, setPartyUser] = useState(null)
   const [memberships, setMemberships] = useState([])
   const [profileLoaded, setProfileLoaded] = useState(false)
+  const effectiveVariant = useMemo(() => {
+    if (variant === 'company' && isCompanySettingsPath(pathname || '')) {
+      return 'company-settings'
+    }
+    return variant
+  }, [pathname, variant])
   const canUseCompany = interfaceRoles.includes('company')
   const canUsePerformer = interfaceRoles.includes('performer')
   const canUseBoth = canUseCompany && canUsePerformer
+  const companySettingsActive = isCompanySettingsPath(pathname || '')
+  const companySettingsOpen =
+    companySettingsExpanded ?? companySettingsActive
+  const visibleCompanySettingsMenu = useMemo(
+    () => getVisibleCompanySettingsTabs(partyUser?.role),
+    [partyUser?.role]
+  )
+  const isCompanyVariant =
+    effectiveVariant === 'company' || effectiveVariant === 'company-settings'
   const primaryMenu =
-    variant === 'performer'
+    effectiveVariant === 'performer'
       ? performerMenu
-      : variant === 'settings'
+      : effectiveVariant === 'settings'
         ? canUseCompany
           ? companyMenu
           : canUsePerformer
             ? performerMenu
             : []
+        : effectiveVariant === 'company-settings'
+          ? companyMenu
         : companyMenu
   const visibleSecondaryMenu = secondaryMenu.filter((item) => {
     if (item.always) return true
@@ -95,7 +181,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
       return performerName ? `Исполнитель "${performerName}"` : 'Исполнитель'
     }
 
-    if (variant === 'settings') return 'Настройки'
+    if (effectiveVariant === 'settings') return 'Настройки'
+    if (effectiveVariant === 'company-settings') return 'Настройки компании'
 
     const activeCompanyId =
       typeof window !== 'undefined'
@@ -154,33 +241,38 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   useEffect(() => {
     if (!profileLoaded) return
-    if (variant === 'settings') return
-    if (variant === 'performer' && canUseCompany && !canUsePerformer) {
+    if (effectiveVariant === 'settings' || effectiveVariant === 'company-settings')
+      return
+    if (effectiveVariant === 'performer' && canUseCompany && !canUsePerformer) {
       router.replace('/company')
       return
     }
-    if (variant !== 'performer' && canUsePerformer && !canUseCompany) {
+    if (effectiveVariant !== 'performer' && canUsePerformer && !canUseCompany) {
       router.replace('/performer')
     }
-  }, [canUseCompany, canUsePerformer, profileLoaded, router, variant])
+  }, [canUseCompany, canUsePerformer, effectiveVariant, profileLoaded, router])
 
   useEffect(() => {
     if (!profileLoaded) return
-    if (!['company', 'performer'].includes(variant)) return
+    if (!['company', 'performer'].includes(effectiveVariant)) return
 
     fetch('/api/party/auth/me', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lastWorkspace: variant }),
+      body: JSON.stringify({ lastWorkspace: effectiveVariant }),
     })
       .then(() => {
         window.dispatchEvent(new Event('partycrm:profile-updated'))
       })
       .catch(() => null)
-  }, [profileLoaded, variant])
+  }, [effectiveVariant, profileLoaded])
 
   const isActive = (href) => {
     const [path, hash] = href.split('#')
+    if (href === '/company/settings') {
+      if (pathname === '/company/settings') return true
+      if (pathname?.startsWith('/company/settings/')) return true
+    }
     if (pathname !== path) return false
     if (hash) return currentHash === `#${hash}`
     return !currentHash
@@ -203,11 +295,33 @@ export default function PartyAppShell({ variant = 'company', children }) {
         <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
           <div className="grid gap-1">
             {primaryMenu.map((item) => (
-              <MenuLink
-                key={item.href}
-                item={item}
-                active={isActive(item.href)}
-              />
+              <div key={item.href} className="grid gap-1">
+                {isCompanyVariant && item.href === '/company/settings' ? (
+                  <MenuGroupButton
+                    item={item}
+                    active={companySettingsActive}
+                    open={companySettingsOpen}
+                    onClick={() => setCompanySettingsExpanded(!companySettingsOpen)}
+                  />
+                ) : (
+                  <MenuLink item={item} active={isActive(item.href)} />
+                )}
+                {isCompanyVariant &&
+                item.href === '/company/settings' &&
+                companySettingsOpen ? (
+                  <div className="mt-1">
+                    <div className="grid gap-1">
+                      {visibleCompanySettingsMenu.map((subItem) => (
+                        <SubMenuLink
+                          key={subItem.href}
+                          item={subItem}
+                          active={pathname === subItem.href}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             ))}
           </div>
 
@@ -259,7 +373,53 @@ export default function PartyAppShell({ variant = 'company', children }) {
           {mobileMenuOpen && (
             <div className="border-b border-sky-100 bg-slate-950 px-3 py-3 md:hidden">
               <nav className="grid gap-1">
-                {[...primaryMenu, ...visibleSecondaryMenu].map((item) => (
+                {primaryMenu.map((item) => (
+                  <div key={item.href} className="grid gap-1">
+                    {isCompanyVariant && item.href === '/company/settings' ? (
+                      <MenuGroupButton
+                        item={item}
+                        active={companySettingsActive}
+                        open={companySettingsOpen}
+                        onClick={() =>
+                          setCompanySettingsExpanded(!companySettingsOpen)
+                        }
+                      />
+                    ) : (
+                      <MenuLink
+                        item={item}
+                        active={isActive(item.href)}
+                        onClick={() => {
+                          setCurrentHash(
+                            item.href.includes('#')
+                              ? `#${item.href.split('#')[1]}`
+                              : ''
+                          )
+                          setMobileMenuOpen(false)
+                        }}
+                      />
+                    )}
+                    {isCompanyVariant &&
+                    item.href === '/company/settings' &&
+                    companySettingsOpen ? (
+                      <div className="mt-1">
+                        <div className="grid gap-1">
+                          {visibleCompanySettingsMenu.map((subItem) => (
+                            <SubMenuLink
+                              key={subItem.href}
+                              item={subItem}
+                              active={pathname === subItem.href}
+                              onClick={() => {
+                                setCurrentHash('')
+                                setMobileMenuOpen(false)
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+                {visibleSecondaryMenu.map((item) => (
                   <MenuLink
                     key={item.href}
                     item={item}
