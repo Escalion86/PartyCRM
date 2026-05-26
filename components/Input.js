@@ -108,7 +108,10 @@ const Input = forwardRef(
         label={label}
         labelClassName={labelClassName}
         value={value ?? defaultValue}
-        className={cn(className, type === 'number' ? 'max-w-fit' : '')}
+        className={cn(
+          className,
+          type === 'number' && !fullWidth ? 'max-w-fit' : ''
+        )}
         required={required}
         floatingLabel={floatingLabel}
         error={error}
@@ -145,10 +148,7 @@ const Input = forwardRef(
             onClick={() => {
               if (typeof min !== 'number')
                 onChange(Number(value) - Number(resolvedStep))
-              else
-                onChange(
-                  Math.max(Number(value) - Number(resolvedStep), min)
-                )
+              else onChange(Math.max(Number(value) - Number(resolvedStep), min))
             }}
           >
             <FontAwesomeIcon icon={faArrowDown} className="w-4 h-4 min-h-4" />
@@ -209,7 +209,9 @@ const Input = forwardRef(
             step={resolvedStep}
             className={cn(
               'peer h-7 flex-1 bg-transparent px-1 text-black placeholder-transparent focus:outline-none',
-              type === 'number' ? 'hide-number-spin max-w-22 text-center' : '',
+              type === 'number'
+                ? `hide-number-spin ${fullWidth ? '' : 'max-w-22'} text-center`
+                : '',
               disabled ? 'text-disabled cursor-not-allowed' : '',
               inputClassName
             )}
@@ -304,10 +306,7 @@ const Input = forwardRef(
             onClick={() => {
               if (typeof max !== 'number')
                 onChange(Number(value) + Number(resolvedStep))
-              else
-                onChange(
-                  Math.min(Number(value) + Number(resolvedStep), max)
-                )
+              else onChange(Math.min(Number(value) + Number(resolvedStep), max))
             }}
           >
             <FontAwesomeIcon icon={faArrowUp} className="w-4 h-4 min-h-4" />
