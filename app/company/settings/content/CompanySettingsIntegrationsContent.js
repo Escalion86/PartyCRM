@@ -248,7 +248,6 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       <CompanyIntegrationCard
         title="Novofon"
         description="Секрет webhook и ключ телефонии компании."
-        note="Текущий обработчик webhook всё ещё завязан на старый tenant-level сценарий. Поля уже сохраняются в company settings, но backend-маршрутизация будет переведена отдельным шагом."
       >
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <input

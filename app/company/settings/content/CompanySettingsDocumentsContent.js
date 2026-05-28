@@ -64,6 +64,259 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
       ) : null}
 
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
+        <div className="text-base font-semibold">Реквизиты компании</div>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Сохраняются на уровне компании в `companySettings.documents.requisites`
+          и используются при генерации договоров и актов.
+        </p>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Статус артиста
+            </span>
+            <select
+              value={documents.requisites?.artistStatus || 'individual_entrepreneur'}
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistStatus: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            >
+              <option value="individual_entrepreneur">Индивидуальный предприниматель</option>
+              <option value="self_employed">Самозанятый</option>
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              ФИО артиста (для документов)
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistFullName || ''}
+              placeholder="Иванов Иван Иванович"
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistFullName: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Название артиста (для документов)
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistName || ''}
+              placeholder="Иванов И.И."
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistName: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              ИНН
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistInn || ''}
+              placeholder="123456789012"
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistInn: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              ОГРНИП
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistOgrnip || ''}
+              placeholder="123456789012345"
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistOgrnip: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Банк
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistBankName || ''}
+              placeholder="ПАО Сбербанк"
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistBankName: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              БИК
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistBik || ''}
+              placeholder="123456789"
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistBik: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Расчётный счёт
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistCheckingAccount || ''}
+              placeholder="12345678901234567890"
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistCheckingAccount: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Корр. счёт
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistCorrespondentAccount || ''}
+              placeholder="12345678901234567890"
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistCorrespondentAccount: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Юридический адрес
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.artistLegalAddress || ''}
+              placeholder="г. Красноярск, ул. ..."
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      artistLegalAddress: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Город по умолчанию
+            </span>
+            <input
+              type="text"
+              value={documents.requisites?.defaultTown || ''}
+              placeholder="Красноярск"
+              onChange={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    requisites: {
+                      ...(documents.requisites || {}),
+                      defaultTown: event.target.value,
+                    },
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-sky-100 bg-white p-5">
         <div className="text-base font-semibold">DOCX-шаблоны компании</div>
         <p className="mt-2 text-sm leading-6 text-slate-500">
           Шаблоны сохраняются на уровне компании в `companySettings.documents`.
