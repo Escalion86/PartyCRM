@@ -40,7 +40,11 @@ const secondaryButtonClass =
 const interfaceRoleOptions = [
   { value: 'company', label: 'Я управляю компанией', roles: ['company'] },
   { value: 'performer', label: 'Я исполнитель', roles: ['performer'] },
-  { value: 'both', label: 'И компания, и исполнитель', roles: ['company', 'performer'] },
+  {
+    value: 'both',
+    label: 'И компания, и исполнитель',
+    roles: ['company', 'performer'],
+  },
 ]
 
 const Field = ({ label, value, onChange, type = 'text', readOnly = false }) => {
@@ -74,8 +78,8 @@ const Field = ({ label, value, onChange, type = 'text', readOnly = false }) => {
         value={value}
         onChange={handleChange}
         readOnly={readOnly}
-        className={`h-10 px-3 bg-white border rounded-md outline-none border-sky-100 focus:border-sky-500 ${
-          readOnly ? 'text-slate-400 bg-slate-50' : ''
+        className={`h-10 rounded-md border border-sky-100 bg-white px-3 outline-none focus:border-sky-500 ${
+          readOnly ? 'bg-slate-50 text-slate-400' : ''
         }`}
       />
     </label>
@@ -85,7 +89,8 @@ const Field = ({ label, value, onChange, type = 'text', readOnly = false }) => {
 const safeCallbackUrl = (value) => {
   if (!value || !value.startsWith('/') || value.startsWith('//'))
     return '/party/entry'
-  if (value.startsWith('/login') || value.startsWith('/api/')) return '/party/entry'
+  if (value.startsWith('/login') || value.startsWith('/api/'))
+    return '/party/entry'
   return value
 }
 
@@ -155,7 +160,9 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || !payload?.success) {
-        setVerifyError(payload?.error?.message || 'Не удалось запустить проверку')
+        setVerifyError(
+          payload?.error?.message || 'Не удалось запустить проверку'
+        )
         setVerifyStep('idle')
         return
       }
@@ -333,9 +340,9 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
   const phoneDisplay = formatDisplayPhone(normalizePhone(phone))
 
   return (
-    <section className="max-w-xl px-5 py-10 mx-auto">
-      <p className="text-sm font-semibold uppercase text-sky-700">PartyCRM</p>
-      <h1 className="mt-3 text-3xl font-semibold font-futuraPT sm:text-4xl">
+    <section className="mx-auto max-w-xl px-5 py-10">
+      <p className="text-sm font-semibold text-sky-700 uppercase">PartyCRM</p>
+      <h1 className="font-futuraPT mt-3 text-3xl font-semibold sm:text-4xl">
         {isRegister ? 'Регистрация компании' : 'Вход в PartyCRM'}
       </h1>
       <p className="mt-4 leading-7 text-slate-700">
@@ -344,7 +351,7 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
       </p>
 
       {error && (
-        <div className="p-3 mt-5 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
+        <div className="border-danger/30 bg-danger/10 text-danger mt-5 rounded-md border p-3 text-sm">
           {error}
         </div>
       )}
@@ -353,9 +360,14 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
       {!isRegister && (
         <form
           onSubmit={submitLogin}
-          className="grid gap-4 p-5 mt-6 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
+          className="mt-6 grid gap-4 rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5"
         >
-          <Field label="Телефон" value={phone} onChange={setPhone} type="phone" />
+          <Field
+            label="Телефон"
+            value={phone}
+            onChange={setPhone}
+            type="phone"
+          />
           <Field
             label="Пароль"
             type="password"
@@ -363,7 +375,11 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
             onChange={setPassword}
           />
 
-          <button type="submit" disabled={loading} className={primaryButtonClass}>
+          <button
+            type="submit"
+            disabled={loading}
+            className={primaryButtonClass}
+          >
             {loading ? 'Подождите...' : 'Войти'}
           </button>
           <button
@@ -380,9 +396,14 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
       {showStage1 && (
         <form
           onSubmit={submitStage1}
-          className="grid gap-4 p-5 mt-6 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
+          className="mt-6 grid gap-4 rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5"
         >
-          <Field label="Телефон" value={phone} onChange={setPhone} type="phone" />
+          <Field
+            label="Телефон"
+            value={phone}
+            onChange={setPhone}
+            type="phone"
+          />
 
           <div className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
             {/* idle */}
@@ -392,7 +413,7 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
                   Для регистрации необходимо подтвердить номер телефона
                 </p>
                 {verifyError && (
-                  <div className="rounded-md border border-danger/30 bg-danger/10 p-2 text-xs text-danger">
+                  <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-2 text-xs">
                     {verifyError}
                   </div>
                 )}
@@ -404,10 +425,10 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
               <div className="grid gap-2 text-sm text-slate-600">
                 <div className="flex items-center gap-2">
                   <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-sky-500" />
-                  Звоним на номер...
+                  Подготавливаем номер для проверки...
                 </div>
                 {verifyError && (
-                  <div className="rounded-md border border-danger/30 bg-danger/10 p-2 text-xs text-danger">
+                  <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-2 text-xs">
                     {verifyError}
                   </div>
                 )}
@@ -423,12 +444,9 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
                     Ожидаем звонок
                     {authPhoneDisplay ? ` на номер ${authPhoneDisplay}` : ''}
                   </div>
-                  <p className="mt-1">
-                    Это бесплатно.
-                  </p>
                 </div>
                 {verifyError && (
-                  <div className="rounded-md border border-danger/30 bg-danger/10 p-2 text-xs text-danger">
+                  <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-2 text-xs">
                     {verifyError}
                   </div>
                 )}
@@ -437,8 +455,18 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
                     href={`tel:${verifyAuthPhone}`}
                     className={`${secondaryButtonClass} inline-flex items-center gap-2 no-underline`}
                   >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                      />
                     </svg>
                     Позвонить (бесплатно)
                   </a>
@@ -451,7 +479,9 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
                       disabled={smsSending}
                       className={secondaryButtonClass}
                     >
-                      {smsSending ? 'Отправляем SMS...' : 'Не могу принять звонок — получить SMS'}
+                      {smsSending
+                        ? 'Отправляем SMS...'
+                        : 'Не могу принять звонок — получить SMS'}
                     </button>
                   )}
                   <button
@@ -478,8 +508,18 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
             {/* confirmed */}
             {verifyStep === 'confirmed' && (
               <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
                 Телефон подтверждён ✓
               </div>
@@ -495,11 +535,7 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
               {verifyLoading ? 'Звоним...' : 'Подтвердить номер телефона'}
             </button>
           ) : verifyStep === 'calling' || verifyStep === 'waiting' ? (
-            <button
-              type="button"
-              disabled
-              className={primaryButtonClass}
-            >
+            <button type="button" disabled className={primaryButtonClass}>
               Ожидаем звонок...
             </button>
           ) : null}
@@ -518,18 +554,24 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
       {showStage2 && (
         <form
           onSubmit={submitStage2}
-          className="grid gap-4 p-5 mt-6 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
+          className="mt-6 grid gap-4 rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5"
         >
           {/* Телефон — показан, но не редактируется */}
-          <Field
-            label="Телефон"
-            value={phoneDisplay}
-            readOnly
-          />
+          <Field label="Телефон" value={phoneDisplay} readOnly />
 
           <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M5 13l4 4L19 7"
+              />
             </svg>
             Номер подтверждён
           </div>
@@ -549,7 +591,11 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Имя" value={firstName} onChange={setFirstName} />
-            <Field label="Фамилия" value={secondName} onChange={setSecondName} />
+            <Field
+              label="Фамилия"
+              value={secondName}
+              onChange={setSecondName}
+            />
           </div>
 
           <div className="grid gap-2">
@@ -579,7 +625,7 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
             </div>
           </div>
 
-          <label className="flex items-start gap-2 text-sm cursor-pointer">
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
             <input
               type="checkbox"
               checked={privacyAccepted}
@@ -588,28 +634,37 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
             />
             <span>
               Принимаю{' '}
-              <Link href="/privacy" className="underline text-sky-700">
+              <Link href="/privacy" className="text-sky-700 underline">
                 Политику конфиденциальности
               </Link>
             </span>
           </label>
 
-          <label className="flex items-start gap-2 text-sm cursor-pointer">
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
             <input
               type="checkbox"
               checked={personalDataAccepted}
-              onChange={(event) => setPersonalDataAccepted(event.target.checked)}
+              onChange={(event) =>
+                setPersonalDataAccepted(event.target.checked)
+              }
               className="mt-1"
             />
             <span>
               Согласен с{' '}
-              <Link href="/personal-data-consent" className="underline text-sky-700">
+              <Link
+                href="/personal-data-consent"
+                className="text-sky-700 underline"
+              >
                 Согласием на обработку персональных данных
               </Link>
             </span>
           </label>
 
-          <button type="submit" disabled={loading} className={primaryButtonClass}>
+          <button
+            type="submit"
+            disabled={loading}
+            className={primaryButtonClass}
+          >
             {loading ? 'Создаём аккаунт...' : 'Создать аккаунт PartyCRM'}
           </button>
 
