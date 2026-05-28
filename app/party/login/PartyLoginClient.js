@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 
 const normalizePhone = (value) => {
   const digits = String(value || '').replace(/[^\d]/g, '')
@@ -14,7 +14,6 @@ const normalizePhone = (value) => {
 const formatPhone = (value) => {
   let digits = value.replace(/[^\d]/g, '').slice(0, 11)
   if (!digits) return ''
-  // Нормализация: если первая цифра 8, заменяем на 7
   if (digits[0] === '8') {
     digits = '7' + digits.slice(1)
   }
@@ -26,6 +25,12 @@ const formatPhone = (value) => {
   return formatted
 }
 
+const formatDisplayPhone = (phone) => {
+  const digits = phone.replace(/[^\d]/g, '')
+  if (digits.length !== 11) return phone
+  return `+7 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9, 11)}`
+}
+
 const primaryButtonClass =
   'px-4 py-2 text-sm font-semibold text-white transition-colors rounded-md cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60'
 
@@ -33,34 +38,20 @@ const secondaryButtonClass =
   'px-4 py-2 text-sm font-semibold transition-colors bg-white border rounded-md cursor-pointer text-sky-700 border-sky-200 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60'
 
 const interfaceRoleOptions = [
-  {
-    value: 'company',
-    label: 'Я управляю компанией',
-    roles: ['company'],
-  },
-  {
-    value: 'performer',
-    label: 'Я исполнитель',
-    roles: ['performer'],
-  },
-  {
-    value: 'both',
-    label: 'И компания, и исполнитель',
-    roles: ['company', 'performer'],
-  },
+  { value: 'company', label: 'Я управляю компанией', roles: ['company'] },
+  { value: 'performer', label: 'Я исполнитель', roles: ['performer'] },
+  { value: 'both', label: 'И компания, и исполнитель', roles: ['company', 'performer'] },
 ]
 
-const Field = ({ label, value, onChange, type = 'text' }) => {
+const Field = ({ label, value, onChange, type = 'text', readOnly = false }) => {
   const handleChange = (event) => {
     if (type === 'phone') {
       let inputValue = event.target.value
-      // Если поле было пустым и что-то ввели
       if (value === '' && inputValue.length > 0) {
         const digits = inputValue.replace(/[^\d]/g, '')
         if (digits.length > 0) {
           const firstDigit = digits[0]
           if (firstDigit !== '7' && firstDigit !== '8') {
-            // Добавляем 7 перед цифрами
             const normalized = '7' + digits
             const formatted = formatPhone(normalized)
             onChange(formatted)
@@ -82,7 +73,10 @@ const Field = ({ label, value, onChange, type = 'text' }) => {
         type={type === 'phone' ? 'text' : type}
         value={value}
         onChange={handleChange}
-        className="h-10 px-3 bg-white border rounded-md outline-none border-sky-100 focus:border-sky-500"
+        readOnly={readOnly}
+        className={`h-10 px-3 bg-white border rounded-md outline-none border-sky-100 focus:border-sky-500 ${
+          readOnly ? 'text-slate-400 bg-slate-50' : ''
+        }`}
       />
     </label>
   )
@@ -94,6 +88,8 @@ const safeCallbackUrl = (value) => {
   if (value.startsWith('/login') || value.startsWith('/api/')) return '/party/entry'
   return value
 }
+
+const POLL_INTERVAL_MS = 3000
 
 export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
   const [mode, setMode] = useState('login')
@@ -107,12 +103,184 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
   const [personalDataAccepted, setPersonalDataAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Phone verification state
+  const [verifyStep, setVerifyStep] = useState('idle') // idle | calling | waiting | confirmed
+  const [verifyCallId, setVerifyCallId] = useState(null)
+  const [verifyAuthPhone, setVerifyAuthPhone] = useState('')
+  const [verifyError, setVerifyError] = useState('')
+  const [verifyLoading, setVerifyLoading] = useState(false)
+  const [smsSent, setSmsSent] = useState(false)
+  const [smsSending, setSmsSending] = useState(false)
+  const pollRef = useRef(null)
+
   const normalizedCallbackUrl = useMemo(
     () => safeCallbackUrl(callbackUrl),
     [callbackUrl]
   )
 
-  const submit = async (event) => {
+  // Явный номер этапа регистрации: 1 — ввод телефона и подтверждение, 2 — остальные данные
+  const [registerStage, setRegisterStage] = useState(1)
+  const isRegister = mode === 'register'
+  const showStage1 = isRegister && registerStage === 1
+  const showStage2 = isRegister && registerStage === 2
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => stopPolling()
+  }, [stopPolling])
+
+  const startPhoneVerification = async () => {
+    setVerifyError('')
+    setSmsSent(false)
+    const normalizedPhone = normalizePhone(phone)
+    if (normalizedPhone.length !== 11) {
+      setVerifyError('Укажите телефон в формате РФ')
+      return
+    }
+
+    setVerifyLoading(true)
+    setVerifyStep('calling')
+    try {
+      const response = await fetch('/api/party/auth/phone/verify/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: normalizedPhone, flow: 'register' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload?.success) {
+        setVerifyError(payload?.error?.message || 'Не удалось запустить проверку')
+        setVerifyStep('idle')
+        return
+      }
+      setVerifyCallId(payload.data.id)
+      setVerifyAuthPhone(payload.data.auth_phone || '')
+      setVerifyStep('waiting')
+      startPolling(payload.data.id, normalizedPhone)
+    } catch (err) {
+      setVerifyError('Ошибка соединения')
+      setVerifyStep('idle')
+    } finally {
+      setVerifyLoading(false)
+    }
+  }
+
+  const startPolling = (callId, normalizedPhone) => {
+    stopPolling()
+    pollRef.current = setInterval(async () => {
+      try {
+        const response = await fetch('/api/party/auth/phone/verify/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: normalizedPhone, callId }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!payload?.success) return
+
+        const { confirmed, status } = payload.data
+        if (confirmed) {
+          stopPolling()
+          setVerifyStep('confirmed')
+          setRegisterStage(2)
+        } else if (status === 'expired') {
+          stopPolling()
+          setVerifyStep('idle')
+          setVerifyError('Время проверки истекло. Попробуйте снова.')
+        }
+      } catch (err) {
+        // Игнорируем ошибки поллинга
+      }
+    }, POLL_INTERVAL_MS)
+  }
+
+  const requestSmsCode = async () => {
+    setSmsSending(true)
+    setVerifyError('')
+    const normalizedPhone = normalizePhone(phone)
+    try {
+      const response = await fetch('/api/party/auth/phone/verify/sms/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: normalizedPhone, flow: 'register' }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload?.success) {
+        setVerifyError(payload?.error?.message || 'Не удалось отправить SMS')
+        return
+      }
+      setSmsSent(true)
+      if (payload.data?.alreadyConfirmed) {
+        stopPolling()
+        setVerifyStep('confirmed')
+        setRegisterStage(2)
+      }
+      if (payload.data?.debugCode) {
+        console.info('[PartyCRM dev] SMS code:', payload.data.debugCode)
+      }
+    } catch (err) {
+      setVerifyError('Ошибка отправки SMS')
+    } finally {
+      setSmsSending(false)
+    }
+  }
+
+  const submitStage1 = (event) => {
+    event.preventDefault()
+    startPhoneVerification()
+  }
+
+  const submitStage2 = async (event) => {
+    event.preventDefault()
+    setError('')
+
+    if (password.length < 8) {
+      setError('Пароль должен быть не менее 8 символов')
+      return
+    }
+    if (password !== passwordRepeat) {
+      setError('Пароли не совпадают')
+      return
+    }
+
+    const interfaceRoles = interfaceRoleOptions.find(
+      (option) => option.value === interfaceRoleMode
+    )?.roles || ['company', 'performer']
+
+    const normalizedPhone = normalizePhone(phone)
+
+    setLoading(true)
+    try {
+      const response = await fetch('/api/party/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: normalizedPhone,
+          password,
+          firstName,
+          secondName,
+          interfaceRoles,
+          consentPrivacyPolicy: privacyAccepted,
+          consentPersonalData: personalDataAccepted,
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || payload?.success === false) {
+        setError(payload?.error || 'Не удалось зарегистрироваться')
+        return
+      }
+      window.location.replace(normalizedCallbackUrl)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const submitLogin = async (event) => {
     event.preventDefault()
     setError('')
 
@@ -125,34 +293,17 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
       setError('Пароль должен быть не менее 8 символов')
       return
     }
-    if (mode === 'register' && password !== passwordRepeat) {
-      setError('Пароли не совпадают')
-      return
-    }
-    const interfaceRoles = interfaceRoleOptions.find(
-      (option) => option.value === interfaceRoleMode
-    )?.roles || ['company', 'performer']
 
     setLoading(true)
     try {
-      const response = await fetch(
-        mode === 'register'
-          ? '/api/party/auth/register'
-          : '/api/party/auth/login',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            phone: normalizedPhone,
-            password,
-            firstName,
-            secondName,
-            interfaceRoles,
-            consentPrivacyPolicy: privacyAccepted,
-            consentPersonalData: personalDataAccepted,
-          }),
-        }
-      )
+      const response = await fetch('/api/party/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: normalizedPhone,
+          password,
+        }),
+      })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || payload?.success === false) {
         setError(payload?.error || 'Не удалось войти')
@@ -164,11 +315,28 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
     }
   }
 
+  const switchMode = () => {
+    setError('')
+    setVerifyStep('idle')
+    setVerifyError('')
+    setVerifyCallId(null)
+    setSmsSent(false)
+    setRegisterStage(1)
+    stopPolling()
+    setMode((value) => (value === 'login' ? 'register' : 'login'))
+  }
+
+  const authPhoneDisplay = verifyAuthPhone
+    ? formatDisplayPhone(verifyAuthPhone)
+    : ''
+
+  const phoneDisplay = formatDisplayPhone(normalizePhone(phone))
+
   return (
     <section className="max-w-xl px-5 py-10 mx-auto">
       <p className="text-sm font-semibold uppercase text-sky-700">PartyCRM</p>
       <h1 className="mt-3 text-3xl font-semibold font-futuraPT sm:text-4xl">
-        {mode === 'register' ? 'Регистрация компании' : 'Вход в PartyCRM'}
+        {isRegister ? 'Регистрация компании' : 'Вход в PartyCRM'}
       </h1>
       <p className="mt-4 leading-7 text-slate-700">
         Создайте рабочее пространство компании или войдите, чтобы управлять
@@ -181,115 +349,284 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
         </div>
       )}
 
-      <form
-        onSubmit={submit}
-        className="grid gap-4 p-5 mt-6 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
-      >
-        <Field label="Телефон" value={phone} onChange={setPhone} type="phone" />
-        <Field
-          label="Пароль"
-          type="password"
-          value={password}
-          onChange={setPassword}
-        />
-        {mode === 'register' && (
-          <>
-            <Field
-              label="Повторите пароль"
-              type="password"
-              value={passwordRepeat}
-              onChange={setPasswordRepeat}
-            />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Имя" value={firstName} onChange={setFirstName} />
-              <Field
-                label="Фамилия"
-                value={secondName}
-                onChange={setSecondName}
-              />
-            </div>
-            <div className="grid gap-2">
-              <p className="text-sm font-medium text-black/65">
-                Как вы будете пользоваться PartyCRM
-              </p>
-              <div className="grid gap-2">
-                {interfaceRoleOptions.map((option) => (
-                  <label
-                    key={option.value}
-                    className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
-                      interfaceRoleMode === option.value
-                        ? 'border-sky-600 bg-sky-50 text-sky-900'
-                        : 'border-sky-100 bg-white text-slate-700 hover:bg-sky-50'
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="party-interface-role"
-                      value={option.value}
-                      checked={interfaceRoleMode === option.value}
-                      onChange={() => setInterfaceRoleMode(option.value)}
-                    />
-                    <span>{option.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <label className="flex items-start gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={privacyAccepted}
-                onChange={(event) => setPrivacyAccepted(event.target.checked)}
-                className="mt-1"
-              />
-              <span>
-                Принимаю{' '}
-                <Link href="/privacy" className="underline text-sky-700">
-                  Политику конфиденциальности
-                </Link>
-              </span>
-            </label>
-            <label className="flex items-start gap-2 text-sm cursor-pointer">
-              <input
-                type="checkbox"
-                checked={personalDataAccepted}
-                onChange={(event) =>
-                  setPersonalDataAccepted(event.target.checked)
-                }
-                className="mt-1"
-              />
-              <span>
-                Согласен с{' '}
-                <Link
-                  href="/personal-data-consent"
-                  className="underline text-sky-700"
-                >
-                  Согласием на обработку персональных данных
-                </Link>
-              </span>
-            </label>
-          </>
-        )}
-
-        <button type="submit" disabled={loading} className={primaryButtonClass}>
-          {loading
-            ? 'Подождите...'
-            : mode === 'register'
-              ? 'Создать аккаунт PartyCRM'
-              : 'Войти'}
-        </button>
-        <button
-          type="button"
-          className={secondaryButtonClass}
-          onClick={() => {
-            setError('')
-            setMode((value) => (value === 'login' ? 'register' : 'login'))
-          }}
+      {/* ── ЛОГИН ── */}
+      {!isRegister && (
+        <form
+          onSubmit={submitLogin}
+          className="grid gap-4 p-5 mt-6 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
         >
-          {mode === 'login'
-            ? 'Зарегистрироваться в PartyCRM'
-            : 'У меня уже есть аккаунт PartyCRM'}
-        </button>
-      </form>
+          <Field label="Телефон" value={phone} onChange={setPhone} type="phone" />
+          <Field
+            label="Пароль"
+            type="password"
+            value={password}
+            onChange={setPassword}
+          />
+
+          <button type="submit" disabled={loading} className={primaryButtonClass}>
+            {loading ? 'Подождите...' : 'Войти'}
+          </button>
+          <button
+            type="button"
+            className={secondaryButtonClass}
+            onClick={switchMode}
+          >
+            Зарегистрироваться в PartyCRM
+          </button>
+        </form>
+      )}
+
+      {/* ── РЕГИСТРАЦИЯ: ЭТАП 1 — телефон и подтверждение ── */}
+      {showStage1 && (
+        <form
+          onSubmit={submitStage1}
+          className="grid gap-4 p-5 mt-6 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
+        >
+          <Field label="Телефон" value={phone} onChange={setPhone} type="phone" />
+
+          <div className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
+            {/* idle */}
+            {verifyStep === 'idle' && (
+              <div className="grid gap-3">
+                <p className="text-sm text-slate-600">
+                  Для регистрации необходимо подтвердить номер телефона
+                </p>
+                {verifyError && (
+                  <div className="rounded-md border border-danger/30 bg-danger/10 p-2 text-xs text-danger">
+                    {verifyError}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* calling */}
+            {verifyStep === 'calling' && (
+              <div className="grid gap-2 text-sm text-slate-600">
+                <div className="flex items-center gap-2">
+                  <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-sky-500" />
+                  Звоним на номер...
+                </div>
+                {verifyError && (
+                  <div className="rounded-md border border-danger/30 bg-danger/10 p-2 text-xs text-danger">
+                    {verifyError}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* waiting */}
+            {verifyStep === 'waiting' && (
+              <div className="grid gap-3">
+                <div className="text-sm text-slate-600">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block h-3 w-3 animate-pulse rounded-full bg-amber-500" />
+                    Ожидаем звонок
+                    {authPhoneDisplay ? ` на номер ${authPhoneDisplay}` : ''}
+                  </div>
+                  <p className="mt-1">
+                    Это бесплатно.
+                  </p>
+                </div>
+                {verifyError && (
+                  <div className="rounded-md border border-danger/30 bg-danger/10 p-2 text-xs text-danger">
+                    {verifyError}
+                  </div>
+                )}
+                {verifyAuthPhone && (
+                  <a
+                    href={`tel:${verifyAuthPhone}`}
+                    className={`${secondaryButtonClass} inline-flex items-center gap-2 no-underline`}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    Позвонить (бесплатно)
+                  </a>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {!smsSent && (
+                    <button
+                      type="button"
+                      onClick={requestSmsCode}
+                      disabled={smsSending}
+                      className={secondaryButtonClass}
+                    >
+                      {smsSending ? 'Отправляем SMS...' : 'Не могу принять звонок — получить SMS'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      stopPolling()
+                      setVerifyStep('idle')
+                      setVerifyError('')
+                      setSmsSent(false)
+                    }}
+                    className={secondaryButtonClass}
+                  >
+                    Отмена
+                  </button>
+                </div>
+                {smsSent && (
+                  <p className="text-xs text-slate-500">
+                    SMS отправлено. Дождитесь доставки или звонка.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* confirmed */}
+            {verifyStep === 'confirmed' && (
+              <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Телефон подтверждён ✓
+              </div>
+            )}
+          </div>
+
+          {verifyStep === 'idle' ? (
+            <button
+              type="submit"
+              disabled={verifyLoading}
+              className={primaryButtonClass}
+            >
+              {verifyLoading ? 'Звоним...' : 'Подтвердить номер телефона'}
+            </button>
+          ) : verifyStep === 'calling' || verifyStep === 'waiting' ? (
+            <button
+              type="button"
+              disabled
+              className={primaryButtonClass}
+            >
+              Ожидаем звонок...
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            className={secondaryButtonClass}
+            onClick={switchMode}
+          >
+            У меня уже есть аккаунт PartyCRM
+          </button>
+        </form>
+      )}
+
+      {/* ── РЕГИСТРАЦИЯ: ЭТАП 2 — данные аккаунта ── */}
+      {showStage2 && (
+        <form
+          onSubmit={submitStage2}
+          className="grid gap-4 p-5 mt-6 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
+        >
+          {/* Телефон — показан, но не редактируется */}
+          <Field
+            label="Телефон"
+            value={phoneDisplay}
+            readOnly
+          />
+
+          <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Номер подтверждён
+          </div>
+
+          <Field
+            label="Пароль"
+            type="password"
+            value={password}
+            onChange={setPassword}
+          />
+          <Field
+            label="Повторите пароль"
+            type="password"
+            value={passwordRepeat}
+            onChange={setPasswordRepeat}
+          />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Имя" value={firstName} onChange={setFirstName} />
+            <Field label="Фамилия" value={secondName} onChange={setSecondName} />
+          </div>
+
+          <div className="grid gap-2">
+            <p className="text-sm font-medium text-black/65">
+              Как вы будете пользоваться PartyCRM
+            </p>
+            <div className="grid gap-2">
+              {interfaceRoleOptions.map((option) => (
+                <label
+                  key={option.value}
+                  className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+                    interfaceRoleMode === option.value
+                      ? 'border-sky-600 bg-sky-50 text-sky-900'
+                      : 'border-sky-100 bg-white text-slate-700 hover:bg-sky-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="party-interface-role"
+                    value={option.value}
+                    checked={interfaceRoleMode === option.value}
+                    onChange={() => setInterfaceRoleMode(option.value)}
+                  />
+                  <span>{option.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={privacyAccepted}
+              onChange={(event) => setPrivacyAccepted(event.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              Принимаю{' '}
+              <Link href="/privacy" className="underline text-sky-700">
+                Политику конфиденциальности
+              </Link>
+            </span>
+          </label>
+
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={personalDataAccepted}
+              onChange={(event) => setPersonalDataAccepted(event.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              Согласен с{' '}
+              <Link href="/personal-data-consent" className="underline text-sky-700">
+                Согласием на обработку персональных данных
+              </Link>
+            </span>
+          </label>
+
+          <button type="submit" disabled={loading} className={primaryButtonClass}>
+            {loading ? 'Создаём аккаунт...' : 'Создать аккаунт PartyCRM'}
+          </button>
+
+          <button
+            type="button"
+            className={secondaryButtonClass}
+            onClick={() => {
+              setRegisterStage(1)
+              setVerifyStep('idle')
+              setVerifyError('')
+              stopPolling()
+            }}
+          >
+            ← Назад к подтверждению телефона
+          </button>
+        </form>
+      )}
     </section>
   )
 }

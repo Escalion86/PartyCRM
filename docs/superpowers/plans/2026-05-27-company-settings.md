@@ -2,6 +2,12 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+## Status Snapshot (2026-05-28)
+
+- **Done:** routing (`/company/settings/*`), sidebar entry (`PartyAppShell`), settings API normalization (`GET/PATCH /api/party/company-settings`), `useCompanySettings` hook, tabs `Общие` / `Списки` полностью, ограничения по ролям (`PartyUser.role`) в `companySettingsTabs.js`, route guard в `[tab]/page.js`, тесты табов
+- **MVP Done:** `Интеграции`, `Уведомления`, `Документы`, `Тарифы` — UI готов, данные пишутся в `PartyCompanies.settings`, но backend-сценарии (connect/check/disconnect) для интеграций не доведены до company-level
+- **Remaining:** компания-уровневые API для Avito/VK/Novofon/AI, реквизиты в документах, разделение personal/company в уведомлениях, финальный smoke-test — см. [2026-05-27-company-settings-remaining.md](./2026-05-27-company-settings-remaining.md)
+
 **Goal:** Добавить в кабинет компании PartyCRM новый раздел `Настройки компании` с подпунктами `Общие`, `Интеграции`, `Списки`, `Уведомления`, `Документы`, `Тарифы`, с отдельной веткой роутов `/company/settings/*` и хранением данных в `PartyCompanies.settings`.
 
 **Architecture:** Настройки компании реализуются как отдельный app-router модуль, а не как еще одна секция `CompanyWorkspaceClient`. Общие маршруты, tab-config, guard-логика и загрузка `companySettings` выносятся в отдельные файлы модуля `app/company/settings`. Нормализация и merge company settings выносятся в helper-слой, чтобы API, UI и тесты использовали одни и те же правила.

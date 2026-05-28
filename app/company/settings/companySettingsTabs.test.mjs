@@ -41,3 +41,23 @@ test('visible tabs list respects global role', () => {
     ['general', 'integrations', 'lists', 'notifications', 'documents', 'tariffs']
   )
 })
+
+test('general tab stays available for admin and regular company user', () => {
+  assert.equal(canAccessCompanySettingsTab('general', 'user'), true)
+  assert.equal(canAccessCompanySettingsTab('general', 'admin'), true)
+  assert.equal(canAccessCompanySettingsTab('general', 'dev'), true)
+})
+
+test('dev-only marker config can be added without affecting admin-dev items', () => {
+  const adminTabs = getVisibleCompanySettingsTabs('admin')
+  const hasDevAccess = adminTabs.some((item) => item.access === 'dev')
+  assert.equal(hasDevAccess, false, 'admin should not see dev-only tabs')
+})
+
+test('all admin-dev tabs are hidden for regular user', () => {
+  const userTabs = getVisibleCompanySettingsTabs('user')
+  const adminDevTabs = userTabs.filter(
+    (item) => item.access === 'admin-dev'
+  )
+  assert.equal(adminDevTabs.length, 0, 'user should not see any admin-dev tabs')
+})
