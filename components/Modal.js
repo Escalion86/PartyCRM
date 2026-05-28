@@ -75,17 +75,17 @@ const Modal = ({
   const dialog = (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 focus:outline-none"
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 focus:outline-none md:items-center"
       onClick={handleBackdropClick}
       onKeyDown={handleKeyDown}
       tabIndex={-1}
     >
       <div
         className={cn(
-          'relative z-10 flex max-h-[100vh] w-full flex-col bg-white shadow-xl',
+          'relative z-10 flex w-full flex-col bg-white shadow-xl',
           // Mobile-first: fullscreen on <768px, centered with border-radius on >=768px
-          'm-0 max-h-full rounded-none',
-          'md:m-4 md:max-h-[calc(100vh-32px)] md:rounded-2xl',
+          'h-full max-h-full rounded-none',
+          'md:m-4 md:h-auto md:max-h-[calc(100vh-32px)] md:rounded-2xl',
           sizeClasses[size] || sizeClasses.md,
           isParty ? 'border-sky-100 md:border' : 'border-gray-200 md:border'
         )}
@@ -113,13 +113,13 @@ const Modal = ({
                   : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
               )}
             >
-              <FontAwesomeIcon icon={faXmark} className="w-4 h-4" />
+              <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
             </button>
           </div>
         )}
 
         {/* Body */}
-        <div className="flex-1 px-4 py-3 overflow-y-auto">{children}</div>
+        <div className="flex-1 overflow-y-auto px-4 py-3">{children}</div>
 
         {/* Footer */}
         {footer && (

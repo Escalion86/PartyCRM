@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faCheck, faPlus, faTrash } from '@fortawesome/free-solid-svg-icons'
 import useCompanySettings from '../useCompanySettings'
@@ -21,7 +21,11 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
   // ---- Towns state ----
   const [towns, setTowns] = useState([])
   const [defaultTown, setDefaultTown] = useState('')
-  const serverTowns = useMemo(() => normalizeList(settings?.towns ?? []), [settings?.towns])
+  const townsInitialSyncDone = useRef(false)
+  const serverTowns = useMemo(
+    () => normalizeList(settings?.towns ?? []),
+    [settings?.towns]
+  )
   const normalizedTowns = useMemo(() => normalizeList(towns), [towns])
 
   const townsChanged = useMemo(() => {
@@ -30,12 +34,18 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
     return a !== b || (settings?.defaultTown ?? '') !== (defaultTown ?? '')
   }, [normalizedTowns, serverTowns, settings?.defaultTown, defaultTown])
 
-  // Sync from server when unchanged
+  // Sync from server: always on first data arrival, then only when unchanged
   useEffect(() => {
+    if (!townsInitialSyncDone.current && settings !== null) {
+      setTowns(serverTowns)
+      setDefaultTown(settings?.defaultTown ?? '')
+      townsInitialSyncDone.current = true
+      return
+    }
     if (townsChanged) return
     setTowns(serverTowns)
     setDefaultTown(settings?.defaultTown ?? '')
-  }, [townsChanged, serverTowns, settings?.defaultTown])
+  }, [townsChanged, serverTowns, settings])
 
   const handleAddTown = () => {
     const newTown = window.prompt('Новый город')
@@ -51,27 +61,42 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
   }
 
   const handleSaveTowns = useCallback(async () => {
-    const safeDefault = defaultTown && normalizedTowns.includes(defaultTown) ? defaultTown : ''
-    await savePatch({ towns: normalizedTowns, defaultTown: safeDefault })
+    try {
+      const safeDefault =
+        defaultTown && normalizedTowns.includes(defaultTown) ? defaultTown : ''
+      await savePatch({ towns: normalizedTowns, defaultTown: safeDefault })
+    } catch {
+      // ошибка уже выставлена в хуке useCompanySettings
+    }
   }, [defaultTown, normalizedTowns, savePatch])
 
   // ---- Event types state ----
   const [eventTypes, setEventTypes] = useState([])
+  const eventTypesInitialSyncDone = useRef(false)
   const serverEventTypes = useMemo(
     () => normalizeList(settings?.eventTypes ?? []),
     [settings?.eventTypes]
   )
-  const normalizedEventTypes = useMemo(() => normalizeList(eventTypes), [eventTypes])
+  const normalizedEventTypes = useMemo(
+    () => normalizeList(eventTypes),
+    [eventTypes]
+  )
 
   const eventTypesChanged = useMemo(
-    () => JSON.stringify(normalizedEventTypes) !== JSON.stringify(serverEventTypes),
+    () =>
+      JSON.stringify(normalizedEventTypes) !== JSON.stringify(serverEventTypes),
     [normalizedEventTypes, serverEventTypes]
   )
 
   useEffect(() => {
+    if (!eventTypesInitialSyncDone.current && settings !== null) {
+      setEventTypes(serverEventTypes)
+      eventTypesInitialSyncDone.current = true
+      return
+    }
     if (eventTypesChanged) return
     setEventTypes(serverEventTypes)
-  }, [eventTypesChanged, serverEventTypes])
+  }, [eventTypesChanged, serverEventTypes, settings])
 
   const handleAddEventType = () => {
     const newValue = window.prompt('Новый тип мероприятия')
@@ -81,16 +106,22 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
   }
 
   const handleDeleteEventType = (value) => {
-    setEventTypes((prev) => normalizeList(prev.filter((item) => item !== value)))
+    setEventTypes((prev) =>
+      normalizeList(prev.filter((item) => item !== value))
+    )
   }
 
   const handleSaveEventTypes = useCallback(async () => {
-    await savePatch({ eventTypes: normalizedEventTypes })
+    try {
+      await savePatch({ eventTypes: normalizedEventTypes })
+    } catch {
+      // ошибка уже выставлена в хуке useCompanySettings
+    }
   }, [normalizedEventTypes, savePatch])
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-sky-100 bg-sky-50 p-6 text-sm text-slate-500">
+      <div className="p-6 text-sm border rounded-2xl border-sky-100 bg-sky-50 text-slate-500">
         Загружаем списки компании...
       </div>
     )
@@ -99,7 +130,7 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
   return (
     <div className="grid gap-4">
       {error ? (
-        <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+        <div className="p-3 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
           {error}
         </div>
       ) : null}
@@ -109,8 +140,8 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
       ) : null}
 
       {/* ---- Towns ---- */}
-      <div className="rounded-2xl border border-sky-100 bg-white p-5">
-        <div className="mb-1 flex items-center justify-between gap-3">
+      <div className="p-5 bg-white border rounded-2xl border-sky-100">
+        <div className="flex items-center justify-between gap-3 mb-1">
           <div>
             <div className="text-sm font-semibold">Города</div>
             <div className="text-xs text-slate-500">
@@ -126,7 +157,7 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
             <button
               type="button"
               onClick={handleAddTown}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-sky-200 text-sky-600 transition hover:bg-sky-50"
+              className="flex items-center justify-center w-8 h-8 transition border rounded-full cursor-pointer border-sky-200 text-sky-600 hover:bg-sky-50"
               title="Добавить город"
             >
               <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
@@ -143,31 +174,31 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
           </div>
         </div>
 
-        <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+        <div className="mt-3 overflow-hidden border border-gray-200 rounded-lg">
           {normalizedTowns.length === 0 ? (
             <div className="flex items-center justify-center py-8 text-sm text-gray-400">
               Городов пока нет
             </div>
           ) : (
-            <div className="max-h-64 overflow-y-auto">
+            <div className="overflow-y-auto max-h-64">
               {normalizedTowns.map((town) => {
                 const isDefault = defaultTown === town
                 return (
                   <div
                     key={town}
-                    className="flex items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0"
+                    className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0"
                   >
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-gray-300 text-transparent transition hover:border-emerald-500"
+                        className="flex items-center justify-center w-5 h-5 text-transparent transition border border-gray-300 rounded cursor-pointer hover:border-emerald-500"
                         onClick={() => setDefaultTown(town)}
                         title="Сделать городом по умолчанию"
                       >
                         {isDefault && (
                           <FontAwesomeIcon
                             icon={faCheck}
-                            className="h-3 w-3 text-emerald-600"
+                            className="w-3 h-3 text-emerald-600"
                           />
                         )}
                       </button>
@@ -183,11 +214,11 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
                       )}
                       <button
                         type="button"
-                        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-red-200 text-red-500 transition hover:bg-red-50"
+                        className="flex items-center justify-center text-red-500 transition border border-red-200 rounded cursor-pointer h-7 w-7 hover:bg-red-50"
                         onClick={() => handleDeleteTown(town)}
                         title="Удалить город"
                       >
-                        <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
+                        <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
                       </button>
                     </div>
                   </div>
@@ -199,8 +230,8 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
       </div>
 
       {/* ---- Event types ---- */}
-      <div className="rounded-2xl border border-sky-100 bg-white p-5">
-        <div className="mb-1 flex items-center justify-between gap-3">
+      <div className="p-5 bg-white border rounded-2xl border-sky-100">
+        <div className="flex items-center justify-between gap-3 mb-1">
           <div>
             <div className="text-sm font-semibold">Что за мероприятие?</div>
             <div className="text-xs text-slate-500">
@@ -211,7 +242,7 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
             <button
               type="button"
               onClick={handleAddEventType}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-sky-200 text-sky-600 transition hover:bg-sky-50"
+              className="flex items-center justify-center w-8 h-8 transition border rounded-full cursor-pointer border-sky-200 text-sky-600 hover:bg-sky-50"
               title="Добавить тип мероприятия"
             >
               <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
@@ -228,40 +259,34 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
           </div>
         </div>
 
-        <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+        <div className="mt-3 overflow-hidden border border-gray-200 rounded-lg">
           {normalizedEventTypes.length === 0 ? (
             <div className="flex items-center justify-center py-8 text-sm text-gray-400">
               Типов пока нет
             </div>
           ) : (
-            <div className="max-h-64 overflow-y-auto">
+            <div className="overflow-y-auto max-h-64">
               {normalizedEventTypes.map((value) => (
                 <div
                   key={value}
-                  className="flex items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0"
+                  className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0"
                 >
                   <div className="text-sm font-medium text-gray-800">
                     {value}
                   </div>
                   <button
                     type="button"
-                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-red-200 text-red-500 transition hover:bg-red-50"
+                    className="flex items-center justify-center text-red-500 transition border border-red-200 rounded cursor-pointer h-7 w-7 hover:bg-red-50"
                     onClick={() => handleDeleteEventType(value)}
                     title="Удалить тип"
                   >
-                    <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
+                    <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
                   </button>
                 </div>
               ))}
             </div>
           )}
         </div>
-      </div>
-
-      <div className="rounded-2xl border border-sky-100 bg-sky-50 p-5 text-sm leading-6 text-slate-600">
-        Сохраненные адреса клиентов продолжают пополняться прямо из формы
-        заказа. Отдельный редактор адресного пула можно вынести в следующем
-        инкременте, если понадобится управление удалением и ручная правка.
       </div>
     </div>
   )

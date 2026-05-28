@@ -17,11 +17,13 @@ import Textarea from '@components/Textarea'
 import ServiceMultiSelect from '@components/ServiceMultiSelect'
 import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPicker'
 import partyServicesAtom from '@state/atoms/partyServicesAtom'
+import AddIconButton from '@components/AddIconButton'
+import TabContext from '@components/Tabs/TabContext'
+import TabPanel from '@components/Tabs/TabPanel'
 import {
   EMPTY_PARTY_ADDITIONAL_EVENT,
   EMPTY_PARTY_CLIENT,
   EMPTY_PARTY_SERVICE,
-  paymentStatusLabels,
 } from '@helpers/partyHelpers'
 
 const specializationLabels = {
@@ -64,6 +66,10 @@ export default function OrderModal({
 
   const setPartyServices = useSetAtom(partyServicesAtom)
 
+  // Транзакции — заглушка (будет заменена на реальные хуки после создания API)
+  const [financeError, setFinanceError] = useState('')
+  const [financeLoading, setFinanceLoading] = useState(false)
+
   const selectedClient = orderDraft.clientId
     ? (clientsById.get(String(orderDraft.clientId)) ?? null)
     : null
@@ -79,38 +85,36 @@ export default function OrderModal({
     [activeCompanyId]
   )
 
-  const handleChange = useCallback((field, value) => {
-    setOrderDraft((prev) => ({ ...prev, [field]: value }))
-  }, [setOrderDraft])
+  // Определяем, является ли заказ новым (без _id) — для блокировки транзакций
+  const isNewOrder = !orderDraft._id
 
-  const handleClientPaymentChange = useCallback((field, value) => {
-    setOrderDraft((prev) => ({
-      ...prev,
-      contractAmount:
-        field === 'totalAmount' ? value : (prev.contractAmount ?? value),
-      clientPayment: {
-        ...(prev.clientPayment || {}),
-        [field]: value,
-      },
-    }))
-  }, [setOrderDraft])
+  const handleChange = useCallback(
+    (field, value) => {
+      setOrderDraft((prev) => ({ ...prev, [field]: value }))
+    },
+    [setOrderDraft]
+  )
 
-  const handleAdditionalEventChange = useCallback((index, field, value) => {
-    setOrderDraft((prev) => ({
-      ...prev,
-      additionalEvents: (prev.additionalEvents || []).map((item, itemIndex) =>
-        itemIndex === index
-          ? {
-              ...item,
-              [field]: value,
-              ...(field === 'done'
-                ? { doneAt: value ? new Date().toISOString() : null }
-                : {}),
-            }
-          : item
-      ),
-    }))
-  }, [setOrderDraft])
+  const handleAdditionalEventChange = useCallback(
+    (index, field, value) => {
+      setOrderDraft((prev) => ({
+        ...prev,
+        additionalEvents: (prev.additionalEvents || []).map(
+          (item, itemIndex) =>
+            itemIndex === index
+              ? {
+                  ...item,
+                  [field]: value,
+                  ...(field === 'done'
+                    ? { doneAt: value ? new Date().toISOString() : null }
+                    : {}),
+                }
+              : item
+        ),
+      }))
+    },
+    [setOrderDraft]
+  )
 
   const handleAddAdditionalEvent = useCallback(() => {
     setOrderDraft((prev) => ({
@@ -122,43 +126,55 @@ export default function OrderModal({
     }))
   }, [setOrderDraft])
 
-  const handleRemoveAdditionalEvent = useCallback((index) => {
-    setOrderDraft((prev) => ({
-      ...prev,
-      additionalEvents: (prev.additionalEvents || []).filter(
-        (_, itemIndex) => itemIndex !== index
-      ),
-    }))
-  }, [setOrderDraft])
+  const handleRemoveAdditionalEvent = useCallback(
+    (index) => {
+      setOrderDraft((prev) => ({
+        ...prev,
+        additionalEvents: (prev.additionalEvents || []).filter(
+          (_, itemIndex) => itemIndex !== index
+        ),
+      }))
+    },
+    [setOrderDraft]
+  )
 
-  const handleStaffToggle = useCallback((staffId, checked) => {
-    setOrderDraft((prev) => {
-      const current = prev.assignedStaff || []
-      if (checked) {
+  const handleStaffToggle = useCallback(
+    (staffId, checked) => {
+      setOrderDraft((prev) => {
+        const current = prev.assignedStaff || []
+        if (checked) {
+          return {
+            ...prev,
+            assignedStaff: [...current, { staffId, payoutAmount: '' }],
+          }
+        }
         return {
           ...prev,
-          assignedStaff: [...current, { staffId, payoutAmount: '' }],
+          assignedStaff: current.filter((s) => s.staffId !== staffId),
         }
-      }
-      return {
+      })
+    },
+    [setOrderDraft]
+  )
+
+  const handlePayoutChange = useCallback(
+    (staffId, value) => {
+      setOrderDraft((prev) => ({
         ...prev,
-        assignedStaff: current.filter((s) => s.staffId !== staffId),
-      }
-    })
-  }, [setOrderDraft])
+        assignedStaff: (prev.assignedStaff || []).map((s) =>
+          s.staffId === staffId ? { ...s, payoutAmount: value } : s
+        ),
+      }))
+    },
+    [setOrderDraft]
+  )
 
-  const handlePayoutChange = useCallback((staffId, value) => {
-    setOrderDraft((prev) => ({
-      ...prev,
-      assignedStaff: (prev.assignedStaff || []).map((s) =>
-        s.staffId === staffId ? { ...s, payoutAmount: value } : s
-      ),
-    }))
-  }, [setOrderDraft])
-
-  const handleClientSelect = useCallback((client) => {
-    setOrderDraft((prev) => ({ ...prev, clientId: client._id }))
-  }, [setOrderDraft])
+  const handleClientSelect = useCallback(
+    (client) => {
+      setOrderDraft((prev) => ({ ...prev, clientId: client._id }))
+    },
+    [setOrderDraft]
+  )
 
   const handleClientCreate = useCallback(async () => {
     setClientSaving(true)
@@ -222,9 +238,33 @@ export default function OrderModal({
     setPartyServices,
   ])
 
+  // Автосохранение перед открытием транзакции (для нового заказа)
+  const handleAutosaveBeforeTransaction = useCallback(async () => {
+    if (isNewOrder) {
+      setFinanceError('Сначала сохраните заказ')
+      return null
+    }
+    return orderDraft._id
+  }, [isNewOrder, orderDraft._id])
+
+  const openTransactionModal = useCallback(
+    (transactionId) => {
+      setFinanceError('')
+      const orderId = handleAutosaveBeforeTransaction()
+      if (!orderId) return
+
+      // Заглушка: транзакции будут доступны после реализации API
+      setFinanceError(
+        'Раздел транзакций находится в разработке. ' +
+          'Пока используйте поле "Сумма клиента" для фиксации договорной суммы.'
+      )
+    },
+    [handleAutosaveBeforeTransaction]
+  )
+
   // Footer with action buttons
   const footerContent = (
-    <div className="flex items-center justify-between w-full">
+    <div className="flex w-full items-center justify-between">
       <div>
         {conflictInfo ? (
           <p className="text-sm text-gray-500">{conflictInfo}</p>
@@ -242,14 +282,14 @@ export default function OrderModal({
       <div className="flex flex-row gap-1">
         <button
           type="button"
-          className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+          className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
           onClick={onClose}
         >
           Отмена
         </button>
         <button
           type="button"
-          className="px-4 py-2 text-sm font-semibold text-white transition rounded cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={onSubmit}
           disabled={saving}
         >
@@ -268,40 +308,23 @@ export default function OrderModal({
       size="full"
       footer={footerContent}
     >
-      <div className="flex flex-col gap-3 py-3">
-        {/* Основное */}
-        <div>
-          <p className="mb-1 text-sm font-semibold uppercase text-sky-700">
-            Основное
-          </p>
-          <p className="mb-0.5 text-base font-bold">
-            Клиент и параметры заказа
-          </p>
-          <p className="mb-2 text-sm text-gray-500">
-            Сначала укажите, для кого заказ и что именно нужно провести.
-          </p>
+      <TabContext
+        value="Основное"
+        variant="fullWidth"
+        scrollButtons={false}
+        allowScrollButtonsMobile={false}
+      >
+        {/* ====== Вкладка 1: Основное ====== */}
+        <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
-            <div>
-              <ClientPicker
-                label="Клиент"
-                selectedClient={selectedClient}
-                selectedClientId={orderDraft.clientId || null}
-                onSelectClick={() => setClientModal('select')}
-                onCreateClick={() => {
-                  setClientDraft(EMPTY_PARTY_CLIENT)
-                  setClientModal('create')
-                }}
-                onEditClick={() => {
-                  if (selectedClient) {
-                    setClientDraft(selectedClient)
-                  }
-                  setClientModal('edit')
-                }}
-                compact
-                fullWidth
-                tone="party"
-              />
-            </div>
+            <ServiceMultiSelect
+              value={orderDraft.servicesIds || []}
+              onChange={(val) => handleChange('servicesIds', val)}
+              atom={partyServicesAtom}
+              onCreate={() => setServiceModal(true)}
+              required
+              tone="party"
+            />
             <div className="flex flex-col gap-2 md:flex-row">
               <DateTimePicker
                 label="Дата и время"
@@ -318,32 +341,7 @@ export default function OrderModal({
                 tone="party"
               />
             </div>
-            <ServiceMultiSelect
-              value={orderDraft.servicesIds || []}
-              onChange={(val) => handleChange('servicesIds', val)}
-              atom={partyServicesAtom}
-              onCreate={() => setServiceModal(true)}
-              required
-              tone="party"
-            />
-          </div>
-        </div>
 
-        <hr className="border-t border-gray-200" />
-
-        {/* Локация и деньги */}
-        <div>
-          <p className="mb-1 text-sm font-semibold uppercase text-sky-700">
-            Локация и деньги
-          </p>
-          <p className="mb-0.5 text-base font-bold">
-            Место проведения и оплата
-          </p>
-          <p className="mb-2 text-sm text-gray-500">
-            Поведение совпадает с PartyCRM: заказ может быть на точке компании
-            или на выезде.
-          </p>
-          <div className="flex flex-col gap-2">
             <Select
               label="Место"
               value={orderDraft.placeType}
@@ -399,68 +397,42 @@ export default function OrderModal({
                 onCompanySettingsChange={onCompanySettingsChange}
               />
             )}
-
-            <div className="flex flex-col gap-2 md:flex-row">
-              <Input
-                label="Сумма клиента"
-                type="number"
-                value={
-                  orderDraft.clientPayment?.totalAmount ??
-                  orderDraft.contractAmount ??
-                  ''
-                }
-                onChange={(val) =>
-                  handleClientPaymentChange('totalAmount', val)
-                }
-                fullWidth
-                tone="party"
-                postfix="₽"
-              />
-              <Input
-                label="Предоплата"
-                type="number"
-                value={orderDraft.clientPayment?.prepaidAmount ?? ''}
-                onChange={(val) =>
-                  handleClientPaymentChange('prepaidAmount', val)
-                }
-                fullWidth
-                tone="party"
-                postfix="₽"
-              />
-              <Select
-                label="Статус оплаты"
-                value={orderDraft.clientPayment?.status ?? 'none'}
-                onChange={(val) => handleClientPaymentChange('status', val)}
-                options={Object.entries(paymentStatusLabels).map(
-                  ([value, label]) => ({
-                    value,
-                    label,
-                  })
-                )}
-                className="min-w-48"
-                tone="party"
-              />
-            </div>
           </div>
-        </div>
+        </TabPanel>
 
-        <hr className="border-t border-gray-200" />
+        {/* ====== Вкладка 2: Клиенты и контакты ====== */}
+        <TabPanel tabName="Клиенты и контакты">
+          <div className="flex flex-col gap-2">
+            <ClientPicker
+              label="Клиент"
+              selectedClient={selectedClient}
+              selectedClientId={orderDraft.clientId || null}
+              onSelectClick={() => setClientModal('select')}
+              onCreateClick={() => {
+                setClientDraft(EMPTY_PARTY_CLIENT)
+                setClientModal('create')
+              }}
+              onEditClick={() => {
+                if (selectedClient) {
+                  setClientDraft(selectedClient)
+                }
+                setClientModal('edit')
+              }}
+              compact
+              fullWidth
+              tone="party"
+            />
+          </div>
+        </TabPanel>
 
-        {/* Команда */}
-        <div>
-          <p className="mb-1 text-sm font-semibold uppercase text-sky-700">
-            Команда
-          </p>
-          <p className="mb-0.5 text-base font-bold">Исполнители и выплаты</p>
-          <p className="mb-2 text-sm text-gray-500">
-            Назначьте людей на заказ и сразу зафиксируйте плановые выплаты.
-          </p>
-          {staff.filter((p) => p.role !== 'owner').length === 0 && (
-            <p className="mb-2 text-sm text-gray-500">
-              Добавьте исполнителей в блоке сотрудников ниже.
-            </p>
-          )}
+        {/* ====== Вкладка 3: Команда ====== */}
+        <TabPanel tabName="Команда">
           <div className="flex flex-col gap-1">
+            {staff.filter((p) => p.role !== 'owner').length === 0 && (
+              <p className="mb-2 text-sm text-gray-500">
+                Добавьте исполнителей в блоке сотрудников ниже.
+              </p>
+            )}
             {staff
               .filter((p) => p.role !== 'owner')
               .map((person) => {
@@ -517,99 +489,153 @@ export default function OrderModal({
                 )
               })}
           </div>
-        </div>
+        </TabPanel>
 
-        <hr className="border-t border-gray-200" />
+        {/* ====== Вкладка 4: Финансы и документы ====== */}
+        <TabPanel tabName="Финансы и документы">
+          <div className="flex flex-col gap-2">
+            <Input
+              label="Сумма клиента"
+              type="number"
+              value={
+                orderDraft.clientPayment?.totalAmount ??
+                orderDraft.contractAmount ??
+                ''
+              }
+              onChange={(val) => {
+                setOrderDraft((prev) => ({
+                  ...prev,
+                  contractAmount: val,
+                  clientPayment: {
+                    ...(prev.clientPayment || {}),
+                    totalAmount: val,
+                  },
+                }))
+              }}
+              min={0}
+              step={1000}
+              noMargin
+              tone="party"
+              postfix="₽"
+            />
 
-        {/* Доп. события */}
-        <div>
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <div>
-              <p className="mb-1 text-sm font-semibold uppercase text-sky-700">
-                Доп. события
-              </p>
-              <p className="mb-0.5 text-base font-bold">
-                Напоминания и задачи по заказу
-              </p>
+            <hr className="border-t border-gray-200" />
+
+            {/* Блок транзакций */}
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-base font-semibold text-gray-900">
+                Транзакции
+              </div>
+              <AddIconButton
+                onClick={() => openTransactionModal()}
+                disabled={isNewOrder || financeLoading}
+                title="Добавить транзакцию"
+                size="sm"
+                className="disabled:cursor-not-allowed disabled:opacity-60"
+              />
             </div>
-            <button
-              type="button"
-              className="cursor-pointer rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
-              onClick={handleAddAdditionalEvent}
-            >
-              Добавить
-            </button>
-          </div>
 
-          {(orderDraft.additionalEvents || []).length === 0 ? (
-            <p className="text-sm text-gray-500">
-              Дополнительные события еще не добавлены.
-            </p>
-          ) : (
-            <div className="grid gap-2">
-              {(orderDraft.additionalEvents || []).map((item, index) => (
-                <div
-                  key={item._id || index}
-                  className="rounded-2xl border border-sky-100 bg-sky-50/50 p-3"
-                >
-                  <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-                    <Input
-                      label="Название"
-                      value={item.title}
+            {isNewOrder ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                Сохраните заказ, чтобы добавить транзакции.
+              </div>
+            ) : null}
+
+            {financeError && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                {financeError}
+              </div>
+            )}
+
+            {financeLoading ? (
+              <p className="text-sm text-gray-500">Загрузка транзакций...</p>
+            ) : null}
+          </div>
+        </TabPanel>
+
+        {/* ====== Вкладка 5: Доп. события ====== */}
+        <TabPanel tabName="Доп. события">
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-end">
+              <button
+                type="button"
+                className="cursor-pointer rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+                onClick={handleAddAdditionalEvent}
+              >
+                Добавить
+              </button>
+            </div>
+
+            {(orderDraft.additionalEvents || []).length === 0 ? (
+              <p className="text-sm text-gray-500">
+                Дополнительные события еще не добавлены.
+              </p>
+            ) : (
+              <div className="grid gap-2">
+                {(orderDraft.additionalEvents || []).map((item, index) => (
+                  <div
+                    key={item._id || index}
+                    className="rounded-2xl border border-sky-100 bg-sky-50/50 p-3"
+                  >
+                    <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                      <Input
+                        label="Название"
+                        value={item.title}
+                        onChange={(val) =>
+                          handleAdditionalEventChange(index, 'title', val)
+                        }
+                        fullWidth
+                        tone="party"
+                      />
+                      <DateTimePicker
+                        label="Дата и время"
+                        value={item.date}
+                        onChange={(val) =>
+                          handleAdditionalEventChange(index, 'date', val)
+                        }
+                        tone="party"
+                      />
+                    </div>
+                    <Textarea
+                      label="Описание"
+                      value={item.description}
                       onChange={(val) =>
-                        handleAdditionalEventChange(index, 'title', val)
+                        handleAdditionalEventChange(index, 'description', val)
                       }
                       fullWidth
                       tone="party"
                     />
-                    <DateTimePicker
-                      label="Дата и время"
-                      value={item.date}
-                      onChange={(val) =>
-                        handleAdditionalEventChange(index, 'date', val)
-                      }
-                      tone="party"
-                    />
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(item.done)}
+                          onChange={(e) =>
+                            handleAdditionalEventChange(
+                              index,
+                              'done',
+                              e.target.checked
+                            )
+                          }
+                          className="cursor-pointer"
+                        />
+                        Выполнено
+                      </label>
+                      <button
+                        type="button"
+                        className="cursor-pointer rounded-md border border-red-100 bg-white px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
+                        onClick={() => handleRemoveAdditionalEvent(index)}
+                      >
+                        Удалить
+                      </button>
+                    </div>
                   </div>
-                  <Textarea
-                    label="Описание"
-                    value={item.description}
-                    onChange={(val) =>
-                      handleAdditionalEventChange(index, 'description', val)
-                    }
-                    fullWidth
-                    tone="party"
-                  />
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                    <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(item.done)}
-                        onChange={(e) =>
-                          handleAdditionalEventChange(
-                            index,
-                            'done',
-                            e.target.checked
-                          )
-                        }
-                        className="cursor-pointer"
-                      />
-                      Выполнено
-                    </label>
-                    <button
-                      type="button"
-                      className="cursor-pointer rounded-md border border-red-100 bg-white px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
-                      onClick={() => handleRemoveAdditionalEvent(index)}
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabPanel>
+      </TabContext>
 
       {/* Client Modals */}
       <ClientSelectModal

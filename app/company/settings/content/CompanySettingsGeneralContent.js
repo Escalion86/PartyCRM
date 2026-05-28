@@ -1,5 +1,6 @@
 'use client'
 
+import Input from '@components/Input'
 import useCompanySettings from '../useCompanySettings'
 
 const TIME_ZONE_OPTIONS = [
@@ -24,7 +25,7 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
   return (
     <div className="grid gap-4">
       {error ? (
-        <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+        <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-3 text-sm">
           {error}
         </div>
       ) : null}
@@ -47,26 +48,21 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
       </div>
 
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
-        <label className="grid gap-2">
-          <span className="text-sm font-semibold">
-            Стандартная длительность заказа, мин
-          </span>
-          <input
-            key={settings?.defaultOrderDurationMinutes ?? 60}
-            type="number"
-            min="15"
-            step="5"
-            defaultValue={String(settings?.defaultOrderDurationMinutes ?? 60)}
-            onBlur={(event) =>
-              savePatch({
-                defaultOrderDurationMinutes: Number(
-                  event.target.value || 60
-                ),
-              })
-            }
-            className="h-11 max-w-40 rounded-lg border border-sky-100 px-3 text-sm"
-          />
-        </label>
+        <Input
+          label="Стандартная длительность заказа, мин"
+          type="number"
+          min={15}
+          step={5}
+          value={settings?.defaultOrderDurationMinutes ?? 60}
+          onChange={(val) =>
+            savePatch({
+              defaultOrderDurationMinutes: Number(val) || 60,
+            })
+          }
+          tone="party"
+          showArrows
+          noMargin
+        />
         <p className="mt-2 text-xs text-slate-500">
           Используется как значение по умолчанию при создании нового заказа.
         </p>

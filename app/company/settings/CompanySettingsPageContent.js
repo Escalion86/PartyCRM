@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import CompanySettingsShell from './CompanySettingsShell'
 import { COMPANY_SETTINGS_CONTENT } from './content/companySettingsContentMap'
 
@@ -35,33 +35,34 @@ const TAB_META = Object.freeze({
 
 export default function CompanySettingsPageContent({ activeTab }) {
   const meta = TAB_META[activeTab] ?? TAB_META.general
-  const [activeCompanyId] = useState(() =>
-    typeof window === 'undefined'
-      ? ''
-      : window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
-  )
+  const [activeCompanyId, setActiveCompanyId] = useState('')
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY)
+    if (stored) setActiveCompanyId(stored)
+  }, [])
 
   const Component = COMPANY_SETTINGS_CONTENT[activeTab]
 
+  if (!activeCompanyId) {
+    return (
+      <CompanySettingsShell title={meta.title} description={meta.description}>
+        <div className="p-6 text-sm border rounded-2xl border-sky-100 bg-sky-50 text-slate-500">
+          Загружаем настройки компании...
+        </div>
+      </CompanySettingsShell>
+    )
+  }
+
   return (
-    <CompanySettingsShell
-      title={meta.title}
-      description={meta.description}
-    >
-      {activeCompanyId ? (
-        Component ? (
-          <Component activeCompanyId={activeCompanyId} />
-        ) : (
-          <div className="rounded-2xl border border-sky-100 bg-sky-50 p-6 text-sm leading-6 text-slate-600">
-            Раздел <span className="font-semibold">{meta.title}</span>{' '}
-            подключён к новой ветке маршрутов `company/settings`. Содержимое
-            вкладки будет реализовано следующими инкрементами.
-          </div>
-        )
+    <CompanySettingsShell title={meta.title} description={meta.description}>
+      {Component ? (
+        <Component activeCompanyId={activeCompanyId} />
       ) : (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-800">
-          Не удалось определить активную компанию. Откройте кабинет компании и
-          повторите попытку.
+        <div className="p-6 text-sm leading-6 border rounded-2xl border-sky-100 bg-sky-50 text-slate-600">
+          Раздел <span className="font-semibold">{meta.title}</span> подключён к
+          новой ветке маршрутов `company/settings`. Содержимое вкладки будет
+          реализовано следующими инкрементами.
         </div>
       )}
     </CompanySettingsShell>
