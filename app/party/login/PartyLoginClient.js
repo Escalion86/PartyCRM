@@ -424,7 +424,7 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
                     {authPhoneDisplay ? ` на номер ${authPhoneDisplay}` : ''}
                   </div>
                   <p className="mt-1">
-                    Возьмите трубку — подтверждение произойдёт автоматически.
+                    Это бесплатно.
                   </p>
                 </div>
                 {verifyError && (
@@ -475,17 +475,27 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
             )}
           </div>
 
-          <button
-            type="submit"
-            disabled={verifyLoading || verifyStep === 'calling' || verifyStep === 'waiting'}
-            className={primaryButtonClass}
-          >
-            {verifyLoading
-              ? 'Звоним...'
-              : verifyStep === 'calling' || verifyStep === 'waiting'
-                ? 'Ожидайте звонок...'
-                : 'Подтвердить номер телефона'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={verifyLoading || verifyStep === 'calling' || verifyStep === 'waiting'}
+              className={primaryButtonClass}
+            >
+              {verifyLoading
+                ? 'Звоним...'
+                : verifyStep === 'calling' || verifyStep === 'waiting'
+                  ? 'Ожидайте звонок...'
+                  : 'Подтвердить номер телефона'}
+            </button>
+            <button
+              type="button"
+              disabled={verifyLoading || verifyStep === 'calling' || verifyStep === 'waiting'}
+              onClick={() => startPhoneVerification()}
+              className={secondaryButtonClass}
+            >
+              Позвонить (бесплатно)
+            </button>
+          </div>
 
           <button
             type="button"
