@@ -1,4 +1,4 @@
-import Users from '@models/Users'
+import { getPartyUserModel } from '@server/partyModels'
 
 const TELEFONIP_TOKEN = process.env.TELEFONIP
 const TELEFONIP_BASE_URL =
@@ -45,14 +45,14 @@ export const toTelefonipPhone = (phone) => {
 export const getExpiresAt = () =>
   new Date(Date.now() + verifyConfig.ttlMin * 60 * 1000)
 
-const getPhoneQuery = (phone) => {
+export const findPartyUserByPhone = async (phone) => {
+  const PartyUsers = await getPartyUserModel()
   const asNumber = Number(phone)
-  return Number.isNaN(asNumber)
+  const query = Number.isNaN(asNumber)
     ? { phone }
     : { $or: [{ phone }, { phone: asNumber }] }
+  return PartyUsers.findOne(query)
 }
-
-export const findUserByPhone = async (phone) => Users.findOne(getPhoneQuery(phone))
 
 export const validateFlow = (flow) => flow === 'register' || flow === 'recovery'
 

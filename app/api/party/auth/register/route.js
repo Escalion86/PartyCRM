@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from 'next/server'
 import { getPartyUserModel, getPartyTariffModel } from '@server/partyModels'
+import PhoneConfirms from '@models/PhoneConfirms'
 import {
   hashPartyPassword,
   normalizePartyEmail,
@@ -75,6 +76,22 @@ export async function POST(req) {
           'Для регистрации требуется согласие с Политикой конфиденциальности и обработкой персональных данных',
       },
       { status: 400 }
+    )
+  }
+
+  // Проверяем, что телефон подтверждён через TELEFONIP или SMS
+  const phoneConfirm = await PhoneConfirms.findOne({
+    phone,
+    flow: 'register',
+    confirmed: true,
+  })
+  if (!phoneConfirm) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: 'Сначала подтвердите номер телефона',
+      },
+      { status: 403 }
     )
   }
 
