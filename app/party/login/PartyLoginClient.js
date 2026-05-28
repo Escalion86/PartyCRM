@@ -432,6 +432,17 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
                     {verifyError}
                   </div>
                 )}
+                {verifyAuthPhone && (
+                  <a
+                    href={`tel:${verifyAuthPhone}`}
+                    className={`${secondaryButtonClass} inline-flex items-center gap-2 no-underline`}
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    Позвонить (бесплатно)
+                  </a>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {!smsSent && (
                     <button
@@ -475,27 +486,23 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
             )}
           </div>
 
-          <div className="flex gap-2">
+          {verifyStep === 'idle' ? (
             <button
               type="submit"
-              disabled={verifyLoading || verifyStep === 'calling' || verifyStep === 'waiting'}
+              disabled={verifyLoading}
               className={primaryButtonClass}
             >
-              {verifyLoading
-                ? 'Звоним...'
-                : verifyStep === 'calling' || verifyStep === 'waiting'
-                  ? 'Ожидайте звонок...'
-                  : 'Подтвердить номер телефона'}
+              {verifyLoading ? 'Звоним...' : 'Подтвердить номер телефона'}
             </button>
+          ) : verifyStep === 'calling' || verifyStep === 'waiting' ? (
             <button
               type="button"
-              disabled={verifyLoading || verifyStep === 'calling' || verifyStep === 'waiting'}
-              onClick={() => startPhoneVerification()}
-              className={secondaryButtonClass}
+              disabled
+              className={primaryButtonClass}
             >
-              Позвонить (бесплатно)
+              Ожидаем звонок...
             </button>
-          </div>
+          ) : null}
 
           <button
             type="button"
