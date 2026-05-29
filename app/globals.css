@@ -32,11 +32,9 @@
 body {
   background: #F5F6F8;
   color: #1C1D1F;
-  --surface-card-bg: linear-gradient(
-      135deg,
+  --surface-card-bg: linear-gradient(135deg,
       rgba(255, 255, 255, 0.96) 0%,
-      rgba(248, 244, 236, 0.94) 100%
-    );
+      rgba(248, 244, 236, 0.94) 100%);
   --surface-card-border: rgba(138, 111, 59, 0.22);
   --surface-card-shadow: 0 10px 24px rgba(33, 29, 22, 0.08);
   --surface-card-hover-shadow: 0 14px 30px rgba(33, 29, 22, 0.14);
@@ -98,11 +96,9 @@ body {
 body.theme-dark {
   background: #0f0c09;
   color: #e2e8f0;
-  --surface-card-bg: linear-gradient(
-      145deg,
+  --surface-card-bg: linear-gradient(145deg,
       rgba(24, 19, 13, 0.96) 0%,
-      rgba(30, 23, 14, 0.94) 100%
-    );
+      rgba(30, 23, 14, 0.94) 100%);
   --surface-card-border: rgba(201, 168, 106, 0.28);
   --surface-card-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
   --surface-card-hover-shadow: 0 16px 34px rgba(0, 0, 0, 0.46);
@@ -224,6 +220,7 @@ body.theme-dark .sidebar-root .hover\:text-general:hover {
 body:not(.theme-dark) .sidebar-root .hover\:text-white:hover {
   color: var(--sidebar-bg);
 }
+
 body:not(.theme-dark) .sidebar-root .hover\:text-general:hover {
   color: var(--sidebar-bg);
 }
@@ -720,6 +717,78 @@ body.theme-dark .MuiTabs-indicator {
   background-color: #e2e8f0;
 }
 
+/* Ограничение ширины каждой вкладки */
+.MuiTab-root {
+  max-width: 120px;
+  min-width: auto;
+}
+
+/* Кнопки прокрутки вкладок (TabScrollButton) — absolute, чтобы не сдвигать табы */
+.MuiTabs-root {
+  position: relative;
+  overflow: visible !important;
+}
+
+.MuiTabScrollButton-root {
+  position: absolute !important;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  color: #0284c7;
+  min-width: 36px !important;
+  background: linear-gradient(to right, #ffffff 50%, transparent 100%);
+}
+
+.MuiTabScrollButton-root:last-child {
+  right: 0;
+  background: linear-gradient(to left, #ffffff 50%, transparent 100%);
+}
+
+.MuiTabScrollButton-root:first-child {
+  left: 0;
+}
+
+.MuiTabScrollButton-root.Mui-disabled {
+  display: none;
+}
+
+.MuiTabScrollButton-root:hover {
+  background-color: transparent;
+}
+
+.MuiTabScrollButton-root:last-child:hover {
+  background: linear-gradient(to left, #f0f9ff 50%, transparent 100%);
+}
+
+.MuiTabScrollButton-root:first-child:hover {
+  background: linear-gradient(to right, #f0f9ff 50%, transparent 100%);
+}
+
+body.theme-dark .MuiTabScrollButton-root {
+  color: #94a3b8;
+  background: linear-gradient(to right, #14110d 50%, transparent 100%);
+}
+
+body.theme-dark .MuiTabScrollButton-root:last-child {
+  background: linear-gradient(to left, #14110d 50%, transparent 100%);
+}
+
+body.theme-dark .MuiTabScrollButton-root.Mui-disabled {
+  display: none;
+}
+
+body.theme-dark .MuiTabScrollButton-root:hover {
+  background-color: transparent;
+}
+
+body.theme-dark .MuiTabScrollButton-root:last-child:hover {
+  background: linear-gradient(to left, #1b160f 50%, transparent 100%);
+}
+
+body.theme-dark .MuiTabScrollButton-root:first-child:hover {
+  background: linear-gradient(to right, #1b160f 50%, transparent 100%);
+}
+
 @layer components {
   .ui-btn {
     display: inline-flex;
@@ -866,6 +935,7 @@ body.theme-dark .MuiTabs-indicator {
     opacity: 0;
     transform: translateY(12px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -895,33 +965,25 @@ body.theme-dark .surface-card {
 
 .cabinet-canvas {
   background:
-    radial-gradient(
-      130% 85% at 100% 0%,
+    radial-gradient(130% 85% at 100% 0%,
       rgba(138, 111, 59, 0.12) 0%,
       rgba(138, 111, 59, 0.04) 35%,
-      transparent 72%
-    ),
-    radial-gradient(
-      95% 64% at 0% 100%,
+      transparent 72%),
+    radial-gradient(95% 64% at 0% 100%,
       rgba(115, 120, 132, 0.12) 0%,
-      transparent 70%
-    ),
+      transparent 70%),
     #f5f6f8;
 }
 
 body.theme-dark .cabinet-canvas {
   background:
-    radial-gradient(
-      130% 85% at 100% 0%,
+    radial-gradient(130% 85% at 100% 0%,
       rgba(201, 168, 106, 0.14) 0%,
       rgba(201, 168, 106, 0.05) 34%,
-      transparent 75%
-    ),
-    radial-gradient(
-      95% 64% at 0% 100%,
+      transparent 75%),
+    radial-gradient(95% 64% at 0% 100%,
       rgba(76, 65, 45, 0.26) 0%,
-      transparent 72%
-    ),
+      transparent 72%),
     #100d0a;
 }
 
@@ -941,15 +1003,13 @@ body.theme-dark .cabinet-canvas {
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    background: linear-gradient(
-      165deg,
-      var(--surface-card-highlight) 0%,
-      transparent 48%
-    );
+    background: linear-gradient(165deg,
+        var(--surface-card-highlight) 0%,
+        transparent 48%);
     opacity: 0.8;
   }
 
-  .ui-surface-card > * {
+  .ui-surface-card>* {
     position: relative;
     z-index: 1;
   }
@@ -1206,21 +1266,25 @@ body.theme-dark .event-view-additional-done {
   color: #374151;
   background-color: #f9fafb;
 }
+
 .event-view-status--active {
   border-color: #93c5fd;
   color: #1d4ed8;
   background-color: #eff6ff;
 }
+
 .event-view-status--canceled {
   border-color: #fca5a5;
   color: #b91c1c;
   background-color: #fef2f2;
 }
+
 .event-view-status--finished {
   border-color: #86efac;
   color: #15803d;
   background-color: #f0fdf4;
 }
+
 .event-view-status--closed {
   border-color: #cbd5e1;
   color: #334155;
@@ -1232,21 +1296,25 @@ body.theme-dark .event-view-status--draft {
   color: #cbd5e1;
   background-color: #1f2937;
 }
+
 body.theme-dark .event-view-status--active {
   border-color: #1d4ed8;
   color: #bfdbfe;
   background-color: #172554;
 }
+
 body.theme-dark .event-view-status--canceled {
   border-color: #7f1d1d;
   color: #fecaca;
   background-color: #450a0a;
 }
+
 body.theme-dark .event-view-status--finished {
   border-color: #14532d;
   color: #bbf7d0;
   background-color: #052e16;
 }
+
 body.theme-dark .event-view-status--closed {
   border-color: #334155;
   color: #cbd5e1;
@@ -1257,27 +1325,33 @@ body.theme-dark .event-view-status--closed {
   border-color: #bfdbfe;
   background: linear-gradient(135deg, #eff6ff 0%, #eef2ff 100%);
 }
+
 .client-view-avatar {
   border-color: #bfdbfe;
   color: #1d4ed8;
 }
+
 .client-view-kpi {
   border-color: #e5e7eb;
   background-color: #f9fafb;
 }
+
 .client-view-kpi-income {
   border-color: #86efac;
   background-color: #f0fdf4;
 }
+
 .client-view-kpi-expense {
   border-color: #fca5a5;
   background-color: #fef2f2;
 }
+
 .client-view-action-btn {
   border-color: #2563eb;
   background-color: #eff6ff;
   color: #2563eb;
 }
+
 .client-view-action-btn:hover {
   background-color: #dbeafe;
 }
@@ -1286,28 +1360,34 @@ body.theme-dark .client-view-header {
   border-color: #2b2418;
   background: linear-gradient(135deg, #1b160f 0%, #221a11 100%);
 }
+
 body.theme-dark .client-view-avatar {
   border-color: #3b2f1d;
   background-color: #14110d;
   color: #ebd3a5;
 }
+
 body.theme-dark .client-view-kpi {
   border-color: #2b2418;
   background-color: #100d0a;
 }
+
 body.theme-dark .client-view-kpi-income {
   border-color: #14532d;
   background-color: rgba(6, 78, 59, 0.35);
 }
+
 body.theme-dark .client-view-kpi-expense {
   border-color: #7f1d1d;
   background-color: rgba(127, 29, 29, 0.28);
 }
+
 body.theme-dark .client-view-action-btn {
   border-color: #3b82f6;
   background-color: rgba(30, 58, 138, 0.28);
   color: #bfdbfe;
 }
+
 body.theme-dark .client-view-action-btn:hover {
   background-color: rgba(30, 58, 138, 0.42);
 }

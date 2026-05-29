@@ -48,10 +48,8 @@ export default function OrderModal({
   companySettings,
   activeCompanyId,
   saving,
-  conflictInfo,
   onClose,
   onSubmit,
-  onCheckConflicts,
   onCompanySettingsChange,
   onServiceCreated,
   isEdit,
@@ -264,38 +262,22 @@ export default function OrderModal({
 
   // Footer with action buttons
   const footerContent = (
-    <div className="flex w-full items-center justify-between">
-      <div>
-        {conflictInfo ? (
-          <p className="text-sm text-gray-500">{conflictInfo}</p>
-        ) : (
-          <button
-            type="button"
-            className="cursor-pointer rounded border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-            onClick={onCheckConflicts}
-            disabled={saving}
-          >
-            Проверить конфликты
-          </button>
-        )}
-      </div>
-      <div className="flex flex-row gap-1">
-        <button
-          type="button"
-          className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-          onClick={onClose}
-        >
-          Отмена
-        </button>
-        <button
-          type="button"
-          className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={onSubmit}
-          disabled={saving}
-        >
-          {saving ? 'Сохранение...' : isEdit ? 'Сохранить' : 'Добавить заказ'}
-        </button>
-      </div>
+    <div className="flex w-full items-center justify-end gap-1">
+      <button
+        type="button"
+        className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+        onClick={onClose}
+      >
+        Отмена
+      </button>
+      <button
+        type="button"
+        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={onSubmit}
+        disabled={saving}
+      >
+        {saving ? 'Сохранение...' : isEdit ? 'Сохранить' : 'Добавить заказ'}
+      </button>
     </div>
   )
 
@@ -308,12 +290,7 @@ export default function OrderModal({
       size="full"
       footer={footerContent}
     >
-      <TabContext
-        value="Основное"
-        variant="fullWidth"
-        scrollButtons={false}
-        allowScrollButtonsMobile={false}
-      >
+      <TabContext value="Основное">
         {/* ====== Вкладка 1: Основное ====== */}
         <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
