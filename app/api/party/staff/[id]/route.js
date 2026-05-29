@@ -47,7 +47,8 @@ const pickStaffPatch = (body) => {
   if (typeof body.description === 'string') {
     patch.description = normalizeText(body.description, 1000)
   }
-  if (['owner', 'admin', 'performer'].includes(body.role)) patch.role = body.role
+  if (['owner', 'admin', 'performer'].includes(body.role))
+    patch.role = body.role
   if (['active', 'invited', 'paused', 'archived'].includes(body.status)) {
     patch.status = body.status
   }
@@ -86,6 +87,20 @@ const ensureNotLastOwner = async ({ PartyStaff, tenantId, staffId, patch }) => {
         'Нельзя удалить или понизить последнего владельца',
         'validation'
       )
+}
+
+// Проверяет, что цель не является владельцем (владельца удалять нельзя)
+const ensureNotOwner = async ({ PartyStaff, tenantId, staffId }) => {
+  const target = await PartyStaff.findOne({ _id: staffId, tenantId }).lean()
+  if (target?.role === 'owner') {
+    return partyError(
+      400,
+      'partycrm_cannot_delete_owner',
+      'Нельзя удалить владельца компании',
+      'validation'
+    )
+  }
+  return null
 }
 
 export async function GET(req, { params }) {
@@ -129,13 +144,58 @@ export async function PATCH(req, { params }) {
   const body = await parseJsonBody(req)
   const patch = pickStaffPatch(body)
   const PartyStaff = await getPartyStaffModel()
-  const ownerError = await ensureNotLastOwner({
-    PartyStaff,
-    tenantId: context.tenantId,
-    staffId: id,
-    patch,
-  })
-  if (ownerError) return ownerError
+
+  // Передача прав владельца — только текущий владелец может назначить нового
+  let previousOwnerData = null
+  if (patch.role === 'owner') {
+    if (context.role !== 'owner') {
+      return partyError(
+        403,
+        'partycrm_only_owner_can_transfer',
+        'Только владелец может передать права владельца',
+        'permission'
+      )
+    }
+
+    // Нельзя назначить владельцем подрядчика без привязанного аккаунта
+    const targetStaff = await PartyStaff.findOne({
+      _id: id,
+      tenantId: context.tenantId,
+    }).lean()
+    if (!targetStaff) {
+      return partyError(404, 'partycrm_staff_not_found', 'Сотрудник не найден')
+    }
+    if (!targetStaff.authUserId) {
+      return partyError(
+        400,
+        'partycrm_owner_requires_account',
+        'Нельзя назначить владельцем подрядчика без привязанного аккаунта. Сначала привяжите аккаунт.',
+        'validation'
+      )
+    }
+
+    // Найти текущего владельца и понизить до администратора
+    const currentOwnerStaffId = context.staff?._id
+    if (currentOwnerStaffId && String(currentOwnerStaffId) !== String(id)) {
+      const demotedOwner = await PartyStaff.findOneAndUpdate(
+        { _id: currentOwnerStaffId, tenantId: context.tenantId },
+        { $set: { role: 'admin' } },
+        { returnDocument: 'after' }
+      ).lean()
+      if (demotedOwner) {
+        previousOwnerData = { _id: demotedOwner._id, role: demotedOwner.role }
+      }
+    }
+  } else {
+    // При смене роли с владельца на другую — проверка, что это не последний владелец
+    const ownerError = await ensureNotLastOwner({
+      PartyStaff,
+      tenantId: context.tenantId,
+      staffId: id,
+      patch,
+    })
+    if (ownerError) return ownerError
+  }
 
   const staff = await PartyStaff.findOneAndUpdate(
     { _id: id, tenantId: context.tenantId },
@@ -147,7 +207,12 @@ export async function PATCH(req, { params }) {
     return partyError(404, 'partycrm_staff_not_found', 'Сотрудник не найден')
   }
 
-  return NextResponse.json({ success: true, data: staff })
+  const responsePayload = { success: true, data: staff }
+  if (previousOwnerData) {
+    responsePayload.previousOwner = previousOwnerData
+  }
+
+  return NextResponse.json(responsePayload)
 }
 
 export async function DELETE(req, { params }) {
@@ -163,6 +228,15 @@ export async function DELETE(req, { params }) {
   }
 
   const PartyStaff = await getPartyStaffModel()
+
+  // Владельца удалить нельзя
+  const ownerCheckError = await ensureNotOwner({
+    PartyStaff,
+    tenantId: context.tenantId,
+    staffId: id,
+  })
+  if (ownerCheckError) return ownerCheckError
+
   const ownerError = await ensureNotLastOwner({
     PartyStaff,
     tenantId: context.tenantId,

@@ -168,11 +168,15 @@ const isOrderPast = (order, now = new Date()) => {
 const canClosePastOrder = (order, now = new Date()) =>
   ['draft', 'active'].includes(order?.status) && isOrderPast(order, now)
 
-const createEmptyOrderDraft = (companySettings = {}) => ({
+const createEmptyOrderDraft = (companySettings = {}, locations = []) => ({
   ...EMPTY_ORDER,
   durationMinutes: String(
     Number(companySettings?.defaultOrderDurationMinutes || 60) || 60
   ),
+  locationId:
+    locations.length > 0 && EMPTY_ORDER.placeType === 'company_location'
+      ? locations[0]._id
+      : '',
 })
 
 export default function CompanyWorkspaceClient({ section = 'overview' }) {
@@ -350,7 +354,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     )
   }, [orders, ordersScope, section])
 
-  const orderFilters = useMemo(() => {
+  const upcomingOrderFilters = useMemo(() => {
     const today = new Date()
     const tomorrow = addDays(today, 1)
     const sourceOrders = scopedOrders
@@ -391,8 +395,42 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           (o) => o.eventDate && isSameDay(o.eventDate, tomorrow)
         ).length,
       },
+      {
+        value: 'canceled',
+        label: 'Отменённые',
+        count: sourceOrders.filter((o) => o.status === 'canceled').length,
+      },
     ]
   }, [orders, scopedOrders])
+
+  const pastOrderFilters = useMemo(() => {
+    const sourceOrders = scopedOrders
+    return [
+      { value: 'all', label: 'Все', count: sourceOrders.length },
+      {
+        value: 'finished',
+        label: 'Завершены',
+        count: sourceOrders.filter(
+          (o) => o.status === 'active' || o.status === 'draft'
+        ).length,
+      },
+      {
+        value: 'closed',
+        label: 'Закрыты',
+        count: sourceOrders.filter((o) => o.status === 'closed').length,
+      },
+      {
+        value: 'canceled',
+        label: 'Отменены',
+        count: sourceOrders.filter((o) => o.status === 'canceled').length,
+      },
+    ]
+  }, [orders, scopedOrders])
+
+  const orderFilters = useMemo(
+    () => (ordersScope === 'past' ? pastOrderFilters : upcomingOrderFilters),
+    [ordersScope, upcomingOrderFilters, pastOrderFilters]
+  )
 
   const filteredOrders = useMemo(() => {
     const today = new Date()
@@ -415,6 +453,14 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         return sourceOrders.filter(
           (o) => o.eventDate && isSameDay(o.eventDate, tomorrow)
         )
+      case 'finished':
+        return sourceOrders.filter(
+          (o) => o.status === 'active' || o.status === 'draft'
+        )
+      case 'closed':
+        return sourceOrders.filter((o) => o.status === 'closed')
+      case 'canceled':
+        return sourceOrders.filter((o) => o.status === 'canceled')
       default:
         return sourceOrders
     }
@@ -446,7 +492,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       if (response.data) {
         setOrders((prev) => [...prev, response.data])
         setActiveModal('')
-        setOrderDraft(createEmptyOrderDraft(companySettings))
+        setOrderDraft(createEmptyOrderDraft(companySettings, locations))
       }
     } finally {
       setSaving(false)
@@ -480,7 +526,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )
         setActiveModal('')
         setEditingOrderId('')
-        setOrderDraft(createEmptyOrderDraft(companySettings))
+        setOrderDraft(createEmptyOrderDraft(companySettings, locations))
       }
     } finally {
       setSaving(false)
@@ -514,13 +560,81 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     [activeCompanyId]
   )
 
-  const archiveOrder = useCallback(
+  const cancelOrder = useCallback(
     async (orderId) => {
-      const order = orders.find((item) => String(item._id) === String(orderId))
-      if (!order) return
-      await updateOrder({ ...order, status: 'closed' })
+      const confirmed = window.confirm(
+        'Вы уверены, что хотите отменить этот заказ?'
+      )
+      if (!confirmed) return
+
+      setSaving(true)
+      try {
+        await apiJson(
+          `/api/party/orders/${orderId}`,
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'DELETE',
+          })
+        )
+        setOrders((prev) =>
+          prev.map((o) =>
+            String(o._id) === String(orderId) ? { ...o, status: 'canceled' } : o
+          )
+        )
+      } finally {
+        setSaving(false)
+      }
     },
-    [orders, updateOrder]
+    [activeCompanyId]
+  )
+
+  const deleteOrder = useCallback(
+    async (orderId) => {
+      const confirmed = window.confirm(
+        'Вы уверены, что хотите полностью удалить этот заказ? Это действие необратимо.'
+      )
+      if (!confirmed) return
+
+      setSaving(true)
+      try {
+        await apiJson(
+          `/api/party/orders/${orderId}?permanent=true`,
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'DELETE',
+          })
+        )
+        setOrders((prev) =>
+          prev.filter((o) => String(o._id) !== String(orderId))
+        )
+      } finally {
+        setSaving(false)
+      }
+    },
+    [activeCompanyId]
+  )
+
+  const changeOrderStatus = useCallback(
+    async (orderId, newStatus) => {
+      setSaving(true)
+      try {
+        const response = await apiJson(
+          `/api/party/orders/${orderId}`,
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: newStatus }),
+          })
+        )
+        if (response.data) {
+          setOrders((prev) =>
+            prev.map((o) =>
+              String(o._id) === String(orderId) ? response.data : o
+            )
+          )
+        }
+      } finally {
+        setSaving(false)
+      }
+    },
+    [activeCompanyId]
   )
 
   const closePastOrders = useCallback(async () => {
@@ -625,11 +739,20 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         })
       )
       if (response.data) {
-        setStaff((prev) =>
-          prev.map((s) =>
+        setStaff((prev) => {
+          let updated = prev.map((s) =>
             String(s._id) === editingStaffId ? response.data : s
           )
-        )
+          // Если был понижен предыдущий владелец — обновить и его
+          if (response.previousOwner) {
+            updated = updated.map((s) =>
+              String(s._id) === String(response.previousOwner._id)
+                ? { ...s, role: response.previousOwner.role }
+                : s
+            )
+          }
+          return updated
+        })
         setActiveModal('')
         setEditingStaffId('')
         setStaffDraft(EMPTY_STAFF)
@@ -782,6 +905,26 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     [activeCompanyId]
   )
 
+  const deleteStaff = useCallback(
+    async (staffId) => {
+      setSaving(true)
+      try {
+        await apiJson(
+          `/api/party/staff/${staffId}`,
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'DELETE',
+          })
+        )
+        setStaff((prev) =>
+          prev.filter((s) => String(s._id) !== String(staffId))
+        )
+      } finally {
+        setSaving(false)
+      }
+    },
+    [activeCompanyId]
+  )
+
   if (accessStatus === 'loading') {
     return (
       <section className="min-h-screen bg-white">
@@ -864,39 +1007,56 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               </div>
             </div>
 
-            {/* Filters and actions */}
-            <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            {/* Filters and actions (overview) */}
+            <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="flex flex-wrap gap-2">
-                {orderFilters.map((filter) => (
-                  <button
-                    key={filter.value}
-                    type="button"
-                    className={`cursor-pointer rounded-full px-3 py-1.5 text-sm ${
-                      orderFilter === filter.value
-                        ? 'bg-sky-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                    onClick={() => setOrderFilter(filter.value)}
-                  >
-                    {filter.label} ({filter.count})
-                  </button>
-                ))}
+                {(orderFilters ?? []).map((filter) => {
+                  const isActive = orderFilter === filter.value
+                  return (
+                    <button
+                      key={filter.value}
+                      type="button"
+                      className={`cursor-pointer rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors ${
+                        isActive
+                          ? 'border-sky-600 bg-sky-600 text-white'
+                          : 'border-sky-100 bg-white text-slate-700 hover:bg-sky-50'
+                      }`}
+                      onClick={() => setOrderFilter(filter.value)}
+                    >
+                      {filter.label}
+                      <span
+                        className={`ml-1.5 ${
+                          isActive ? 'text-white/80' : 'text-slate-400'
+                        }`}
+                      >
+                        {filter.count}
+                      </span>
+                    </button>
+                  )
+                })}
               </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-                  onClick={() => {
-                    setOrderDraft(createEmptyOrderDraft(companySettings))
-                    setActiveModal('order')
-                  }}
-                >
-                  Новый заказ
-                </button>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-black/55">
+                  {filteredOrders.length}
+                </span>
+                {canManage && (
+                  <button
+                    type="button"
+                    className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                    onClick={() => {
+                      setOrderDraft(
+                        createEmptyOrderDraft(companySettings, locations)
+                      )
+                      setActiveModal('order')
+                    }}
+                  >
+                    + Новый заказ
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Orders list */}
+            {/* Orders list (overview) */}
             <OrdersList
               orders={filteredOrders}
               filteredOrders={filteredOrders}
@@ -906,19 +1066,114 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               locations={locations}
               hasOrderConflict={hasOrderConflict}
               canManage={canManage}
-              ordersCount={filteredOrders.length}
               onEdit={(order) => {
                 setOrderDraft(normalizeOrderDraft(order))
                 setEditingOrderId(order._id)
                 setActiveModal('order-edit')
               }}
-              onArchive={archiveOrder}
+              onCancel={cancelOrder}
+              onStatusChange={changeOrderStatus}
+              onDelete={deleteOrder}
             />
           </>
         )}
 
         {(section === 'orders' || section === 'orders-past') && (
           <>
+            {/* Header with filters and actions (orders/past) */}
+            <div className="mb-6">
+              <div className="flex flex-col gap-3">
+                {/* Top row: title + actions */}
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-xl font-semibold">
+                    {section === 'orders-past'
+                      ? 'Прошедшие заказы'
+                      : 'Предстоящие заказы'}
+                  </h2>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <span className="text-sm text-black/55">
+                      {filteredOrders.length}
+                    </span>
+                    {section !== 'orders-past' && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveModal('upcoming-events')}
+                        className="cursor-pointer rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+                      >
+                        Ближайшие
+                      </button>
+                    )}
+                    {section !== 'orders-past' && closePastCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={closePastOrders}
+                        className="cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
+                      >
+                        Закрыть прошедшие
+                        <span className="ml-2 text-sky-400">
+                          {closePastCount}
+                        </span>
+                      </button>
+                    )}
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                        onClick={() => {
+                          setOrderDraft(
+                            createEmptyOrderDraft(companySettings, locations)
+                          )
+                          setActiveModal('order')
+                        }}
+                      >
+                        + Новый заказ
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bottom row: filter chips */}
+                {(orderFilters ?? []).length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {orderFilters.map((filter) => {
+                      const isActive = orderFilter === filter.value
+                      return (
+                        <button
+                          key={filter.value}
+                          type="button"
+                          className={`cursor-pointer rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors ${
+                            isActive
+                              ? 'border-sky-600 bg-sky-600 text-white'
+                              : 'border-sky-100 bg-white text-slate-700 hover:bg-sky-50'
+                          }`}
+                          onClick={() => setOrderFilter(filter.value)}
+                        >
+                          {filter.label}
+                          <span
+                            className={`ml-1.5 ${
+                              isActive ? 'text-white/80' : 'text-slate-400'
+                            }`}
+                          >
+                            {filter.count}
+                          </span>
+                        </button>
+                      )
+                    })}
+                    {orderFilter !== 'all' && (
+                      <button
+                        type="button"
+                        className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-sky-600 hover:text-sky-800"
+                        onClick={() => setOrderFilter('all')}
+                      >
+                        Сбросить
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Orders list (orders/past) */}
             <OrdersList
               orders={filteredOrders}
               filteredOrders={filteredOrders}
@@ -928,28 +1183,14 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               locations={locations}
               hasOrderConflict={hasOrderConflict}
               canManage={canManage}
-              orderFilter={orderFilter}
-              onFilterChange={setOrderFilter}
-              orderFilters={orderFilters}
-              ordersCount={filteredOrders.length}
-              onCreateClick={() => {
-                setOrderDraft(createEmptyOrderDraft(companySettings))
-                setActiveModal('order')
-              }}
-              onUpcomingClick={() => setActiveModal('upcoming-events')}
-              onClosePastClick={closePastOrders}
-              closePastCount={closePastCount}
-              title={
-                section === 'orders-past'
-                  ? 'Прошедшие заказы'
-                  : 'Предстоящие заказы'
-              }
               onEdit={(order) => {
                 setOrderDraft(normalizeOrderDraft(order))
                 setEditingOrderId(order._id)
                 setActiveModal('order-edit')
               }}
-              onArchive={archiveOrder}
+              onCancel={cancelOrder}
+              onStatusChange={changeOrderStatus}
+              onDelete={deleteOrder}
             />
           </>
         )}
@@ -1079,6 +1320,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                 setEditingStaffId(staffMember._id)
                 setActiveModal('staff-edit')
               }}
+              onDelete={deleteStaff}
             />
           </>
         )}
@@ -1147,6 +1389,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           onServiceCreated={(newService) =>
             setServices((prev) => [...prev, newService])
           }
+          onClientCreated={(newClient) =>
+            setClients((prev) => [...prev, newClient])
+          }
+          onLocationCreated={(newLocation) =>
+            setLocations((prev) => [...prev, newLocation])
+          }
         />
       )}
 
@@ -1174,6 +1422,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           onServiceCreated={(newService) =>
             setServices((prev) => [...prev, newService])
           }
+          onClientCreated={(newClient) =>
+            setClients((prev) => [...prev, newClient])
+          }
+          onLocationCreated={(newLocation) =>
+            setLocations((prev) => [...prev, newLocation])
+          }
           isEdit
         />
       )}
@@ -1186,6 +1440,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           saving={saving}
           onClose={() => setActiveModal('')}
           onSubmit={addStaff}
+          contextRole={context?.role}
         />
       )}
 
@@ -1202,6 +1457,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           }}
           onSubmit={editStaff}
           isEdit
+          contextRole={context?.role}
         />
       )}
 

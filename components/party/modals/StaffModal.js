@@ -5,11 +5,23 @@ import Input from '@components/Input'
 import Select from '@components/Select'
 import Modal from '@components/Modal'
 
-const roleOptions = [
+const ALL_ROLE_OPTIONS = [
   { value: 'performer', label: 'Исполнитель' },
   { value: 'admin', label: 'Администратор' },
   { value: 'owner', label: 'Владелец' },
 ]
+
+const getRoleOptions = (contextRole, staffDraft) => {
+  // Только владелец может назначать владельца
+  if (contextRole !== 'owner') {
+    return ALL_ROLE_OPTIONS.filter((opt) => opt.value !== 'owner')
+  }
+  // Владельцем нельзя назначить подрядчика без привязанного аккаунта
+  if (!staffDraft?.authUserId) {
+    return ALL_ROLE_OPTIONS.filter((opt) => opt.value !== 'owner')
+  }
+  return ALL_ROLE_OPTIONS
+}
 
 const specializationOptions = [
   { value: 'animator', label: 'Аниматор' },
@@ -29,6 +41,7 @@ export default function StaffModal({
   onClose,
   onSubmit,
   isEdit,
+  contextRole = '',
 }) {
   const handleChange = (field) => (value) => {
     setStaffDraft((prev) => ({ ...prev, [field]: value }))
@@ -38,14 +51,14 @@ export default function StaffModal({
     <div className="flex gap-2">
       <button
         type="button"
-        className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+        className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
         onClick={onClose}
       >
         Отмена
       </button>
       <button
         type="button"
-        className="px-4 py-2 text-sm font-semibold text-white transition rounded cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         onClick={onSubmit}
         disabled={saving}
       >
@@ -113,7 +126,7 @@ export default function StaffModal({
             onChange={(value) =>
               setStaffDraft((prev) => ({ ...prev, role: value }))
             }
-            options={roleOptions}
+            options={getRoleOptions(contextRole, staffDraft)}
             fullWidth
             tone="party"
           />

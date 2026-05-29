@@ -54,7 +54,12 @@ const normalizeAddress = (value) => ({
 })
 
 const formatAddressLine = (address) =>
-  [address.town, address.street, address.house ? `д. ${address.house}` : '', address.room]
+  [
+    address.town,
+    address.street,
+    address.house ? `д. ${address.house}` : '',
+    address.room,
+  ]
     .filter(Boolean)
     .join(', ') + (address.comment ? ` (${address.comment})` : '')
 
@@ -77,9 +82,12 @@ const normalizeAssignedStaff = (items) => {
         )
           ? item.payoutStatus
           : 'planned',
-        confirmationStatus: ['pending', 'confirmed', 'declined', 'done'].includes(
-          item.confirmationStatus
-        )
+        confirmationStatus: [
+          'pending',
+          'confirmed',
+          'declined',
+          'done',
+        ].includes(item.confirmationStatus)
           ? item.confirmationStatus
           : 'pending',
       }
@@ -120,11 +128,13 @@ const normalizeTransactions = (items) => {
       category: PARTY_TRANSACTION_CATEGORIES.has(String(item?.category || ''))
         ? item.category
         : item?.type === 'expense'
-            ? 'other'
-            : 'deposit',
+          ? 'other'
+          : 'deposit',
       date: parseOptionalDate(item?.date),
       comment:
-        typeof item?.comment === 'string' ? item.comment.trim().slice(0, 1000) : '',
+        typeof item?.comment === 'string'
+          ? item.comment.trim().slice(0, 1000)
+          : '',
       paymentMethod: ['transfer', 'account', 'cash', 'barter'].includes(
         item?.paymentMethod
       )
@@ -176,7 +186,8 @@ export const normalizeOrderPayload = (body) => {
       : 'draft',
     clientId,
     client: {
-      name: typeof body.client?.name === 'string' ? body.client.name.trim() : '',
+      name:
+        typeof body.client?.name === 'string' ? body.client.name.trim() : '',
       phone: normalizePhone(body.client?.phone),
       email:
         typeof body.client?.email === 'string'
@@ -342,7 +353,12 @@ export async function POST(req) {
   const body = await parseJsonBody(req)
   const payload = normalizeOrderPayload(body)
 
-  if (!payload.client.name && !payload.serviceTitle) {
+  if (
+    !payload.clientId &&
+    !payload.client.name &&
+    payload.servicesIds.length === 0 &&
+    !payload.serviceTitle
+  ) {
     return partyError(
       400,
       'partycrm_order_client_or_service_required',

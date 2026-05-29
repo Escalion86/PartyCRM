@@ -8,10 +8,12 @@ import {
   ClientFormModal,
 } from '@components/party/modals/ClientModal'
 import { ServiceCreateModal } from '@components/party/modals/ServiceModal'
+import LocationModal from '@components/party/modals/LocationModal'
 import ClientPicker from '@components/ClientPicker'
 import Modal from '@components/Modal'
 import Input from '@components/Input'
 import Select from '@components/Select'
+import InputWrapper from '@components/InputWrapper'
 import DateTimePicker from '@components/DateTimePicker'
 import Textarea from '@components/Textarea'
 import ServiceMultiSelect from '@components/ServiceMultiSelect'
@@ -24,7 +26,20 @@ import {
   EMPTY_PARTY_ADDITIONAL_EVENT,
   EMPTY_PARTY_CLIENT,
   EMPTY_PARTY_SERVICE,
+  EMPTY_LOCATION,
 } from '@helpers/partyHelpers'
+import getPersonFullName from '@helpers/getPersonFullName'
+
+// Нормализация телефона: цифры 11 символов, 8xxx → 7xxx
+const normalizePhone = (value) => {
+  if (!value) return null
+  const digits = String(value).replace(/[^\d]/g, '')
+  if (digits.length < 11) return null
+  const normalized = digits.slice(0, 11)
+  if (normalized.startsWith('8')) return `7${normalized.slice(1)}`
+  if (normalized.startsWith('7')) return normalized
+  return null
+}
 
 const specializationLabels = {
   animator: 'Аниматор',
@@ -41,6 +56,7 @@ export default function OrderModal({
   orderDraft,
   setOrderDraft,
   locations,
+  onLocationCreated,
   staff,
   clients,
   clientsById,
@@ -52,6 +68,7 @@ export default function OrderModal({
   onSubmit,
   onCompanySettingsChange,
   onServiceCreated,
+  onClientCreated,
   isEdit,
 }) {
   const [clientModal, setClientModal] = useState('')
@@ -62,7 +79,14 @@ export default function OrderModal({
   const [serviceDraft, setServiceDraft] = useState(EMPTY_PARTY_SERVICE)
   const [serviceSaving, setServiceSaving] = useState(false)
 
+  const [locationModal, setLocationModal] = useState(false)
+  const [locationDraft, setLocationDraft] = useState(EMPTY_LOCATION)
+  const [locationSaving, setLocationSaving] = useState(false)
+
   const setPartyServices = useSetAtom(partyServicesAtom)
+
+  // Ошибка отправки формы (показывается внизу модального окна)
+  const [submitError, setSubmitError] = useState('')
 
   // Транзакции — заглушка (будет заменена на реальные хуки после создания API)
   const [financeError, setFinanceError] = useState('')
@@ -175,6 +199,30 @@ export default function OrderModal({
   )
 
   const handleClientCreate = useCallback(async () => {
+    // Проверка дубликата по телефону
+    const normalizedPhone = normalizePhone(clientDraft.phone)
+    if (normalizedPhone) {
+      const existingClient = clients.find(
+        (item) =>
+          item?.phone &&
+          normalizePhone(item.phone) === normalizedPhone &&
+          item._id !== orderDraft.clientId
+      )
+      if (existingClient) {
+        const fullName = getPersonFullName(existingClient, {
+          fallback: 'Без имени',
+        })
+        const confirmed = window.confirm(
+          `Найден клиент: ${fullName}. Выбрать его?`
+        )
+        if (confirmed) {
+          setOrderDraft((prev) => ({ ...prev, clientId: existingClient._id }))
+        }
+        setClientModal('')
+        return
+      }
+    }
+
     setClientSaving(true)
     try {
       const response = await apiJson('/api/party/clients', {
@@ -184,12 +232,22 @@ export default function OrderModal({
       })
       if (response.data) {
         setOrderDraft((prev) => ({ ...prev, clientId: response.data._id }))
+        if (onClientCreated) {
+          onClientCreated(response.data)
+        }
       }
     } finally {
       setClientSaving(false)
       setClientModal('')
     }
-  }, [clientDraft, requestHeaders, setOrderDraft])
+  }, [
+    clientDraft,
+    clients,
+    orderDraft.clientId,
+    requestHeaders,
+    setOrderDraft,
+    onClientCreated,
+  ])
 
   const handleClientEdit = useCallback(async () => {
     if (!orderDraft.clientId) return
@@ -236,6 +294,30 @@ export default function OrderModal({
     setPartyServices,
   ])
 
+  const handleLocationCreate = useCallback(async () => {
+    setLocationSaving(true)
+    try {
+      const response = await apiJson('/api/party/locations', {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify(locationDraft),
+      })
+      if (response.data) {
+        setOrderDraft((prev) => ({
+          ...prev,
+          locationId: response.data._id,
+        }))
+        if (onLocationCreated) {
+          onLocationCreated(response.data)
+        }
+      }
+    } finally {
+      setLocationSaving(false)
+      setLocationModal(false)
+      setLocationDraft(EMPTY_LOCATION)
+    }
+  }, [onLocationCreated, requestHeaders, locationDraft, setOrderDraft])
+
   // Автосохранение перед открытием транзакции (для нового заказа)
   const handleAutosaveBeforeTransaction = useCallback(async () => {
     if (isNewOrder) {
@@ -260,24 +342,54 @@ export default function OrderModal({
     [handleAutosaveBeforeTransaction]
   )
 
+  // Валидация полей и отправка формы
+  const handleSubmit = useCallback(async () => {
+    setSubmitError('')
+
+    // Проверка: клиент не выбран
+    if (!orderDraft.clientId) {
+      setSubmitError('Укажите клиента')
+      return
+    }
+
+    // Проверка: услуги не выбраны
+    if (!orderDraft.servicesIds || orderDraft.servicesIds.length === 0) {
+      setSubmitError('Укажите услугу')
+      return
+    }
+
+    try {
+      await onSubmit()
+    } catch (err) {
+      setSubmitError(err.message || 'Ошибка при сохранении заказа')
+    }
+  }, [orderDraft.clientId, orderDraft.servicesIds, onSubmit])
+
   // Footer with action buttons
   const footerContent = (
-    <div className="flex w-full items-center justify-end gap-1">
-      <button
-        type="button"
-        className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-        onClick={onClose}
-      >
-        Отмена
-      </button>
-      <button
-        type="button"
-        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-        onClick={onSubmit}
-        disabled={saving}
-      >
-        {saving ? 'Сохранение...' : isEdit ? 'Сохранить' : 'Добавить заказ'}
-      </button>
+    <div className="flex w-full flex-col gap-1">
+      {submitError && (
+        <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-600">
+          {submitError}
+        </div>
+      )}
+      <div className="flex w-full items-center justify-end gap-1">
+        <button
+          type="button"
+          className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+          onClick={onClose}
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={handleSubmit}
+          disabled={saving}
+        >
+          {saving ? 'Сохранение...' : isEdit ? 'Сохранить' : 'Добавить заказ'}
+        </button>
+      </div>
     </div>
   )
 
@@ -340,20 +452,47 @@ export default function OrderModal({
             />
 
             {orderDraft.placeType === 'company_location' ? (
-              <Select
-                label="Точка"
-                value={orderDraft.locationId}
-                onChange={(val) => handleChange('locationId', val)}
-                options={[
-                  { value: '', label: 'Без точки' },
-                  ...locations.map((loc) => ({
-                    value: loc._id,
-                    label: loc.title,
-                  })),
-                ]}
-                fullWidth
-                tone="party"
-              />
+              <InputWrapper label="Точка" tone="party">
+                <div className="relative flex flex-1 items-center">
+                  <select
+                    className="peer w-full cursor-pointer appearance-none bg-transparent px-1 text-black outline-none"
+                    value={orderDraft.locationId || ''}
+                    onChange={(e) => handleChange('locationId', e.target.value)}
+                  >
+                    <option value="">Без точки</option>
+                    {locations.map((loc) => (
+                      <option key={loc._id} value={loc._id}>
+                        {loc.title}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none shrink-0 text-gray-400">
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </div>
+                  <AddIconButton
+                    onClick={() => {
+                      setLocationDraft(EMPTY_LOCATION)
+                      setLocationModal(true)
+                    }}
+                    title="Добавить точку"
+                    size="xs"
+                    tone="party"
+                    className="shrink-0"
+                  />
+                </div>
+              </InputWrapper>
             ) : (
               <PartyAddressPoolPicker
                 value={orderDraft.clientAddress || {}}
@@ -654,6 +793,21 @@ export default function OrderModal({
         onClose={() => setServiceModal(false)}
         onSubmit={handleServiceCreate}
         saving={serviceSaving}
+      />
+
+      <LocationModal
+        open={locationModal}
+        locationDraft={locationDraft}
+        setLocationDraft={setLocationDraft}
+        onClose={() => {
+          setLocationModal(false)
+          setLocationDraft(EMPTY_LOCATION)
+        }}
+        onSubmit={handleLocationCreate}
+        saving={locationSaving}
+        companySettings={companySettings}
+        activeCompanyId={activeCompanyId}
+        onCompanySettingsChange={onCompanySettingsChange}
       />
     </Modal>
   )

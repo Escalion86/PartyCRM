@@ -140,8 +140,8 @@ const DateTimePicker = ({
               ? ['year', 'month', 'day', 'hours', 'minutes']
               : ['year', 'month', 'day']
           }
-          value={value === null ? null : value ? dayjs(value) : undefined}
-          defaultValue={defaultValue ? dayjs(defaultValue) : undefined}
+          value={value ? dayjs(value) : null}
+          defaultValue={defaultValue ? dayjs(defaultValue) : null}
           onChange={(date) => {
             const nextValue = toIsoOrNull(date)
             if (nextValue !== undefined) onChange(nextValue)
@@ -188,8 +188,8 @@ const DateTimePicker = ({
             inputFormat="HH:mm"
             openTo="hours"
             views={['hours', 'minutes']}
-            value={value === null ? null : value ? dayjs(value) : undefined}
-            defaultValue={defaultValue ? dayjs(defaultValue) : undefined}
+            value={value ? dayjs(value) : null}
+            defaultValue={defaultValue ? dayjs(defaultValue) : null}
             slots={{
               openPickerIcon: AccessTimeIcon,
             }}

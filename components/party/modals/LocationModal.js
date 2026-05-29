@@ -1,8 +1,15 @@
 'use client'
 
+import { useMemo } from 'react'
 import Modal from '@components/Modal'
 import Input from '@components/Input'
-import PartyAddressBlock from '@components/party/inputs/PartyAddressBlock'
+import TownPicker from '@components/TownPicker'
+import Textarea from '@components/Textarea'
+import { apiJson } from '@helpers/apiClient'
+import {
+  normalizeAddressPoolString,
+  normalizeTownList,
+} from '@helpers/addressPool'
 
 export default function LocationModal({
   open,
@@ -13,6 +20,9 @@ export default function LocationModal({
   onClose,
   onSubmit,
   isEdit = false,
+  companySettings,
+  activeCompanyId,
+  onCompanySettingsChange,
 }) {
   const handleChange = (field) => (value) => {
     if (field.includes('.')) {
@@ -26,12 +36,37 @@ export default function LocationModal({
     }
   }
 
+  const townOptions = useMemo(
+    () => (Array.isArray(companySettings?.towns) ? companySettings.towns : []),
+    [companySettings?.towns]
+  )
+
+  const handleCreateTown = async (townName) => {
+    const normalizedTown = normalizeAddressPoolString(townName)
+    if (!normalizedTown) return
+
+    const nextTowns = normalizeTownList([...townOptions, normalizedTown])
+
+    try {
+      const response = await apiJson('/api/party/company-settings', {
+        method: 'PATCH',
+        headers: activeCompanyId
+          ? { 'x-partycrm-company-id': activeCompanyId }
+          : undefined,
+        body: JSON.stringify({ towns: nextTowns }),
+      })
+      onCompanySettingsChange?.(response.data ?? {})
+    } catch {
+      // ignore
+    }
+  }
+
   const footerContent = (
     <div className="flex gap-2">
       {isEdit && (
         <button
           type="button"
-          className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+          className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
           onClick={onClose}
         >
           Отмена
@@ -39,7 +74,7 @@ export default function LocationModal({
       )}
       <button
         type="button"
-        className="px-4 py-2 text-sm font-semibold text-white transition rounded cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         onClick={onSubmit}
         disabled={saving}
       >
@@ -66,15 +101,49 @@ export default function LocationModal({
           fullWidth
           tone="party"
         />
-        <PartyAddressBlock
-          value={locationDraft.address || {}}
-          onChange={(field, nextValue) =>
-            handleChange(`address.${field}`)(nextValue)
-          }
-          title="Адрес"
+
+        <TownPicker
+          value={locationDraft.address?.town || ''}
+          onChange={(town) => handleChange('address.town')(town ?? '')}
+          townOptions={townOptions}
+          onCreateTown={handleCreateTown}
           tone="party"
-          styleVariant="plain"
-          commentPlaceholder="Например: вход со двора, домофон 12, парковка у шлагбаума"
+          noMargin
+        />
+
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            label="Улица"
+            value={locationDraft.address?.street || ''}
+            onChange={handleChange('address.street')}
+            fullWidth
+            tone="party"
+          />
+          <Input
+            label="Дом"
+            value={locationDraft.address?.house || ''}
+            onChange={handleChange('address.house')}
+            fullWidth
+            tone="party"
+          />
+        </div>
+
+        <Input
+          label="Зал/комната"
+          value={locationDraft.address?.room || ''}
+          onChange={handleChange('address.room')}
+          fullWidth
+          tone="party"
+        />
+
+        <Textarea
+          label="Комментарий"
+          value={locationDraft.address?.comment || ''}
+          onChange={handleChange('address.comment')}
+          fullWidth
+          tone="party"
+          rows={2}
+          placeholder="Например: вход со двора, домофон 12, парковка у шлагбаума"
         />
       </div>
     </Modal>

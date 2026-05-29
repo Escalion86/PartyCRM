@@ -82,7 +82,21 @@ export async function PATCH(req, { params }) {
   const body = await parseJsonBody(req)
   const payload = normalizeOrderPayload(body)
 
-  if (!payload.client.name && !payload.serviceTitle) {
+  // Валидация клиента и услуги — только если эти поля явно переданы в теле запроса
+  // (при частичном обновлении, например только статуса, пропускаем проверку)
+  const hasClientOrServiceFields =
+    'clientId' in body ||
+    'client' in body ||
+    'servicesIds' in body ||
+    'serviceTitle' in body
+
+  if (
+    hasClientOrServiceFields &&
+    !payload.clientId &&
+    !payload.client.name &&
+    payload.servicesIds.length === 0 &&
+    !payload.serviceTitle
+  ) {
     return partyError(
       400,
       'partycrm_order_client_or_service_required',
@@ -143,7 +157,26 @@ export async function DELETE(req, { params }) {
     return partyError(400, 'partycrm_invalid_order_id', 'Некорректный id')
   }
 
+  const { searchParams } = new URL(req.url)
+  const permanent = searchParams.get('permanent') === 'true'
+
   const PartyOrders = await getPartyOrderModel()
+
+  if (permanent) {
+    // Полное удаление заказа из БД
+    const order = await PartyOrders.findOneAndDelete({
+      _id: id,
+      tenantId: context.tenantId,
+    }).lean()
+
+    if (!order) {
+      return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+    }
+
+    return NextResponse.json({ success: true, data: order })
+  }
+
+  // По умолчанию — отмена заказа (мягкое удаление)
   const order = await PartyOrders.findOneAndUpdate(
     { _id: id, tenantId: context.tenantId },
     { $set: { status: 'canceled' } },

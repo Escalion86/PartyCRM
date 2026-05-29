@@ -29,13 +29,8 @@ const companyMenu = [
   { href: '/company', label: 'Обзор', icon: faHome },
   {
     href: '/company/orders',
-    label: 'Предстоящие заказы',
+    label: 'Заказы',
     icon: faCalendarCheck,
-  },
-  {
-    href: '/company/orders-past',
-    label: 'Прошедшие заказы',
-    icon: faClockRotateLeft,
   },
   { href: '/company/clients', label: 'Клиенты', icon: faAddressBook },
   { href: '/company/finance', label: 'Финансы', icon: faChartLine },
@@ -43,6 +38,19 @@ const companyMenu = [
   { href: '/company/locations', label: 'Точки', icon: faLocationDot },
   { href: '/company/staff', label: 'Сотрудники', icon: faUserGroup },
   { href: '/company/settings', label: 'Настройки компании', icon: faGear },
+]
+
+const ordersSubMenu = [
+  {
+    href: '/company/orders',
+    label: 'Предстоящие',
+    access: COMPANY_SETTINGS_ACCESS.PUBLIC,
+  },
+  {
+    href: '/company/orders-past',
+    label: 'Прошедшие',
+    access: COMPANY_SETTINGS_ACCESS.PUBLIC,
+  },
 ]
 
 const performerMenu = [
@@ -139,6 +147,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [companySettingsExpanded, setCompanySettingsExpanded] = useState(null)
+  const [ordersExpanded, setOrdersExpanded] = useState(null)
   const [currentHash, setCurrentHash] = useState('')
   const [interfaceRoles, setInterfaceRoles] = useState([])
   const [partyUser, setPartyUser] = useState(null)
@@ -155,6 +164,9 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const canUseBoth = canUseCompany && canUsePerformer
   const companySettingsActive = isCompanySettingsPath(pathname || '')
   const companySettingsOpen = companySettingsExpanded ?? companySettingsActive
+  const ordersActive =
+    pathname === '/company/orders' || pathname === '/company/orders-past'
+  const ordersOpen = ordersExpanded ?? ordersActive
   const visibleCompanySettingsMenu = useMemo(
     () => getVisibleCompanySettingsTabs(partyUser?.role),
     [partyUser?.role]
@@ -281,6 +293,10 @@ export default function PartyAppShell({ variant = 'company', children }) {
       if (pathname === '/company/settings') return true
       if (pathname?.startsWith('/company/settings/')) return true
     }
+    if (href === '/company/orders') {
+      if (pathname === '/company/orders' || pathname === '/company/orders-past')
+        return true
+    }
     if (pathname !== path) return false
     if (hash) return currentHash === `#${hash}`
     return !currentHash
@@ -302,37 +318,62 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
         <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
           <div className="grid gap-1">
-            {primaryMenu.map((item) => (
-              <div key={item.href} className="grid gap-1">
-                {isCompanyVariant && item.href === '/company/settings' ? (
-                  <MenuGroupButton
-                    item={item}
-                    active={companySettingsActive}
-                    open={companySettingsOpen}
-                    onClick={() =>
-                      setCompanySettingsExpanded(!companySettingsOpen)
-                    }
-                  />
-                ) : (
-                  <MenuLink item={item} active={isActive(item.href)} />
-                )}
-                {isCompanyVariant &&
-                item.href === '/company/settings' &&
-                companySettingsOpen ? (
-                  <div className="mt-1">
-                    <div className="grid gap-1">
-                      {visibleCompanySettingsMenu.map((subItem) => (
-                        <SubMenuLink
-                          key={subItem.href}
-                          item={subItem}
-                          active={pathname === subItem.href}
-                        />
-                      ))}
+            {primaryMenu.map((item) => {
+              const isOrdersGroup =
+                isCompanyVariant && item.href === '/company/orders'
+              const isSettingsGroup =
+                isCompanyVariant && item.href === '/company/settings'
+
+              return (
+                <div key={item.href} className="grid gap-1">
+                  {isOrdersGroup ? (
+                    <MenuGroupButton
+                      item={item}
+                      active={ordersActive}
+                      open={ordersOpen}
+                      onClick={() => setOrdersExpanded(!ordersOpen)}
+                    />
+                  ) : isSettingsGroup ? (
+                    <MenuGroupButton
+                      item={item}
+                      active={companySettingsActive}
+                      open={companySettingsOpen}
+                      onClick={() =>
+                        setCompanySettingsExpanded(!companySettingsOpen)
+                      }
+                    />
+                  ) : (
+                    <MenuLink item={item} active={isActive(item.href)} />
+                  )}
+                  {isOrdersGroup && ordersOpen ? (
+                    <div className="mt-1">
+                      <div className="grid gap-1">
+                        {ordersSubMenu.map((subItem) => (
+                          <SubMenuLink
+                            key={subItem.href}
+                            item={subItem}
+                            active={pathname === subItem.href}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ) : null}
-              </div>
-            ))}
+                  ) : null}
+                  {isSettingsGroup && companySettingsOpen ? (
+                    <div className="mt-1">
+                      <div className="grid gap-1">
+                        {visibleCompanySettingsMenu.map((subItem) => (
+                          <SubMenuLink
+                            key={subItem.href}
+                            item={subItem}
+                            active={pathname === subItem.href}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
           </div>
 
           <div className="mt-auto grid gap-1 border-t border-white/10 pt-4">
@@ -383,52 +424,81 @@ export default function PartyAppShell({ variant = 'company', children }) {
           {mobileMenuOpen && (
             <div className="border-b border-sky-100 bg-slate-950 px-3 py-3 md:hidden">
               <nav className="grid gap-1">
-                {primaryMenu.map((item) => (
-                  <div key={item.href} className="grid gap-1">
-                    {isCompanyVariant && item.href === '/company/settings' ? (
-                      <MenuGroupButton
-                        item={item}
-                        active={companySettingsActive}
-                        open={companySettingsOpen}
-                        onClick={() =>
-                          setCompanySettingsExpanded(!companySettingsOpen)
-                        }
-                      />
-                    ) : (
-                      <MenuLink
-                        item={item}
-                        active={isActive(item.href)}
-                        onClick={() => {
-                          setCurrentHash(
-                            item.href.includes('#')
-                              ? `#${item.href.split('#')[1]}`
-                              : ''
-                          )
-                          setMobileMenuOpen(false)
-                        }}
-                      />
-                    )}
-                    {isCompanyVariant &&
-                    item.href === '/company/settings' &&
-                    companySettingsOpen ? (
-                      <div className="mt-1">
-                        <div className="grid gap-1">
-                          {visibleCompanySettingsMenu.map((subItem) => (
-                            <SubMenuLink
-                              key={subItem.href}
-                              item={subItem}
-                              active={pathname === subItem.href}
-                              onClick={() => {
-                                setCurrentHash('')
-                                setMobileMenuOpen(false)
-                              }}
-                            />
-                          ))}
+                {primaryMenu.map((item) => {
+                  const isOrdersGroup =
+                    isCompanyVariant && item.href === '/company/orders'
+                  const isSettingsGroup =
+                    isCompanyVariant && item.href === '/company/settings'
+
+                  return (
+                    <div key={item.href} className="grid gap-1">
+                      {isOrdersGroup ? (
+                        <MenuGroupButton
+                          item={item}
+                          active={ordersActive}
+                          open={ordersOpen}
+                          onClick={() => setOrdersExpanded(!ordersOpen)}
+                        />
+                      ) : isSettingsGroup ? (
+                        <MenuGroupButton
+                          item={item}
+                          active={companySettingsActive}
+                          open={companySettingsOpen}
+                          onClick={() =>
+                            setCompanySettingsExpanded(!companySettingsOpen)
+                          }
+                        />
+                      ) : (
+                        <MenuLink
+                          item={item}
+                          active={isActive(item.href)}
+                          onClick={() => {
+                            setCurrentHash(
+                              item.href.includes('#')
+                                ? `#${item.href.split('#')[1]}`
+                                : ''
+                            )
+                            setMobileMenuOpen(false)
+                          }}
+                        />
+                      )}
+                      {isOrdersGroup && ordersOpen ? (
+                        <div className="mt-1">
+                          <div className="grid gap-1">
+                            {ordersSubMenu.map((subItem) => (
+                              <SubMenuLink
+                                key={subItem.href}
+                                item={subItem}
+                                active={pathname === subItem.href}
+                                onClick={() => {
+                                  setCurrentHash('')
+                                  setMobileMenuOpen(false)
+                                }}
+                              />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
+                      ) : null}
+                      {isSettingsGroup && companySettingsOpen ? (
+                        <div className="mt-1">
+                          <div className="grid gap-1">
+                            {visibleCompanySettingsMenu.map((subItem) => (
+                              <SubMenuLink
+                                key={subItem.href}
+                                item={subItem}
+                                active={pathname === subItem.href}
+                                onClick={() => {
+                                  setCurrentHash('')
+                                  setMobileMenuOpen(false)
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  )
+                })}
                 {visibleSecondaryMenu.map((item) => (
                   <MenuLink
                     key={item.href}
