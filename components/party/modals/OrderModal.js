@@ -297,6 +297,7 @@ export default function OrderModal({
             <ServiceMultiSelect
               value={orderDraft.servicesIds || []}
               onChange={(val) => handleChange('servicesIds', val)}
+              services={services}
               atom={partyServicesAtom}
               onCreate={() => setServiceModal(true)}
               required

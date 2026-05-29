@@ -9,15 +9,18 @@ import PartyUpcomingEventsModal, {
 import ClientsList from '@components/party/lists/ClientsList'
 import StaffList from '@components/party/lists/StaffList'
 import LocationsList from '@components/party/lists/LocationsList'
+import ServicesList from '@components/party/lists/ServicesList'
 import OrderModal from '@components/party/modals/OrderModal'
 import { ClientFormModal } from '@components/party/modals/ClientModal'
 import StaffModal from '@components/party/modals/StaffModal'
 import LocationModal from '@components/party/modals/LocationModal'
+import { ServiceCreateModal } from '@components/party/modals/ServiceModal'
 import {
   EMPTY_ORDER,
   EMPTY_STAFF,
   EMPTY_LOCATION,
   EMPTY_PARTY_CLIENT,
+  EMPTY_PARTY_SERVICE,
 } from '@helpers/partyHelpers'
 import { formatMoney } from '@helpers/formatMoney'
 
@@ -189,6 +192,9 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [locationDraft, setLocationDraft] = useState(EMPTY_LOCATION)
   const [editingLocationId, setEditingLocationId] = useState('')
   const [editingClientId, setEditingClientId] = useState('')
+  const [serviceDraft, setServiceDraft] = useState(EMPTY_PARTY_SERVICE)
+  const [editingServiceId, setEditingServiceId] = useState('')
+  const [serviceSaving, setServiceSaving] = useState(false)
   const [editingOrderId, setEditingOrderId] = useState('')
   const [editingStaffId, setEditingStaffId] = useState('')
   const [linkingStaffId, setLinkingStaffId] = useState('')
@@ -708,6 +714,74 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     }
   }, [locationDraft, editingLocationId, activeCompanyId])
 
+  // Service actions
+  const addService = useCallback(async () => {
+    setServiceSaving(true)
+    try {
+      const response = await apiJson(
+        '/api/party/services',
+        buildCompanyRequestOptions(activeCompanyId, {
+          method: 'POST',
+          body: JSON.stringify(serviceDraft),
+        })
+      )
+      if (response.data) {
+        setServices((prev) => [...prev, response.data])
+        setActiveModal('')
+        setServiceDraft(EMPTY_PARTY_SERVICE)
+      }
+    } finally {
+      setServiceSaving(false)
+    }
+  }, [serviceDraft, activeCompanyId])
+
+  const editService = useCallback(async () => {
+    if (!editingServiceId) return
+    setServiceSaving(true)
+    try {
+      const response = await apiJson(
+        `/api/party/services/${editingServiceId}`,
+        buildCompanyRequestOptions(activeCompanyId, {
+          method: 'PATCH',
+          body: JSON.stringify(serviceDraft),
+        })
+      )
+      if (response.data) {
+        setServices((prev) =>
+          prev.map((s) =>
+            String(s._id) === editingServiceId ? response.data : s
+          )
+        )
+        setActiveModal('')
+        setEditingServiceId('')
+        setServiceDraft(EMPTY_PARTY_SERVICE)
+      }
+    } finally {
+      setServiceSaving(false)
+    }
+  }, [serviceDraft, editingServiceId, activeCompanyId])
+
+  const deleteService = useCallback(
+    async (serviceId) => {
+      if (!window.confirm('Вы уверены, что хотите удалить эту услугу?')) return
+      setSaving(true)
+      try {
+        await apiJson(
+          `/api/party/services/${serviceId}`,
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'DELETE',
+          })
+        )
+        setServices((prev) =>
+          prev.filter((s) => String(s._id) !== String(serviceId))
+        )
+      } finally {
+        setSaving(false)
+      }
+    },
+    [activeCompanyId]
+  )
+
   if (accessStatus === 'loading') {
     return (
       <section className="min-h-screen bg-white">
@@ -1008,6 +1082,33 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             />
           </>
         )}
+
+        {section === 'services' && (
+          <>
+            <div className="mb-6 flex justify-end">
+              <button
+                type="button"
+                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                onClick={() => {
+                  setServiceDraft(EMPTY_PARTY_SERVICE)
+                  setActiveModal('service')
+                }}
+              >
+                Новая услуга
+              </button>
+            </div>
+            <ServicesList
+              services={services}
+              canManage={canManage}
+              onEdit={(service) => {
+                setServiceDraft(service)
+                setEditingServiceId(service._id)
+                setActiveModal('service-edit')
+              }}
+              onDelete={deleteService}
+            />
+          </>
+        )}
       </main>
 
       {/* Modals */}
@@ -1142,6 +1243,25 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             setEditingClientId('')
           }}
           onSubmit={activeModal === 'client-edit' ? editClient : addClient}
+        />
+      )}
+
+      {(activeModal === 'service' || activeModal === 'service-edit') && (
+        <ServiceCreateModal
+          open={true}
+          title={
+            activeModal === 'service-edit'
+              ? 'Редактировать услугу'
+              : 'Новая услуга'
+          }
+          serviceDraft={serviceDraft}
+          setServiceDraft={setServiceDraft}
+          saving={serviceSaving}
+          onClose={() => {
+            setActiveModal('')
+            setEditingServiceId('')
+          }}
+          onSubmit={activeModal === 'service-edit' ? editService : addService}
         />
       )}
     </section>

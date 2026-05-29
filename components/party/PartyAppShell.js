@@ -27,10 +27,19 @@ import { useEffect, useMemo, useState } from 'react'
 
 const companyMenu = [
   { href: '/company', label: 'Обзор', icon: faHome },
-  { href: '/company/orders', label: 'Предстоящие заказы', icon: faCalendarCheck },
-  { href: '/company/orders-past', label: 'Прошедшие заказы', icon: faClockRotateLeft },
+  {
+    href: '/company/orders',
+    label: 'Предстоящие заказы',
+    icon: faCalendarCheck,
+  },
+  {
+    href: '/company/orders-past',
+    label: 'Прошедшие заказы',
+    icon: faClockRotateLeft,
+  },
   { href: '/company/clients', label: 'Клиенты', icon: faAddressBook },
   { href: '/company/finance', label: 'Финансы', icon: faChartLine },
+  { href: '/company/services', label: 'Услуги', icon: faStar },
   { href: '/company/locations', label: 'Точки', icon: faLocationDot },
   { href: '/company/staff', label: 'Сотрудники', icon: faUserGroup },
   { href: '/company/settings', label: 'Настройки компании', icon: faGear },
@@ -82,7 +91,7 @@ const MenuGroupButton = ({ item, active, open, onClick }) => (
     )}
   >
     <FontAwesomeIcon icon={item.icon} className="h-4 w-4 min-w-4" />
-    <span className="flex-1 whitespace-nowrap text-left">{item.label}</span>
+    <span className="flex-1 text-left whitespace-nowrap">{item.label}</span>
     <FontAwesomeIcon
       icon={faAngleDown}
       className={cn('h-3.5 w-3.5 min-w-3.5 transition-transform', {
@@ -113,10 +122,7 @@ const SubMenuLink = ({ item, active, onClick }) => (
       {item.access !== COMPANY_SETTINGS_ACCESS.PUBLIC ? (
         <FontAwesomeIcon
           icon={faStar}
-          className={cn(
-            'h-3 w-3 min-w-3',
-            accessMarkerClassName[item.access]
-          )}
+          className={cn('h-3 w-3 min-w-3', accessMarkerClassName[item.access])}
           title={
             item.access === COMPANY_SETTINGS_ACCESS.DEV
               ? 'Только для dev'
@@ -148,8 +154,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const canUsePerformer = interfaceRoles.includes('performer')
   const canUseBoth = canUseCompany && canUsePerformer
   const companySettingsActive = isCompanySettingsPath(pathname || '')
-  const companySettingsOpen =
-    companySettingsExpanded ?? companySettingsActive
+  const companySettingsOpen = companySettingsExpanded ?? companySettingsActive
   const visibleCompanySettingsMenu = useMemo(
     () => getVisibleCompanySettingsTabs(partyUser?.role),
     [partyUser?.role]
@@ -167,7 +172,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
             : []
         : effectiveVariant === 'company-settings'
           ? companyMenu
-        : companyMenu
+          : companyMenu
   const visibleSecondaryMenu = secondaryMenu.filter((item) => {
     if (item.always) return true
     if (!profileLoaded || !canUseBoth) return false
@@ -209,8 +214,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
         fetch('/api/party/auth/me', { cache: 'no-store' }).then((response) =>
           response.ok ? response.json() : null
         ),
-        fetch('/api/party/memberships', { cache: 'no-store' }).then((response) =>
-          response.ok ? response.json() : null
+        fetch('/api/party/memberships', { cache: 'no-store' }).then(
+          (response) => (response.ok ? response.json() : null)
         ),
       ])
         .then(([profilePayload, membershipsPayload]) => {
@@ -241,7 +246,10 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   useEffect(() => {
     if (!profileLoaded) return
-    if (effectiveVariant === 'settings' || effectiveVariant === 'company-settings')
+    if (
+      effectiveVariant === 'settings' ||
+      effectiveVariant === 'company-settings'
+    )
       return
     if (effectiveVariant === 'performer' && canUseCompany && !canUsePerformer) {
       router.replace('/company')
@@ -301,7 +309,9 @@ export default function PartyAppShell({ variant = 'company', children }) {
                     item={item}
                     active={companySettingsActive}
                     open={companySettingsOpen}
-                    onClick={() => setCompanySettingsExpanded(!companySettingsOpen)}
+                    onClick={() =>
+                      setCompanySettingsExpanded(!companySettingsOpen)
+                    }
                   />
                 ) : (
                   <MenuLink item={item} active={isActive(item.href)} />

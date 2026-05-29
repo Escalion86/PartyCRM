@@ -8,6 +8,7 @@ const sectionTitles = {
   'orders-past': 'Прошедшие заказы',
   clients: 'Клиенты',
   finance: 'Финансы',
+  services: 'Услуги',
   locations: 'Точки',
   staff: 'Сотрудники',
 }
