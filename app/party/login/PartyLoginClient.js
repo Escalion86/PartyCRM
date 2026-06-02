@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
+import { normalizeAuthPhoneForCall } from './authPhone.mjs'
 
 const normalizePhone = (value) => {
   const digits = String(value || '').replace(/[^\d]/g, '')
@@ -167,7 +168,7 @@ export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
         return
       }
       setVerifyCallId(payload.data.id)
-      setVerifyAuthPhone(payload.data.auth_phone || '')
+      setVerifyAuthPhone(normalizeAuthPhoneForCall(payload.data.auth_phone))
       setVerifyStep('waiting')
       startPolling(payload.data.id, normalizedPhone)
     } catch (err) {
