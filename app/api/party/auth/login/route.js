@@ -33,8 +33,10 @@ export async function POST(req) {
     )
   }
 
-  user.lastLoginAt = new Date()
-  await user.save()
+  await PartyUsers.updateOne(
+    { _id: user._id },
+    { $set: { lastLoginAt: new Date() } }
+  )
 
   const response = NextResponse.json({
     success: true,
