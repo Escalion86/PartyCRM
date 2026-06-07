@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  filterCompanySettingsPatchByTariffAccess,
   mergeCompanySettingsPatch,
   normalizeCompanySettings,
 } from './companySettings.js'
@@ -27,4 +28,29 @@ test('mergeCompanySettingsPatch keeps previous notifications object', () => {
 
   assert.equal(next.timeZone, 'Europe/Moscow')
   assert.equal(next.notifications.pushEnabled, true)
+})
+
+test('filterCompanySettingsPatchByTariffAccess removes gated settings', () => {
+  assert.deepEqual(
+    filterCompanySettingsPatchByTariffAccess(
+      {
+        documents: { requisites: { artistInn: '123' } },
+        integrations: {
+          novofonEnabled: true,
+          aitunnelKey: 'secret',
+          avitoEnabled: true,
+        },
+      },
+      {
+        allowDocuments: false,
+        allowTelephony: false,
+        allowAi: false,
+      }
+    ),
+    {
+      integrations: {
+        avitoEnabled: true,
+      },
+    }
+  )
 })

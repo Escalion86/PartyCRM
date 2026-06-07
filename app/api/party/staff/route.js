@@ -6,6 +6,8 @@ import {
   partyError,
 } from '@server/partyApi'
 import { normalizePartyPhone } from '@server/partyAuth'
+import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
+import { canCreatePartyStaffByTariff } from '@helpers/partyTariffAccess'
 
 const normalizePhone = (phone) => {
   if (!phone) return ''
@@ -147,6 +149,24 @@ export async function POST(req) {
   }
 
   const PartyStaff = await getPartyStaffModel()
+  const currentStaffCount = await PartyStaff.countDocuments({
+    tenantId: context.tenantId,
+    status: { $ne: 'archived' },
+  })
+  const { access } = await getPartyCompanyTariffAccessState(context.company)
+  const limitState = canCreatePartyStaffByTariff({
+    access,
+    currentStaffCount,
+  })
+  if (!limitState.ok) {
+    return partyError(
+      403,
+      limitState.code,
+      limitState.message,
+      'permission'
+    )
+  }
+
   const staff = await PartyStaff.create({
     ...payload,
     tenantId: context.tenantId,

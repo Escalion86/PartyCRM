@@ -19,16 +19,28 @@ const CompanyIntegrationCard = ({
   description,
   children,
   note = '',
+  locked = false,
 }) => (
-  <div className="rounded-2xl border border-sky-100 bg-white p-5">
+  <div
+    className={`rounded-2xl border p-5 ${
+      locked ? 'border-amber-200 bg-amber-50' : 'border-sky-100 bg-white'
+    }`}
+  >
     <div className="text-base font-semibold">{title}</div>
     <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+    {locked ? (
+      <div className="mt-3 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs leading-5 text-amber-900">
+        Недоступно на текущем тарифе компании.
+      </div>
+    ) : null}
     {note ? (
       <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
         {note}
       </div>
     ) : null}
-    <div className="mt-4 grid gap-3">{children}</div>
+    <div className={locked ? 'pointer-events-none mt-4 grid gap-3 opacity-50' : 'mt-4 grid gap-3'}>
+      {children}
+    </div>
   </div>
 )
 
@@ -56,7 +68,7 @@ const Field = ({
 )
 
 export default function CompanySettingsIntegrationsContent({ activeCompanyId }) {
-  const { settings, loading, saving, error, savePatch } =
+  const { settings, access, loading, saving, error, savePatch } =
     useCompanySettings(activeCompanyId)
   const [status, setStatus] = useState(null)
   const [statusError, setStatusError] = useState('')
@@ -248,6 +260,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       <CompanyIntegrationCard
         title="Novofon"
         description="Секрет webhook и ключ телефонии компании."
+        locked={access && !access.allowTelephony}
       >
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <input
@@ -284,6 +297,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       <CompanyIntegrationCard
         title="AITunnel / AI"
         description="Ключ и модели AI на уровне компании."
+        locked={access && !access.allowAi}
       >
         <Field
           label="AITunnel key"

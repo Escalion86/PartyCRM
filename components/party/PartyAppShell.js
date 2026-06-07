@@ -20,6 +20,11 @@ import {
   COMPANY_SETTINGS_ACCESS,
   getVisibleCompanySettingsTabs,
 } from '../../app/company/settings/companySettingsTabs'
+import {
+  PARTY_SITE_SETTINGS_TABS,
+  canAccessPartySiteSettings,
+  isPartySiteSettingsPath,
+} from '../../app/party/site-settings/siteSettingsNav'
 import cn from 'classnames'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
@@ -147,6 +152,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [companySettingsExpanded, setCompanySettingsExpanded] = useState(null)
+  const [siteSettingsExpanded, setSiteSettingsExpanded] = useState(null)
   const [ordersExpanded, setOrdersExpanded] = useState(null)
   const [currentHash, setCurrentHash] = useState('')
   const [interfaceRoles, setInterfaceRoles] = useState([])
@@ -164,6 +170,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const canUseBoth = canUseCompany && canUsePerformer
   const companySettingsActive = isCompanySettingsPath(pathname || '')
   const companySettingsOpen = companySettingsExpanded ?? companySettingsActive
+  const siteSettingsActive = isPartySiteSettingsPath(pathname || '')
+  const siteSettingsOpen = siteSettingsExpanded ?? siteSettingsActive
   const ordersActive =
     pathname === '/company/orders' || pathname === '/company/orders-past'
   const ordersOpen = ordersExpanded ?? ordersActive
@@ -171,6 +179,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
     () => getVisibleCompanySettingsTabs(partyUser?.role),
     [partyUser?.role]
   )
+  const canUseSiteSettings = canAccessPartySiteSettings(partyUser?.role)
   const isCompanyVariant =
     effectiveVariant === 'company' || effectiveVariant === 'company-settings'
   const primaryMenu =
@@ -199,6 +208,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
     }
 
     if (effectiveVariant === 'settings') return 'Настройки'
+    if (siteSettingsActive) return 'Настройка сайта'
     if (effectiveVariant === 'company-settings') return 'Настройки компании'
 
     const activeCompanyId =
@@ -384,6 +394,34 @@ export default function PartyAppShell({ variant = 'company', children }) {
                 active={isActive(item.href)}
               />
             ))}
+            {canUseSiteSettings ? (
+              <div className="grid gap-1">
+                <MenuGroupButton
+                  item={{
+                    href: '/party/site-settings/tariffs',
+                    label: 'Настройка сайта',
+                    icon: faGear,
+                  }}
+                  active={siteSettingsActive}
+                  open={siteSettingsOpen}
+                  onClick={() => setSiteSettingsExpanded(!siteSettingsOpen)}
+                />
+                {siteSettingsOpen ? (
+                  <div className="grid gap-1">
+                    {PARTY_SITE_SETTINGS_TABS.map((subItem) => (
+                      <SubMenuLink
+                        key={subItem.href}
+                        item={{
+                          ...subItem,
+                          access: COMPANY_SETTINGS_ACCESS.DEV,
+                        }}
+                        active={pathname === subItem.href}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={logout}
@@ -514,6 +552,38 @@ export default function PartyAppShell({ variant = 'company', children }) {
                     }}
                   />
                 ))}
+                {canUseSiteSettings ? (
+                  <div className="grid gap-1">
+                    <MenuGroupButton
+                      item={{
+                        href: '/party/site-settings/tariffs',
+                        label: 'Настройка сайта',
+                        icon: faGear,
+                      }}
+                      active={siteSettingsActive}
+                      open={siteSettingsOpen}
+                      onClick={() => setSiteSettingsExpanded(!siteSettingsOpen)}
+                    />
+                    {siteSettingsOpen ? (
+                      <div className="grid gap-1">
+                        {PARTY_SITE_SETTINGS_TABS.map((subItem) => (
+                          <SubMenuLink
+                            key={subItem.href}
+                            item={{
+                              ...subItem,
+                              access: COMPANY_SETTINGS_ACCESS.DEV,
+                            }}
+                            active={pathname === subItem.href}
+                            onClick={() => {
+                              setCurrentHash('')
+                              setMobileMenuOpen(false)
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={logout}

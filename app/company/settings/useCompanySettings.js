@@ -5,6 +5,7 @@ import { apiJson } from '@helpers/apiClient'
 
 export default function useCompanySettings(activeCompanyId) {
   const [settings, setSettings] = useState(null)
+  const [access, setAccess] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -36,7 +37,8 @@ export default function useCompanySettings(activeCompanyId) {
         '/api/party/company-settings',
         buildRequestOptions({ cache: 'no-store' })
       )
-      setSettings(response.data ?? {})
+      setSettings(response.data?.settings ?? response.data ?? {})
+      setAccess(response.data?.access ?? null)
     } catch (loadError) {
       setError(loadError.message || 'Не удалось загрузить настройки компании')
     } finally {
@@ -58,8 +60,9 @@ export default function useCompanySettings(activeCompanyId) {
             body: JSON.stringify(patch),
           })
         )
-        setSettings(response.data ?? {})
-        return response.data ?? {}
+        setSettings(response.data?.settings ?? response.data ?? {})
+        setAccess(response.data?.access ?? null)
+        return response.data?.settings ?? response.data ?? {}
       } catch (saveError) {
         setError(saveError.message || 'Не удалось сохранить настройки компании')
         throw saveError
@@ -74,5 +77,14 @@ export default function useCompanySettings(activeCompanyId) {
     reload()
   }, [reload])
 
-  return { settings, setSettings, loading, saving, error, reload, savePatch }
+  return {
+    settings,
+    setSettings,
+    access,
+    loading,
+    saving,
+    error,
+    reload,
+    savePatch,
+  }
 }

@@ -7,6 +7,8 @@ import { getPartyTariffCheckoutRequest } from '@helpers/partyBillingCheckout'
 import {
   getPartyBillingProviderOptions,
   getPartyPaymentStatusLabel,
+  getPartyTariffAccessRows,
+  getPartyTariffSelectOptions,
   getPartyTariffActionState,
 } from '@helpers/partyBillingViewModel'
 
@@ -94,6 +96,15 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
     return tariffs.find((item) => String(item?._id) === String(userData.tariffId))
   }, [tariffs, userData?.tariffId])
 
+  const tariffSelectOptions = useMemo(
+    () => getPartyTariffSelectOptions(tariffs),
+    [tariffs]
+  )
+  const tariffAccessRows = useMemo(
+    () => getPartyTariffAccessRows(userData?.access),
+    [userData?.access]
+  )
+
   const handleTariffAction = useCallback(
     async (tariff) => {
       const request = getPartyTariffCheckoutRequest({
@@ -162,6 +173,33 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
                   {activeTariff?.title || 'Не выбран'}
                 </span>
               </div>
+              <label className="grid max-w-xl gap-2 pt-2">
+                <span className="text-sm font-semibold text-slate-700">
+                  Тариф компании
+                </span>
+                <select
+                  value={userData?.tariffId || ''}
+                  disabled={Boolean(payingTariffId)}
+                  onChange={(event) => {
+                    const tariff = tariffs.find(
+                      (item) => String(item._id) === event.target.value
+                    )
+                    if (tariff) handleTariffAction(tariff)
+                  }}
+                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition-colors focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <option value="">Не выбран</option>
+                  {tariffSelectOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-slate-400">
+                  Бесплатный тариф подключается сразу, платный открывает оплату
+                  выбранным способом.
+                </span>
+              </label>
               {userData?.tariffActiveUntil && (
                 <div>Активен до {formatDate(userData.tariffActiveUntil)}</div>
               )}
@@ -170,6 +208,24 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
                 <span className="font-semibold text-slate-900">
                   {formatMoney(userData?.balance ?? 0)}
                 </span>
+              </div>
+              <div className="mt-2 grid gap-2 rounded-xl bg-slate-50 p-3">
+                <div className="text-sm font-semibold text-slate-900">
+                  Доступ по тарифу
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {tariffAccessRows.map((row) => (
+                    <div
+                      key={row.label}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs"
+                    >
+                      <span className="text-slate-500">{row.label}</span>
+                      <span className="font-semibold text-slate-800">
+                        {row.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>

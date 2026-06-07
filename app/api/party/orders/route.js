@@ -16,6 +16,8 @@ import {
   findPartyOrderConflicts,
   hasPartyOrderConflicts,
 } from '@server/partyOrderConflicts'
+import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
+import { canCreatePartyOrderByTariff } from '@helpers/partyTariffAccess'
 
 const parseDate = (value) => {
   if (!value) return null
@@ -38,6 +40,16 @@ const parseOptionalDate = (value) => {
   if (!value) return null
   const date = new Date(value)
   return Number.isNaN(date.getTime()) ? null : date
+}
+
+const getMonthRange = (value) => {
+  const date = value instanceof Date && !Number.isNaN(value.getTime())
+    ? value
+    : new Date()
+  return {
+    monthStart: new Date(date.getFullYear(), date.getMonth(), 1),
+    nextMonthStart: new Date(date.getFullYear(), date.getMonth() + 1, 1),
+  }
 }
 
 const normalizePhone = (phone) => {
@@ -378,6 +390,26 @@ export async function POST(req) {
   })
 
   const PartyOrders = await getPartyOrderModel()
+  const { monthStart, nextMonthStart } = getMonthRange(payload.eventDate)
+  const currentMonthOrdersCount = await PartyOrders.countDocuments({
+    tenantId: context.tenantId,
+    status: { $ne: 'canceled' },
+    eventDate: { $gte: monthStart, $lt: nextMonthStart },
+  })
+  const { access } = await getPartyCompanyTariffAccessState(context.company)
+  const limitState = canCreatePartyOrderByTariff({
+    access,
+    currentMonthOrdersCount,
+  })
+  if (!limitState.ok) {
+    return partyError(
+      403,
+      limitState.code,
+      limitState.message,
+      'permission'
+    )
+  }
+
   const conflicts = await findPartyOrderConflicts({
     PartyOrders,
     tenantId: context.tenantId,

@@ -9,12 +9,19 @@ const emptyForm = {
   title: '',
   subtitle: '',
   price: 0,
+  eventsPerMonth: 0,
+  staffLimit: 0,
+  allowCalendarSync: false,
+  allowStatistics: false,
+  allowDocuments: false,
+  allowTelephony: false,
+  allowAi: false,
   description: '',
   features: [],
   hidden: false,
 }
 
-export default function PartyTariffsAdmin() {
+export default function PartyTariffsAdmin({ embedded = false }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [tariffs, setTariffs] = useState([])
@@ -32,12 +39,12 @@ export default function PartyTariffsAdmin() {
     try {
       const meRes = await apiJson('/api/party/auth/me')
       if (!meRes?.success || !meRes?.data?.user) {
-        router.push('/party/login?callbackUrl=/party/tariffs')
+        router.push('/party/login?callbackUrl=/party/site-settings/tariffs')
         return
       }
       const role = meRes.data.user.role
-      if (role !== 'admin' && role !== 'support') {
-        setError('Доступ только для администраторов')
+      if (role !== 'dev') {
+        setError('Доступ только для dev')
         setLoading(false)
         return
       }
@@ -71,6 +78,8 @@ export default function PartyTariffsAdmin() {
       const body = {
         ...form,
         price: Number(form.price) || 0,
+        eventsPerMonth: Number(form.eventsPerMonth) || 0,
+        staffLimit: Number(form.staffLimit) || 0,
         features: form.features.filter(Boolean),
       }
 
@@ -104,6 +113,13 @@ export default function PartyTariffsAdmin() {
       title: tariff.title || '',
       subtitle: tariff.subtitle || '',
       price: tariff.price ?? 0,
+      eventsPerMonth: tariff.eventsPerMonth ?? 0,
+      staffLimit: tariff.staffLimit ?? 0,
+      allowCalendarSync: tariff.allowCalendarSync || false,
+      allowStatistics: tariff.allowStatistics || false,
+      allowDocuments: tariff.allowDocuments || false,
+      allowTelephony: tariff.allowTelephony || false,
+      allowAi: tariff.allowAi || false,
       description: tariff.description || '',
       features: tariff.features || [],
       hidden: tariff.hidden || false,
@@ -151,7 +167,7 @@ export default function PartyTariffsAdmin() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#eaf6ff]">
+      <div className="flex min-h-40 items-center justify-center bg-[#eaf6ff]">
         <p className="text-gray-500 text-sm">Загрузка...</p>
       </div>
     )
@@ -159,41 +175,44 @@ export default function PartyTariffsAdmin() {
 
   if (error && !user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-[#eaf6ff]">
+      <div className="flex min-h-40 items-center justify-center bg-[#eaf6ff]">
         <p className="text-red-500 text-sm">{error}</p>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[#eaf6ff] text-slate-950">
-      {/* Header */}
-      <header className="bg-white border-b border-sky-100">
-        <div className="flex items-center justify-between max-w-6xl px-5 py-4 mx-auto">
-          <div className="flex items-center gap-4">
-            <span className="text-lg font-semibold text-sky-700">PartyCRM</span>
-            <nav className="flex items-center gap-3 text-sm">
-              <Link
-                href="/company"
-                className="text-gray-500 hover:text-sky-700 transition-colors"
-              >
-                Кабинет
-              </Link>
-              <span className="text-gray-300">/</span>
-              <a
-                href="/party/settings"
-                className="text-gray-500 hover:text-sky-700 transition-colors"
-              >
-                Настройки
-              </a>
-              <span className="text-gray-300">/</span>
-              <span className="text-sky-700 font-semibold">Тарифы</span>
-            </nav>
+    <div className="bg-[#eaf6ff] text-slate-950">
+      {!embedded ? (
+        <header className="bg-white border-b border-sky-100">
+          <div className="flex items-center justify-between max-w-6xl px-5 py-4 mx-auto">
+            <div className="flex items-center gap-4">
+              <span className="text-lg font-semibold text-sky-700">
+                PartyCRM
+              </span>
+              <nav className="flex items-center gap-3 text-sm">
+                <Link
+                  href="/company"
+                  className="text-gray-500 hover:text-sky-700 transition-colors"
+                >
+                  Кабинет
+                </Link>
+                <span className="text-gray-300">/</span>
+                <Link
+                  href="/party/site-settings/tariffs"
+                  className="text-gray-500 hover:text-sky-700 transition-colors"
+                >
+                  Настройка сайта
+                </Link>
+                <span className="text-gray-300">/</span>
+                <span className="text-sky-700 font-semibold">Тарифы</span>
+              </nav>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      ) : null}
 
-      <div className="max-w-6xl px-5 py-8 mx-auto">
+      <div className={embedded ? '' : 'max-w-6xl px-5 py-8 mx-auto'}>
         <h1 className="text-2xl font-semibold font-futuraPT text-black">
           Управление тарифами
         </h1>
@@ -259,6 +278,36 @@ export default function PartyTariffsAdmin() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
+                Заказов в месяц
+              </label>
+              <input
+                type="number"
+                value={form.eventsPerMonth}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, eventsPerMonth: e.target.value }))
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                placeholder="0 - без ограничений"
+                min={0}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Сотрудников
+              </label>
+              <input
+                type="number"
+                value={form.staffLimit}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, staffLimit: e.target.value }))
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
+                placeholder="0 - без ограничений"
+                min={0}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
                 Скрытый
               </label>
               <label className="flex items-center gap-2 mt-2 cursor-pointer">
@@ -274,6 +323,35 @@ export default function PartyTariffsAdmin() {
                   Не показывать на лендинге и пользователям
                 </span>
               </label>
+            </div>
+            <div className="sm:col-span-2">
+              <div className="text-sm font-medium text-gray-700 mb-2">
+                Доступные опции тарифа
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  ['allowDocuments', 'Документы'],
+                  ['allowStatistics', 'Статистика'],
+                  ['allowCalendarSync', 'Google Calendar'],
+                  ['allowTelephony', 'Телефония'],
+                  ['allowAi', 'AI'],
+                ].map(([field, label]) => (
+                  <label
+                    key={field}
+                    className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={form[field]}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, [field]: e.target.checked }))
+                      }
+                      className="rounded border-gray-300 text-sky-600 focus:ring-sky-400"
+                    />
+                    <span className="text-gray-700">{label}</span>
+                  </label>
+                ))}
+              </div>
             </div>
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -391,6 +469,20 @@ export default function PartyTariffsAdmin() {
                         ? `${Number(tariff.price).toLocaleString('ru-RU')} ₽/мес`
                         : 'Бесплатно'}
                     </p>
+                    <div className="mt-2 grid gap-1 text-xs text-gray-500 sm:grid-cols-2">
+                      <span>
+                        Заказы:{' '}
+                        {Number(tariff.eventsPerMonth ?? 0) > 0
+                          ? tariff.eventsPerMonth
+                          : 'без ограничений'}
+                      </span>
+                      <span>
+                        Сотрудники:{' '}
+                        {Number(tariff.staffLimit ?? 0) > 0
+                          ? tariff.staffLimit
+                          : 'без ограничений'}
+                      </span>
+                    </div>
                     {tariff.description && (
                       <p className="mt-1 text-sm text-gray-600">
                         {tariff.description}

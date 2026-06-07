@@ -1,4 +1,4 @@
-﻿import PartyTariffsAdmin from './PartyTariffsAdmin'
+import { redirect } from 'next/navigation'
 
 export const metadata = {
   title: 'PartyCRM - управление тарифами',
@@ -10,5 +10,5 @@ export const metadata = {
 }
 
 export default function PartyTariffsPage() {
-  return <PartyTariffsAdmin />
+  redirect('/party/site-settings/tariffs')
 }

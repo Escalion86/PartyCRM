@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { getPartySessionUser } from "@server/partyAuth"
 import { getPartyTariffModel } from "@server/partyModels"
 
-const canManage = (user) => ["support", "admin"].includes(user?.role)
+const canManage = (user) => user?.role === "dev"
 
 export const GET = async () => {
   const user = await getPartySessionUser()

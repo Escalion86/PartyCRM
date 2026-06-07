@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { getPartyRequestContext } from "@server/partyApi"
+import getPartyCompanyTariffAccessState from "@server/getPartyCompanyTariffAccess"
 
 export const GET = async (req) => {
   const { context, error } = await getPartyRequestContext({
@@ -8,6 +9,7 @@ export const GET = async (req) => {
   })
   if (error) return error
   const company = context.company
+  const { serializedAccess } = await getPartyCompanyTariffAccessState(company)
 
   return NextResponse.json(
     {
@@ -22,6 +24,7 @@ export const GET = async (req) => {
         trialActivatedAt: company?.trialActivatedAt ?? null,
         trialEndsAt: company?.trialEndsAt ?? null,
         trialUsed: company?.trialUsed ?? false,
+        access: serializedAccess,
       },
     },
     { status: 200 }

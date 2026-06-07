@@ -100,3 +100,47 @@ export const mergeCompanySettingsPatch = (current, patch) =>
       ...normalizeObjectField(patch?.integrations),
     },
   })
+
+const TELEPHONY_INTEGRATION_KEYS = new Set([
+  'novofonEnabled',
+  'novofonApiKey',
+  'novofonWebhookSecret',
+])
+
+const AI_INTEGRATION_KEYS = new Set([
+  'aitunnelKey',
+  'aiTranscriptionProvider',
+  'aiTranscriptionModel',
+  'aiAnalysisProvider',
+  'aiAnalysisModel',
+])
+
+export const filterCompanySettingsPatchByTariffAccess = (patch = {}, access = {}) => {
+  const filtered = { ...patch }
+
+  if (!access.allowDocuments && Object.hasOwn(filtered, 'documents')) {
+    delete filtered.documents
+  }
+
+  if (filtered.integrations && typeof filtered.integrations === 'object') {
+    filtered.integrations = { ...filtered.integrations }
+
+    if (!access.allowTelephony) {
+      for (const key of TELEPHONY_INTEGRATION_KEYS) {
+        delete filtered.integrations[key]
+      }
+    }
+
+    if (!access.allowAi) {
+      for (const key of AI_INTEGRATION_KEYS) {
+        delete filtered.integrations[key]
+      }
+    }
+
+    if (Object.keys(filtered.integrations).length === 0) {
+      delete filtered.integrations
+    }
+  }
+
+  return filtered
+}

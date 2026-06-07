@@ -19,7 +19,7 @@ const readFileAsBase64 = (file) =>
   })
 
 export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
-  const { settings, loading, saving, error, savePatch } =
+  const { settings, access, loading, saving, error, savePatch } =
     useCompanySettings(activeCompanyId)
 
   const documents = settings?.documents ?? {}
@@ -51,6 +51,15 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
     return (
       <div className="rounded-2xl border border-sky-100 bg-sky-50 p-6 text-sm text-slate-500">
         Загружаем настройки документов...
+      </div>
+    )
+  }
+
+  if (access && !access.allowDocuments) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
+        Документы недоступны на текущем тарифе компании. Подключите тариф с
+        опцией документов во вкладке `Тарифы`.
       </div>
     )
   }
