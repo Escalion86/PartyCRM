@@ -40,6 +40,41 @@ const partyCompaniesSchema = {
     type: Schema.Types.Mixed,
     default: {},
   },
+  tariffId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Tariff',
+    default: null,
+  },
+  balance: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  billingStatus: {
+    type: String,
+    enum: ['active', 'paused', 'debt', 'cancelled'],
+    default: 'active',
+  },
+  tariffActiveUntil: {
+    type: Date,
+    default: null,
+  },
+  nextChargeAt: {
+    type: Date,
+    default: null,
+  },
+  trialActivatedAt: {
+    type: Date,
+    default: null,
+  },
+  trialEndsAt: {
+    type: Date,
+    default: null,
+  },
+  trialUsed: {
+    type: Boolean,
+    default: false,
+  },
 }
 
 export default partyCompaniesSchema

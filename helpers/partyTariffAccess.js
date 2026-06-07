@@ -1,13 +1,13 @@
-export const isPartyTrialActive = (user) => {
-  if (!user?.trialEndsAt) return false
-  const endsAt = new Date(user.trialEndsAt)
+export const isPartyTrialActive = (billingSubject) => {
+  if (!billingSubject?.trialEndsAt) return false
+  const endsAt = new Date(billingSubject.trialEndsAt)
   if (Number.isNaN(endsAt.getTime())) return false
   return endsAt.getTime() > Date.now()
 }
 
-export const getPartyUserTariffAccess = (user, tariffs = []) => {
-  const trialActive = isPartyTrialActive(user)
-  const tariffId = user?.tariffId ? String(user.tariffId) : null
+export const getPartyCompanyTariffAccess = (company, tariffs = []) => {
+  const trialActive = isPartyTrialActive(company)
+  const tariffId = company?.tariffId ? String(company.tariffId) : null
   const tariff =
     tariffId && Array.isArray(tariffs)
       ? tariffs.find((item) => String(item?._id) === tariffId)
@@ -27,3 +27,5 @@ export const getPartyUserTariffAccess = (user, tariffs = []) => {
       : Number(tariff?.eventsPerMonth ?? 0),
   }
 }
+
+export const getPartyUserTariffAccess = getPartyCompanyTariffAccess

@@ -10,6 +10,7 @@ import partyStaffSchema from "@schemas/partyStaffSchema"
 import partyUsersSchema from "@schemas/partyUsersSchema"
 import partyTariffsSchema from "@schemas/partyTariffsSchema"
 import partyPaymentsSchema from "@schemas/partyPaymentsSchema"
+import partyTransactionsSchema from "@schemas/partyTransactionsSchema"
 
 export const PARTY_STAFF_ROLES = Object.freeze({
   OWNER: "owner",
@@ -165,5 +166,20 @@ export const getPartyPaymentModel = () =>
       schema.index({ providerPaymentId: 1 })
       schema.index({ userId: 1, status: 1 })
       schema.index({ userId: 1, createdAt: -1 })
+    },
+  })
+
+export const getPartyTransactionModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: "Transaction",
+    collectionName: "transactions",
+    schemaDefinition: partyTransactionsSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, date: -1 })
+      schema.index({ tenantId: 1, orderId: 1, date: -1 })
+      schema.index({ tenantId: 1, clientId: 1, date: -1 })
+      schema.index({ tenantId: 1, type: 1, date: -1 })
     },
   })

@@ -1,114 +1,104 @@
-import { getPartyUserModel, getPartyTariffModel, getPartyPaymentModel } from "./partyModels"
+import {
+  getPartyCompanyModel,
+  getPartyPaymentModel,
+  getPartyTariffModel,
+} from './partyModels'
+import {
+  addMonths,
+  buildPartyCompanyTariffPurchaseState,
+} from './partyCompanyBillingCore'
 
-const addMonths = (date, count) => {
-  const next = new Date(date)
-  const day = next.getDate()
-  next.setMonth(next.getMonth() + count)
-  if (next.getDate() < day) {
-    next.setDate(0)
-  }
-  return next
-}
-
-const applyPartyTariffPurchase = async ({
-  userId,
+const applyPartyCompanyTariffPurchase = async ({
+  companyId,
   tariffId,
-  skipCompensation = false,
+  initiatedByUserId = null,
 }) => {
-  if (!userId || !tariffId) {
-    return { ok: false, error: "Не указан пользователь или тариф" }
+  if (!companyId || !tariffId) {
+    return { ok: false, error: 'Не указана компания или тариф' }
   }
 
-  const PartyUsers = await getPartyUserModel()
+  const PartyCompanies = await getPartyCompanyModel()
   const PartyTariffs = await getPartyTariffModel()
   const PartyPayments = await getPartyPaymentModel()
 
-  const user = await PartyUsers.findById(userId)
-  if (!user) return { ok: false, error: "Пользователь не найден" }
+  const company = await PartyCompanies.findById(companyId)
+  if (!company) return { ok: false, error: 'Компания не найдена' }
 
   const tariff = await PartyTariffs.findById(tariffId).lean()
-  if (!tariff) return { ok: false, error: "Тариф не найден" }
+  if (!tariff) return { ok: false, error: 'Тариф не найден' }
 
-  const now = new Date()
-  const currentTariff =
-    user.tariffId && user.tariffActiveUntil
-      ? await PartyTariffs.findById(user.tariffId).lean()
-      : null
+  const state = buildPartyCompanyTariffPurchaseState({ company, tariff })
+  if (!state.ok) return state
 
-  let creditAmount = 0
-  if (
-    !skipCompensation &&
-    currentTariff &&
-    Number(currentTariff.price ?? 0) > 0
-  ) {
-    const activeUntil = new Date(user.tariffActiveUntil)
-    if (!Number.isNaN(activeUntil.getTime()) && activeUntil > now) {
-      const periodStart = addMonths(activeUntil, -1)
-      const periodMs = activeUntil.getTime() - periodStart.getTime()
-      const remainingMs = activeUntil.getTime() - now.getTime()
-      if (periodMs > 0 && remainingMs > 0) {
-        creditAmount = Math.floor(
-          (Number(currentTariff.price ?? 0) * remainingMs) / periodMs
-        )
-      }
-    }
-  }
+  Object.assign(company, state.nextCompany)
+  await company.save()
 
-  const price = Number(tariff.price ?? 0)
-  const balance = Number(user.balance ?? 0)
-  const availableBalance = balance + creditAmount
-
-  if (
-    price > 0 &&
-    (!Number.isFinite(availableBalance) || availableBalance < price)
-  ) {
-    return {
-      ok: false,
-      error: `Недостаточно средств. Не хватает ${Math.max(price - availableBalance, 0)} руб.`,
-    }
-  }
-
-  if (creditAmount > 0 && currentTariff) {
-    user.balance = availableBalance
+  if (state.chargeAmount > 0) {
     await PartyPayments.create({
-      userId: user._id,
-      tenantId: user.tenantId ?? user._id,
-      tariffId: currentTariff._id,
-      amount: creditAmount,
-      type: "refund",
-      source: "system",
-      purpose: "system",
-      comment: `Компенсация за неиспользованный период тарифа "${currentTariff.title}"`,
-    })
-  }
-
-  if (price > 0) {
-    const nextChargeAt = addMonths(now, 1)
-    user.tariffId = tariff._id
-    user.balance = Number(user.balance ?? 0) - price
-    user.billingStatus = "active"
-    user.tariffActiveUntil = nextChargeAt
-    user.nextChargeAt = nextChargeAt
-
-    await PartyPayments.create({
-      userId: user._id,
-      tenantId: user.tenantId ?? user._id,
+      userId: initiatedByUserId || null,
+      tenantId: company._id,
       tariffId: tariff._id,
-      amount: price,
-      type: "charge",
-      source: "system",
-      purpose: "tariff",
+      amount: state.chargeAmount,
+      type: 'charge',
+      source: 'system',
+      status: 'succeeded',
+      purpose: 'tariff',
       comment: `Оплата тарифа "${tariff.title}"`,
     })
-  } else {
-    user.tariffId = tariff._id
-    user.billingStatus = "active"
-    user.tariffActiveUntil = null
-    user.nextChargeAt = null
   }
 
-  await user.save()
-  return { ok: true, user, tariff }
+  return { ok: true, company, tariff }
 }
 
-export { addMonths, applyPartyTariffPurchase }
+const ensurePartyFreeTariff = async () => {
+  const PartyTariffs = await getPartyTariffModel()
+  let freeTariff = await PartyTariffs.findOne({
+    price: { $in: [0, '0', null] },
+    hidden: { $ne: true },
+  }).sort({ createdAt: 1 })
+
+  if (!freeTariff) {
+    freeTariff = await PartyTariffs.create({
+      title: 'Бесплатный',
+      subtitle: 'Базовые возможности',
+      price: 0,
+      description: 'Бесплатный тариф для начала работы',
+      features: ['До 3 сотрудников', 'До 30 заказов в месяц', 'Учет клиентов'],
+      hidden: false,
+    })
+  }
+
+  return freeTariff
+}
+
+const assignDefaultPartyCompanyTariff = async ({
+  companyId,
+  initiatedByUserId = null,
+}) => {
+  const freeTariff = await ensurePartyFreeTariff()
+  return applyPartyCompanyTariffPurchase({
+    companyId,
+    tariffId: freeTariff._id,
+    initiatedByUserId,
+  })
+}
+
+const applyPartyTariffPurchase = async ({
+  companyId,
+  userId,
+  tariffId,
+  initiatedByUserId,
+}) =>
+  applyPartyCompanyTariffPurchase({
+    companyId,
+    tariffId,
+    initiatedByUserId: initiatedByUserId || userId || null,
+  })
+
+export {
+  addMonths,
+  applyPartyCompanyTariffPurchase,
+  applyPartyTariffPurchase,
+  assignDefaultPartyCompanyTariff,
+  ensurePartyFreeTariff,
+}

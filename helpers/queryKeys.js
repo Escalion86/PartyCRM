@@ -8,6 +8,8 @@ export const queryKeys = {
   event: (eventId) => ['event', eventId],
   transactions: (params = {}) => ['transactions', params],
   transactionsAll: ['transactions', {}],
+  partyTransactions: (params = {}) => ['party-transactions', params],
+  partyTransactionsAll: ['party-transactions', {}],
   statistics: (params = {}) => ['statistics', params],
   services: (params = {}) => ['services', params],
   service: (serviceId) => ['service', serviceId],

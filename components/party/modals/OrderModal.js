@@ -18,6 +18,7 @@ import DateTimePicker from '@components/DateTimePicker'
 import Textarea from '@components/Textarea'
 import ServiceMultiSelect from '@components/ServiceMultiSelect'
 import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPicker'
+import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTransactionsSection'
 import partyServicesAtom from '@state/atoms/partyServicesAtom'
 import AddIconButton from '@components/AddIconButton'
 import TabContext from '@components/Tabs/TabContext'
@@ -87,10 +88,6 @@ export default function OrderModal({
 
   // Ошибка отправки формы (показывается внизу модального окна)
   const [submitError, setSubmitError] = useState('')
-
-  // Транзакции — заглушка (будет заменена на реальные хуки после создания API)
-  const [financeError, setFinanceError] = useState('')
-  const [financeLoading, setFinanceLoading] = useState(false)
 
   const selectedClient = orderDraft.clientId
     ? (clientsById.get(String(orderDraft.clientId)) ?? null)
@@ -321,26 +318,10 @@ export default function OrderModal({
   // Автосохранение перед открытием транзакции (для нового заказа)
   const handleAutosaveBeforeTransaction = useCallback(async () => {
     if (isNewOrder) {
-      setFinanceError('Сначала сохраните заказ')
       return null
     }
     return orderDraft._id
   }, [isNewOrder, orderDraft._id])
-
-  const openTransactionModal = useCallback(
-    (transactionId) => {
-      setFinanceError('')
-      const orderId = handleAutosaveBeforeTransaction()
-      if (!orderId) return
-
-      // Заглушка: транзакции будут доступны после реализации API
-      setFinanceError(
-        'Раздел транзакций находится в разработке. ' +
-          'Пока используйте поле "Сумма клиента" для фиксации договорной суммы.'
-      )
-    },
-    [handleAutosaveBeforeTransaction]
-  )
 
   // Валидация полей и отправка формы
   const handleSubmit = useCallback(async () => {
@@ -638,35 +619,16 @@ export default function OrderModal({
 
             <hr className="border-t border-gray-200" />
 
-            {/* Блок транзакций */}
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-base font-semibold text-gray-900">
-                Транзакции
-              </div>
-              <AddIconButton
-                onClick={() => openTransactionModal()}
-                disabled={isNewOrder || financeLoading}
-                title="Добавить транзакцию"
-                size="sm"
-                className="disabled:cursor-not-allowed disabled:opacity-60"
-              />
-            </div>
-
-            {isNewOrder ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Сохраните заказ, чтобы добавить транзакции.
-              </div>
-            ) : null}
-
-            {financeError && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-                {financeError}
-              </div>
-            )}
-
-            {financeLoading ? (
-              <p className="text-sm text-gray-500">Загрузка транзакций...</p>
-            ) : null}
+            <PartyOrderTransactionsSection
+              orderId={orderDraft._id || ''}
+              contractAmount={
+                orderDraft.clientPayment?.totalAmount ??
+                orderDraft.contractAmount ??
+                0
+              }
+              isDraft={orderDraft.status === 'draft'}
+              onRequestAutosave={handleAutosaveBeforeTransaction}
+            />
           </div>
         </TabPanel>
 

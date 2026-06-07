@@ -68,7 +68,29 @@ BILLING_SBP_BONUS_ENABLED=true
 Leave unset or set to `false` to hide the SBP bonus notice and disable bonus
 accrual.
 
-`PartyCRM` сейчас использует только YooKassa через `/api/party/billing/yookassa/*`.
+`PartyCRM` использует YooKassa через `/api/party/billing/yookassa/*`
+и Точку через `/api/party/billing/tochka/*`.
+
+### Tochka
+
+Required production environment variables:
+
+```bash
+TOCHKA_API_TOKEN=
+TOCHKA_CLIENT_ID=
+TOCHKA_CUSTOMER_CODE=
+TOCHKA_MERCHANT_ID=
+TOCHKA_SEND_RECEIPT=false
+TOCHKA_VAT_TYPE=none
+TOCHKA_RECEIPT_ITEM_NAME="Оплата PartyCRM"
+TOCHKA_RECEIPT_EMAIL=support@partycrm.ru
+```
+
+Webhook URL in Tochka:
+
+```text
+https://partycrm.ru/api/party/billing/tochka/webhook
+```
 
 ## Learn More
 

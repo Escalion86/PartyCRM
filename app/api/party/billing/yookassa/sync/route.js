@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server"
-import { getPartySessionUser } from "@server/partyAuth"
+import { getPartyRequestContext } from "@server/partyApi"
 import { getPartyPaymentModel } from "@server/partyModels"
 import { syncPartyYookassaPayment } from "@server/partyYookassaPaymentProcessing"
 
 export const POST = async (req) => {
   const body = await req.json().catch(() => ({}))
-  const user = await getPartySessionUser()
-  if (!user?._id) {
-    return NextResponse.json(
-      { success: false, error: "Не авторизован" },
-      { status: 401 }
-    )
-  }
+  const { context, error } = await getPartyRequestContext({
+    req,
+    managementOnly: true,
+  })
+  if (error) return error
 
   const paymentId = String(body?.paymentId || "").trim()
   if (!paymentId) {
@@ -33,9 +31,9 @@ export const POST = async (req) => {
     )
   }
 
-  const isOwner = String(payment.userId) === String(user._id)
-  const isAdmin = ["support", "admin"].includes(user?.role)
-  if (!isAdmin && !isOwner) {
+  const isPaymentCompany = String(payment.tenantId) === String(context.tenantId)
+  const isAdmin = ["support", "admin"].includes(context.sessionUser?.role)
+  if (!isAdmin && !isPaymentCompany) {
     return NextResponse.json(
       { success: false, error: "Нет доступа" },
       { status: 403 }

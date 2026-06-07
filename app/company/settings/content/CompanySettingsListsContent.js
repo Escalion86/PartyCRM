@@ -36,15 +36,24 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
 
   // Sync from server: always on first data arrival, then only when unchanged
   useEffect(() => {
-    if (!townsInitialSyncDone.current && settings !== null) {
+    let canceled = false
+    const syncTowns = () => {
+      if (canceled) return
       setTowns(serverTowns)
       setDefaultTown(settings?.defaultTown ?? '')
-      townsInitialSyncDone.current = true
-      return
     }
-    if (townsChanged) return
-    setTowns(serverTowns)
-    setDefaultTown(settings?.defaultTown ?? '')
+
+    if (!townsInitialSyncDone.current && settings !== null) {
+      townsInitialSyncDone.current = true
+      queueMicrotask(syncTowns)
+      return () => {
+        canceled = true
+      }
+    }
+    if (!townsChanged) queueMicrotask(syncTowns)
+    return () => {
+      canceled = true
+    }
   }, [townsChanged, serverTowns, settings])
 
   const handleAddTown = () => {
@@ -89,13 +98,23 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
   )
 
   useEffect(() => {
-    if (!eventTypesInitialSyncDone.current && settings !== null) {
+    let canceled = false
+    const syncEventTypes = () => {
+      if (canceled) return
       setEventTypes(serverEventTypes)
-      eventTypesInitialSyncDone.current = true
-      return
     }
-    if (eventTypesChanged) return
-    setEventTypes(serverEventTypes)
+
+    if (!eventTypesInitialSyncDone.current && settings !== null) {
+      eventTypesInitialSyncDone.current = true
+      queueMicrotask(syncEventTypes)
+      return () => {
+        canceled = true
+      }
+    }
+    if (!eventTypesChanged) queueMicrotask(syncEventTypes)
+    return () => {
+      canceled = true
+    }
   }, [eventTypesChanged, serverEventTypes, settings])
 
   const handleAddEventType = () => {

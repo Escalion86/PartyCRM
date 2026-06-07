@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getPartySessionUser } from "@server/partyAuth"
 import {
-  getPartyUserModel,
+  getPartyCompanyModel,
   getPartyTariffModel,
   getPartyPaymentModel,
 } from "@server/partyModels"
@@ -43,12 +43,12 @@ export const POST = async (req) => {
     )
   }
 
-  const PartyUsers = await getPartyUserModel()
+  const PartyCompanies = await getPartyCompanyModel()
   const PartyTariffs = await getPartyTariffModel()
   const PartyPayments = await getPartyPaymentModel()
 
   const now = new Date()
-  const dueUsers = await PartyUsers.find({
+  const dueCompanies = await PartyCompanies.find({
     tariffId: { $ne: null },
     nextChargeAt: { $lte: now },
     billingStatus: { $ne: "cancelled" },
@@ -65,14 +65,14 @@ export const POST = async (req) => {
   let movedToFree = 0
   let skipped = 0
 
-  for (const user of dueUsers) {
+  for (const company of dueCompanies) {
     processed += 1
-    if (!user?.tariffId) {
+    if (!company?.tariffId) {
       skipped += 1
       continue
     }
     const tariff = tariffs.find(
-      (item) => String(item?._id) === String(user.tariffId)
+      (item) => String(item?._id) === String(company.tariffId)
     )
     if (!tariff) {
       skipped += 1
@@ -80,7 +80,7 @@ export const POST = async (req) => {
     }
     const price = Number(tariff.price ?? 0)
     if (!Number.isFinite(price) || price <= 0) {
-      await PartyUsers.findByIdAndUpdate(user._id, {
+      await PartyCompanies.findByIdAndUpdate(company._id, {
         tariffActiveUntil: null,
         nextChargeAt: null,
         billingStatus: "active",
@@ -89,10 +89,10 @@ export const POST = async (req) => {
       continue
     }
 
-    const balance = Number(user.balance ?? 0)
+    const balance = Number(company.balance ?? 0)
     if (!Number.isFinite(balance) || balance < price) {
       if (freeTariff) {
-        await PartyUsers.findByIdAndUpdate(user._id, {
+        await PartyCompanies.findByIdAndUpdate(company._id, {
           tariffId: freeTariff._id,
           tariffActiveUntil: null,
           nextChargeAt: null,
@@ -100,7 +100,7 @@ export const POST = async (req) => {
         })
         movedToFree += 1
       } else {
-        await PartyUsers.findByIdAndUpdate(user._id, {
+        await PartyCompanies.findByIdAndUpdate(company._id, {
           billingStatus: "debt",
         })
       }
@@ -108,12 +108,12 @@ export const POST = async (req) => {
     }
 
     const baseDate =
-      user.tariffActiveUntil && new Date(user.tariffActiveUntil) > now
-        ? new Date(user.tariffActiveUntil)
+      company.tariffActiveUntil && new Date(company.tariffActiveUntil) > now
+        ? new Date(company.tariffActiveUntil)
         : now
     const nextChargeAt = addMonths(baseDate, 1)
 
-    await PartyUsers.findByIdAndUpdate(user._id, {
+    await PartyCompanies.findByIdAndUpdate(company._id, {
       balance: balance - price,
       tariffActiveUntil: nextChargeAt,
       nextChargeAt,
@@ -121,8 +121,8 @@ export const POST = async (req) => {
     })
 
     await PartyPayments.create({
-      userId: user._id,
-      tenantId: user.tenantId ?? user._id,
+      userId: null,
+      tenantId: company._id,
       tariffId: tariff._id,
       amount: price,
       type: "charge",

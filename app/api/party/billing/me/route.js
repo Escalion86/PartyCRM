@@ -1,42 +1,27 @@
 import { NextResponse } from "next/server"
-import { getPartySessionUser } from "@server/partyAuth"
-import { getPartyUserModel } from "@server/partyModels"
+import { getPartyRequestContext } from "@server/partyApi"
 
-export const GET = async () => {
-  const user = await getPartySessionUser()
-  if (!user?._id) {
-    return NextResponse.json(
-      { success: false, error: "Не авторизован" },
-      { status: 401 }
-    )
-  }
-
-  const PartyUsers = await getPartyUserModel()
-  const dbUser = await PartyUsers.findById(user._id)
-    .select(
-      "balance tariffId billingStatus tariffActiveUntil nextChargeAt trialActivatedAt trialEndsAt trialUsed"
-    )
-    .lean()
-
-  if (!dbUser) {
-    return NextResponse.json(
-      { success: false, error: "Пользователь не найден" },
-      { status: 404 }
-    )
-  }
+export const GET = async (req) => {
+  const { context, error } = await getPartyRequestContext({
+    req,
+    managementOnly: true,
+  })
+  if (error) return error
+  const company = context.company
 
   return NextResponse.json(
     {
       success: true,
       data: {
-        balance: dbUser.balance ?? 0,
-        tariffId: dbUser.tariffId ? String(dbUser.tariffId) : null,
-        billingStatus: dbUser.billingStatus ?? "active",
-        tariffActiveUntil: dbUser.tariffActiveUntil ?? null,
-        nextChargeAt: dbUser.nextChargeAt ?? null,
-        trialActivatedAt: dbUser.trialActivatedAt ?? null,
-        trialEndsAt: dbUser.trialEndsAt ?? null,
-        trialUsed: dbUser.trialUsed ?? false,
+        companyId: context.tenantId,
+        balance: company?.balance ?? 0,
+        tariffId: company?.tariffId ? String(company.tariffId) : null,
+        billingStatus: company?.billingStatus ?? "active",
+        tariffActiveUntil: company?.tariffActiveUntil ?? null,
+        nextChargeAt: company?.nextChargeAt ?? null,
+        trialActivatedAt: company?.trialActivatedAt ?? null,
+        trialEndsAt: company?.trialEndsAt ?? null,
+        trialUsed: company?.trialUsed ?? false,
       },
     },
     { status: 200 }

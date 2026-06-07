@@ -3,35 +3,95 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { apiJson } from "@helpers/apiClient"
 import { formatMoney } from "@helpers/formatMoney"
+import {
+  PARTY_BILLING_PROVIDER_ENDPOINTS,
+  getPartyTariffCheckoutRequest,
+  isFreePartyTariff,
+} from "@helpers/partyBillingCheckout"
+
+const PAYMENT_PROVIDERS = {
+  yookassa: {
+    label: "ЮKassa",
+    description: "Карта, СБП и другие способы ЮKassa",
+    endpoint: PARTY_BILLING_PROVIDER_ENDPOINTS.yookassa,
+  },
+  tochka: {
+    label: "Точка",
+    description: "СБП через Точка Банк",
+    endpoint: PARTY_BILLING_PROVIDER_ENDPOINTS.tochka,
+  },
+}
+
+const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
 
 const PartyBillingModal = ({ open, onClose }) => {
   const [tariffs, setTariffs] = useState([])
   const [userData, setUserData] = useState(null)
+  const [billingConfig, setBillingConfig] = useState(null)
   const [loading, setLoading] = useState(true)
   const [topupAmount, setTopupAmount] = useState("")
-  const [selectedTariffId, setSelectedTariffId] = useState("")
+  const [selectedProvider, setSelectedProvider] = useState("")
   const [paying, setPaying] = useState(false)
   const [payingTariff, setPayingTariff] = useState(false)
   const [error, setError] = useState("")
   const [payments, setPayments] = useState([])
+  const [activeCompanyId, setActiveCompanyId] = useState("")
+
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return
+    setActiveCompanyId(
+      window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ""
+    )
+  }, [open])
+
+  const buildCompanyRequestOptions = useCallback(
+    (options = {}) => ({
+      ...options,
+      headers: {
+        ...(options.headers ?? {}),
+        ...(activeCompanyId
+          ? { "x-partycrm-company-id": activeCompanyId }
+          : {}),
+      },
+    }),
+    [activeCompanyId]
+  )
 
   const loadData = useCallback(async () => {
+    if (!activeCompanyId) {
+      setLoading(false)
+      setError("Не выбрана активная компания")
+      return
+    }
     setLoading(true)
     try {
-      const [tariffsRes, userRes, paymentsRes] = await Promise.all([
+      const [tariffsRes, userRes, paymentsRes, configRes] = await Promise.all([
         apiJson("/api/party/tariffs", { cache: "no-store" }),
-        apiJson("/api/party/billing/me", { cache: "no-store" }),
-        apiJson("/api/party/billing/payments?limit=20", { cache: "no-store" }),
+        apiJson(
+          "/api/party/billing/me",
+          buildCompanyRequestOptions({ cache: "no-store" })
+        ),
+        apiJson(
+          "/api/party/billing/payments?limit=20",
+          buildCompanyRequestOptions({ cache: "no-store" })
+        ),
+        apiJson("/api/party/billing/config", { cache: "no-store" }),
       ])
       setTariffs(tariffsRes.data ?? [])
       setUserData(userRes.data ?? null)
       setPayments(paymentsRes.data ?? [])
+      setBillingConfig(configRes.data ?? null)
+      setSelectedProvider((prev) => {
+        const providers = configRes.data?.providers ?? {}
+        if (prev && providers[prev]) return prev
+        return configRes.data?.defaultProvider || ""
+      })
     } catch (e) {
       setError("Не удалось загрузить данные")
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeCompanyId, buildCompanyRequestOptions])
 
   useEffect(() => {
     if (open) loadData()
@@ -47,7 +107,23 @@ const PartyBillingModal = ({ open, onClose }) => {
     return new Date(userData.trialEndsAt).getTime() > Date.now()
   }, [userData])
 
+  const providerOptions = useMemo(() => {
+    const providers = billingConfig?.providers ?? {}
+    return Object.entries(PAYMENT_PROVIDERS).filter(
+      ([provider]) => providers[provider]
+    )
+  }, [billingConfig])
+
+  const selectedProviderConfig = selectedProvider
+    ? PAYMENT_PROVIDERS[selectedProvider]
+    : null
+
   const handleTopup = useCallback(async () => {
+    const providerConfig = PAYMENT_PROVIDERS[selectedProvider]
+    if (!providerConfig) {
+      setError("Не выбран доступный способ оплаты")
+      return
+    }
     const amount = Number(topupAmount)
     if (!Number.isFinite(amount) || amount < 100) {
       setError("Минимальная сумма пополнения — 100 руб.")
@@ -56,9 +132,11 @@ const PartyBillingModal = ({ open, onClose }) => {
     setPaying(true)
     setError("")
     try {
-      const res = await apiJson("/api/party/billing/yookassa/create", {
-        method: "POST",
-        body: JSON.stringify({ amount, purpose: "balance" }),
+      const res = await apiJson(providerConfig.endpoint, {
+        ...buildCompanyRequestOptions({
+          method: "POST",
+          body: JSON.stringify({ amount, purpose: "balance" }),
+        }),
       })
       if (res.data?.confirmationUrl) {
         window.open(res.data.confirmationUrl, "_blank")
@@ -71,7 +149,7 @@ const PartyBillingModal = ({ open, onClose }) => {
     } finally {
       setPaying(false)
     }
-  }, [topupAmount, loadData])
+  }, [buildCompanyRequestOptions, selectedProvider, topupAmount, loadData])
 
   const handleBuyTariff = useCallback(
     async (tariffId) => {
@@ -79,15 +157,23 @@ const PartyBillingModal = ({ open, onClose }) => {
       setError("")
       try {
         const tariff = tariffs.find((t) => String(t._id) === tariffId)
-        const res = await apiJson("/api/party/billing/yookassa/create", {
-          method: "POST",
-          body: JSON.stringify({
-            tariffId,
-            purpose: "tariff",
-            amount: tariff?.price || 0,
+        const request = getPartyTariffCheckoutRequest({
+          tariff,
+          provider: selectedProvider,
+        })
+        if (!request) {
+          setError("Не выбран доступный способ оплаты")
+          return
+        }
+        const res = await apiJson(request.endpoint, {
+          ...buildCompanyRequestOptions({
+            method: "POST",
+            body: JSON.stringify(request.body),
           }),
         })
-        if (res.data?.confirmationUrl) {
+        if (!request.requiresPayment) {
+          loadData()
+        } else if (res.data?.confirmationUrl) {
           window.open(res.data.confirmationUrl, "_blank")
           loadData()
         } else {
@@ -99,7 +185,7 @@ const PartyBillingModal = ({ open, onClose }) => {
         setPayingTariff(false)
       }
     },
-    [tariffs, loadData]
+    [buildCompanyRequestOptions, selectedProvider, tariffs, loadData]
   )
 
   if (!open) return null
@@ -159,6 +245,38 @@ const PartyBillingModal = ({ open, onClose }) => {
                 <h3 className="text-base font-semibold mb-3">
                   Пополнить баланс
                 </h3>
+                <div className="mb-3">
+                  <p className="text-sm font-medium text-gray-700 mb-2">
+                    Способ оплаты
+                  </p>
+                  {providerOptions.length > 0 ? (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {providerOptions.map(([provider, config]) => (
+                        <button
+                          key={provider}
+                          type="button"
+                          className={`rounded-xl border px-4 py-3 text-left text-sm transition ${
+                            selectedProvider === provider
+                              ? "border-sky-500 bg-sky-50 text-sky-900"
+                              : "border-gray-200 hover:border-sky-300"
+                          }`}
+                          onClick={() => setSelectedProvider(provider)}
+                        >
+                          <span className="block font-semibold">
+                            {config.label}
+                          </span>
+                          <span className="mt-1 block text-xs text-gray-500">
+                            {config.description}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+                      На сервере не настроены провайдеры оплаты.
+                    </p>
+                  )}
+                </div>
                 <div className="flex gap-3">
                   <input
                     type="number"
@@ -172,13 +290,15 @@ const PartyBillingModal = ({ open, onClose }) => {
                     type="button"
                     className="px-6 py-2 text-sm font-semibold text-white rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 cursor-pointer"
                     onClick={handleTopup}
-                    disabled={paying || !topupAmount}
+                    disabled={paying || !topupAmount || !selectedProviderConfig}
                   >
                     {paying ? "Создание..." : "Пополнить"}
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mt-1">
-                  Через ЮKassa (карта, СБП). Минимум 100 руб.
+                  {selectedProviderConfig
+                    ? `${selectedProviderConfig.label}. Минимум 100 руб.`
+                    : "Минимум 100 руб."}
                 </p>
               </div>
 
@@ -192,6 +312,7 @@ const PartyBillingModal = ({ open, onClose }) => {
                     const isActive =
                       String(tariff._id) === String(userData?.tariffId)
                     const price = Number(tariff.price ?? 0)
+                    const isFree = isFreePartyTariff(tariff)
                     return (
                       <div
                         key={tariff._id}
@@ -237,11 +358,14 @@ const PartyBillingModal = ({ open, onClose }) => {
                             type="button"
                             className="mt-3 w-full py-2 text-sm font-semibold text-white rounded-xl bg-sky-600 hover:bg-sky-700 disabled:opacity-50 cursor-pointer"
                             onClick={() => handleBuyTariff(tariff._id)}
-                            disabled={payingTariff}
+                            disabled={
+                              payingTariff ||
+                              (!isFree && !selectedProviderConfig)
+                            }
                           >
                             {payingTariff
                               ? "Оплата..."
-                              : price > 0
+                              : !isFree
                               ? `Купить за ${price} ₽`
                               : "Выбрать"}
                           </button>

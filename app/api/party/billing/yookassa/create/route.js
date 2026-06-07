@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
-import { getPartySessionUser } from "@server/partyAuth"
-import { getPartyPaymentModel, getPartyTariffModel, getPartyUserModel } from "@server/partyModels"
+import { getPartyRequestContext } from "@server/partyApi"
+import { getPartyPaymentModel, getPartyTariffModel } from "@server/partyModels"
 import {
   createYookassaPayment,
   isYookassaConfigured,
@@ -22,13 +22,11 @@ const resolveReturnUrl = (req) => {
 
 export const POST = async (req) => {
   const body = await req.json().catch(() => ({}))
-  const user = await getPartySessionUser()
-  if (!user?._id) {
-    return NextResponse.json(
-      { success: false, error: "Не авторизован" },
-      { status: 401 }
-    )
-  }
+  const { context, error } = await getPartyRequestContext({
+    req,
+    managementOnly: true,
+  })
+  if (error) return error
   if (!isYookassaConfigured()) {
     return NextResponse.json(
       { success: false, error: "ЮKassa не настроена" },
@@ -37,15 +35,8 @@ export const POST = async (req) => {
   }
 
   const PartyPayments = await getPartyPaymentModel()
-  const PartyUsers = await getPartyUserModel()
-
-  const dbUser = await PartyUsers.findById(user._id)
-  if (!dbUser) {
-    return NextResponse.json(
-      { success: false, error: "Пользователь не найден" },
-      { status: 404 }
-    )
-  }
+  const company = context.company
+  const user = context.sessionUser
 
   const purpose = body?.purpose === "tariff" ? "tariff" : "balance"
   let tariff = null
@@ -61,11 +52,7 @@ export const POST = async (req) => {
         { status: 404 }
       )
     }
-    const requestedAmount = Number(body?.amount ?? 0)
-    amount =
-      Number.isFinite(requestedAmount) && requestedAmount > 0
-        ? requestedAmount
-        : Number(tariff.price ?? 0)
+    amount = Number(tariff.price ?? 0)
     description = `Оплата тарифа ${tariff.title}`
   }
 
@@ -85,8 +72,8 @@ export const POST = async (req) => {
 
   const idempotenceKey = crypto.randomUUID()
   const payment = await PartyPayments.create({
-    userId: dbUser._id,
-    tenantId: dbUser.tenantId ?? dbUser._id,
+    userId: user._id,
+    tenantId: company._id,
     tariffId: tariff?._id ?? null,
     amount,
     type: "topup",
@@ -104,11 +91,12 @@ export const POST = async (req) => {
       description,
       idempotenceKey,
       returnUrl: resolveReturnUrl(req),
-      user: dbUser,
+      user,
       metadata: {
         paymentId: String(payment._id),
-        userId: String(dbUser._id),
-        tenantId: String(dbUser.tenantId ?? dbUser._id),
+        userId: String(user._id),
+        tenantId: String(company._id),
+        companyId: String(company._id),
         purpose,
         tariffId: tariff?._id ? String(tariff._id) : "",
         partycrm: "true",

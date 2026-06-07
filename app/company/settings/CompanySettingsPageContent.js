@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import CompanySettingsShell from './CompanySettingsShell'
 import { COMPANY_SETTINGS_CONTENT } from './content/companySettingsContentMap'
 
@@ -35,12 +35,10 @@ const TAB_META = Object.freeze({
 
 export default function CompanySettingsPageContent({ activeTab }) {
   const meta = TAB_META[activeTab] ?? TAB_META.general
-  const [activeCompanyId, setActiveCompanyId] = useState('')
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY)
-    if (stored) setActiveCompanyId(stored)
-  }, [])
+  const [activeCompanyId] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    return window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
+  })
 
   const Component = COMPANY_SETTINGS_CONTENT[activeTab]
 

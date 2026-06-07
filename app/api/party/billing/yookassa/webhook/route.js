@@ -7,6 +7,10 @@ export const POST = async (req) => {
   const secret = String(
     process.env.YOOKASSA_WEBHOOK_SECRET || ""
   ).trim()
+  if (!secret && process.env.NODE_ENV === "production") {
+    return NextResponse.json({ success: false }, { status: 503 })
+  }
+
   if (secret) {
     const url = new URL(req.url)
     const token =
@@ -18,7 +22,6 @@ export const POST = async (req) => {
   }
 
   const body = await req.json().catch(() => ({}))
-  const event = String(body?.event || "")
 
   // YooKassa sends notification_event for payments
   const providerPaymentId =

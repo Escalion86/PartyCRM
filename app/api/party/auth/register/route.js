@@ -1,5 +1,5 @@
 ﻿import { NextResponse } from 'next/server'
-import { getPartyUserModel, getPartyTariffModel } from '@server/partyModels'
+import { getPartyUserModel } from '@server/partyModels'
 import PhoneConfirms from '@models/PhoneConfirms'
 import {
   hashPartyPassword,
@@ -8,39 +8,7 @@ import {
   normalizePartyPhone,
   setPartySessionCookie,
 } from '@server/partyAuth'
-import { applyPartyTariffPurchase } from '@server/partyBilling'
 import { PARTY_WORKSPACE_TYPES } from '@server/partyEntry'
-
-const assignDefaultFreeTariff = async (userId) => {
-  const PartyTariffs = await getPartyTariffModel()
-  let freeTariff = await PartyTariffs.findOne({
-    price: { $in: [0, '0', null] },
-    hidden: { $ne: true },
-  }).sort({ createdAt: 1 })
-
-  if (!freeTariff) {
-    freeTariff = await PartyTariffs.create({
-      title: 'Бесплатный',
-      subtitle: 'Базовые возможности',
-      price: 0,
-      description: 'Бесплатный тариф для начала работы',
-      features: ['До 3 сотрудников', 'До 30 заказов в месяц', 'Учет клиентов'],
-      hidden: false,
-    })
-  }
-
-  const result = await applyPartyTariffPurchase({
-    userId,
-    tariffId: freeTariff._id,
-  })
-  if (!result.ok) {
-    console.error(
-      'Не удалось назначить бесплатный тариф пользователю',
-      userId,
-      result.error
-    )
-  }
-}
 
 export async function POST(req) {
   const body = await req.json().catch(() => ({}))
@@ -141,11 +109,6 @@ export async function POST(req) {
     }
     throw error
   }
-
-  // Назначаем бесплатный тариф по умолчанию, но не блокируем регистрацию при ошибке.
-  assignDefaultFreeTariff(user._id).catch((err) =>
-    console.error('assignDefaultFreeTariff error:', err)
-  )
 
   const response = NextResponse.json(
     {

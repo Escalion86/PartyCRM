@@ -1,5 +1,5 @@
-import { getPartyPaymentModel, getPartyUserModel, getPartyTariffModel } from "./partyModels"
-import { applyPartyTariffPurchase } from "./partyBilling"
+import { getPartyCompanyModel, getPartyPaymentModel } from "./partyModels"
+import { applyPartyCompanyTariffPurchase } from "./partyBilling"
 import {
   SBP_BONUS_RATE,
   getSbpBonusAmount,
@@ -60,17 +60,41 @@ const processSucceededPartyYookassaPayment = async ({
     return { ok: false, error: "amount_mismatch" }
   }
 
-  const PartyUsers = await getPartyUserModel()
-  const user = await PartyUsers.findById(payment.userId)
-  if (!user) {
+  const PartyCompanies = await getPartyCompanyModel()
+  const company = await PartyCompanies.findById(payment.tenantId)
+  if (!company) {
     payment.status = "failed"
     payment.rawProviderStatus = providerPayment?.status || ""
     payment.comment = `${
       payment.comment || "Платеж"
-    }: пользователь не найден`
+    }: компания не найдена`
     await payment.save()
-    return { ok: false, error: "user_not_found" }
+    return { ok: false, error: "company_not_found" }
   }
+
+  const PartyPayments = await getPartyPaymentModel()
+  const lockedPayment = await PartyPayments.findOneAndUpdate(
+    { _id: payment._id, status: "pending" },
+    {
+      $set: {
+        status: "succeeded",
+        rawProviderStatus: providerPayment?.status || "",
+      },
+    },
+    { new: true }
+  )
+  if (!lockedPayment) {
+    const freshPayment = await PartyPayments.findById(payment._id).lean()
+    if (freshPayment?.status === "succeeded") {
+      return { ok: true, alreadyProcessed: true }
+    }
+    return {
+      ok: false,
+      error: "payment_not_pending",
+      status: freshPayment?.status || "",
+    }
+  }
+  payment = lockedPayment
 
   const methodInfo = getPaymentMethodInfo(providerPayment)
   const bonusAmount =
@@ -78,11 +102,10 @@ const processSucceededPartyYookassaPayment = async ({
       ? getSbpBonusAmount(payment.amount)
       : 0
 
-  user.balance =
-    Number(user.balance ?? 0) + Number(payment.amount ?? 0) + bonusAmount
-  await user.save()
+  company.balance =
+    Number(company.balance ?? 0) + Number(payment.amount ?? 0) + bonusAmount
+  await company.save()
 
-  payment.status = "succeeded"
   payment.rawProviderStatus = providerPayment?.status || ""
   payment.paymentMethodType = methodInfo.type
   payment.paymentMethodTitle = methodInfo.title
@@ -93,7 +116,6 @@ const processSucceededPartyYookassaPayment = async ({
   await payment.save()
 
   if (bonusAmount > 0) {
-    const PartyPayments = await getPartyPaymentModel()
     await PartyPayments.create({
       userId: payment.userId,
       tenantId: payment.tenantId,
@@ -110,8 +132,9 @@ const processSucceededPartyYookassaPayment = async ({
   }
 
   if (payment.purpose === "tariff" && payment.tariffId) {
-    const result = await applyPartyTariffPurchase({
-      userId: payment.userId,
+    const result = await applyPartyCompanyTariffPurchase({
+      companyId: payment.tenantId,
+      initiatedByUserId: payment.userId,
       tariffId: payment.tariffId,
     })
     if (!result.ok) {
