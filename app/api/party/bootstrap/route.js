@@ -6,7 +6,10 @@ import {
   getPartyLocationModel,
   getPartyStaffModel,
 } from '@server/partyModels'
-import { assignDefaultPartyCompanyTariff } from '@server/partyBilling'
+import {
+  activatePartyCompanyTrial,
+  assignDefaultPartyCompanyTariff,
+} from '@server/partyBilling'
 
 const normalizePhone = (phone) => {
   if (!phone) return ''
@@ -121,6 +124,9 @@ export async function POST(req) {
       companyId: company._id,
       initiatedByUserId: sessionUser._id,
     })
+    const trialResult = await activatePartyCompanyTrial({
+      companyId: company._id,
+    })
 
     const staff = await PartyStaff.create({
       tenantId: company._id,
@@ -157,7 +163,7 @@ export async function POST(req) {
         data: {
           created: true,
           tenantId: String(company._id),
-          company: billingResult.company || company,
+          company: trialResult.company || billingResult.company || company,
           staff,
           location,
           extraStaff,

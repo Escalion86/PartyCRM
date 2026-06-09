@@ -202,6 +202,23 @@ const partyOrdersSchema = {
     default: '',
     maxlength: 2000,
   },
+  leadSource: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 120,
+    index: true,
+  },
+  leadSourceLabel: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 120,
+  },
+  leadMeta: {
+    type: Schema.Types.Mixed,
+    default: {},
+  },
 }
 
 export default partyOrdersSchema

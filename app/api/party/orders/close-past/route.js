@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
-import { getPartyOrderModel } from '@server/partyModels'
+import {
+  getPartyOrderModel,
+  getPartyTransactionModel,
+} from '@server/partyModels'
 import { getPartyRequestContext } from '@server/partyApi'
+import { getPartyOrderCloseReadiness } from '@helpers/partyOrderCloseReadiness'
 
 const startOfToday = () => {
   const now = new Date()
@@ -30,8 +34,38 @@ export async function POST(req) {
     ],
   }
 
-  const orders = await PartyOrders.find(match).select({ _id: 1 }).lean()
-  const closedIds = orders.map((order) => String(order._id))
+  const orders = await PartyOrders.find(match).lean()
+  const orderIds = orders.map((order) => String(order._id))
+  const PartyTransactions = await getPartyTransactionModel()
+  const transactions = orderIds.length
+    ? await PartyTransactions.find({
+        tenantId: context.tenantId,
+        orderId: { $in: orderIds },
+      }).lean()
+    : []
+  const transactionsByOrderId = transactions.reduce((map, transaction) => {
+    const orderId = String(transaction.orderId)
+    if (!map.has(orderId)) map.set(orderId, [])
+    map.get(orderId).push(transaction)
+    return map
+  }, new Map())
+  const closedIds = []
+  const skipped = []
+
+  orders.forEach((order) => {
+    const orderId = String(order._id)
+    const orderTransactions = transactionsByOrderId.get(orderId) ?? []
+    const readiness = getPartyOrderCloseReadiness({
+      order,
+      transactions:
+        orderTransactions.length > 0 ? orderTransactions : order.transactions,
+    })
+    if (readiness.ok) {
+      closedIds.push(orderId)
+      return
+    }
+    skipped.push({ orderId, blockers: readiness.blockers })
+  })
 
   if (closedIds.length > 0) {
     await PartyOrders.updateMany(
@@ -45,6 +79,7 @@ export async function POST(req) {
     data: {
       closedCount: closedIds.length,
       closedIds,
+      skipped,
     },
   })
 }

@@ -8,6 +8,12 @@ const addMonths = (date, count) => {
   return next
 }
 
+const addDays = (date, count) => {
+  const next = new Date(date)
+  next.setDate(next.getDate() + count)
+  return next
+}
+
 export const isPartyCompanyBalanceEnough = ({ balance, price }) => {
   const balanceValue = Number(balance ?? 0)
   const priceValue = Number(price ?? 0)
@@ -51,6 +57,7 @@ export const buildPartyCompanyTariffPurchaseState = ({
         billingStatus: 'active',
         tariffActiveUntil: nextChargeAt,
         nextChargeAt,
+        trialEndsAt: null,
       },
     }
   }
@@ -68,4 +75,25 @@ export const buildPartyCompanyTariffPurchaseState = ({
   }
 }
 
-export { addMonths }
+export const buildPartyCompanyTrialActivationState = ({
+  company,
+  now = new Date(),
+  days = 14,
+}) => {
+  if (!company) return { ok: false, error: 'Компания не найдена' }
+  if (company.trialUsed) {
+    return { ok: false, error: 'Пробный период уже использован' }
+  }
+
+  return {
+    ok: true,
+    nextCompany: {
+      trialActivatedAt: now,
+      trialEndsAt: addDays(now, days),
+      trialUsed: true,
+      billingStatus: 'active',
+    },
+  }
+}
+
+export { addDays, addMonths }

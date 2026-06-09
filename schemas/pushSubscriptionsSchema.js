@@ -7,6 +7,22 @@ const pushSubscriptionsSchema = {
     required: true,
     index: true,
   },
+  product: {
+    type: String,
+    enum: ['artistcrm', 'partycrm'],
+    default: 'artistcrm',
+    index: true,
+  },
+  companyId: {
+    type: Schema.Types.ObjectId,
+    default: null,
+    index: true,
+  },
+  userId: {
+    type: Schema.Types.ObjectId,
+    default: null,
+    index: true,
+  },
   endpoint: {
     type: String,
     required: true,

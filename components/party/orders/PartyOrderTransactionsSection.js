@@ -3,8 +3,12 @@
 import { useMemo, useState } from 'react'
 import {
   PARTY_ORDER_PAYMENT_METHODS,
-  PARTY_ORDER_TRANSACTION_CATEGORIES,
+  PARTY_ORDER_PAYMENT_METHOD_LABELS,
+  PARTY_ORDER_TRANSACTION_CATEGORY_LABELS,
+  PARTY_ORDER_TRANSACTION_TYPE_LABELS,
+  getPartyTransactionCategoryOptions,
   getOrderTransactionAction,
+  getOrderPaymentStatusLabel,
   getOrderPaymentState,
 } from '@helpers/partyOrderTransactions'
 import {
@@ -21,25 +25,6 @@ const money = (value) =>
     currency: 'RUB',
     maximumFractionDigits: 0,
   }).format(Number(value || 0))
-
-const CATEGORY_LABELS = {
-  deposit: 'Предоплата',
-  final_payment: 'Остаток',
-  client_payment: 'Оплата клиента',
-  payout: 'Выплата',
-  refund: 'Возврат',
-  taxes: 'Налоги',
-  materials: 'Материалы',
-  travel: 'Дорога',
-  other: 'Другое',
-}
-
-const PAYMENT_METHOD_LABELS = {
-  transfer: 'Перевод',
-  account: 'Расчетный счет',
-  cash: 'Наличные',
-  barter: 'Бартер',
-}
 
 const emptyDraft = (orderId) => ({
   _id: '',
@@ -77,7 +62,8 @@ const TransactionList = ({ title, items, onEdit, onDelete }) => (
                 {money(item.amount)}
               </div>
               <div className="text-xs text-gray-500">
-                {CATEGORY_LABELS[item.category] || item.category}
+                {PARTY_ORDER_TRANSACTION_CATEGORY_LABELS[item.category] ||
+                  item.category}
                 {item.date ? ` · ${new Date(item.date).toLocaleDateString('ru-RU')}` : ''}
                 {item.comment ? ` · ${item.comment}` : ''}
               </div>
@@ -134,6 +120,10 @@ export default function PartyOrderTransactionsSection({
   const paymentState = useMemo(
     () => getOrderPaymentState({ contractAmount, transactions }),
     [contractAmount, transactions]
+  )
+  const categoryOptions = useMemo(
+    () => getPartyTransactionCategoryOptions(draft?.type || 'income'),
+    [draft?.type]
   )
 
   const startCreate = async () => {
@@ -231,7 +221,10 @@ export default function PartyOrderTransactionsSection({
 
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm text-gray-500">
-          Статус: <span className="font-semibold">{paymentState.status}</span>
+          Статус:{' '}
+          <span className="font-semibold">
+            {getOrderPaymentStatusLabel(paymentState.status)}
+          </span>
         </div>
         <button
           type="button"
@@ -252,12 +245,18 @@ export default function PartyOrderTransactionsSection({
               setDraft((prev) => ({
                 ...prev,
                 type: e.target.value,
-                category: e.target.value === 'expense' ? 'other' : 'deposit',
+                category: getPartyTransactionCategoryOptions(
+                  e.target.value
+                )[0]?.value,
               }))
             }
           >
-            <option value="income">Поступление</option>
-            <option value="expense">Расход</option>
+            <option value="income">
+              {PARTY_ORDER_TRANSACTION_TYPE_LABELS.income}
+            </option>
+            <option value="expense">
+              {PARTY_ORDER_TRANSACTION_TYPE_LABELS.expense}
+            </option>
           </select>
           <select
             className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
@@ -266,9 +265,9 @@ export default function PartyOrderTransactionsSection({
               setDraft((prev) => ({ ...prev, category: e.target.value }))
             }
           >
-            {PARTY_ORDER_TRANSACTION_CATEGORIES.map((category) => (
-              <option key={category} value={category}>
-                {CATEGORY_LABELS[category] || category}
+            {categoryOptions.map((category) => (
+              <option key={category.value} value={category.value}>
+                {category.label}
               </option>
             ))}
           </select>
@@ -299,7 +298,7 @@ export default function PartyOrderTransactionsSection({
           >
             {PARTY_ORDER_PAYMENT_METHODS.map((method) => (
               <option key={method} value={method}>
-                {PAYMENT_METHOD_LABELS[method] || method}
+                {PARTY_ORDER_PAYMENT_METHOD_LABELS[method] || method}
               </option>
             ))}
           </select>

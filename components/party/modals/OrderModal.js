@@ -29,6 +29,11 @@ import {
   EMPTY_PARTY_SERVICE,
   EMPTY_LOCATION,
 } from '@helpers/partyHelpers'
+import {
+  PARTY_ORDER_PAYOUT_STATUSES,
+  getPartyPayoutStatusLabel,
+  normalizePartyPayoutStatus,
+} from '@helpers/partyOrderTransactions'
 import getPersonFullName from '@helpers/getPersonFullName'
 
 // Нормализация телефона: цифры 11 символов, 8xxx → 7xxx
@@ -164,7 +169,10 @@ export default function OrderModal({
         if (checked) {
           return {
             ...prev,
-            assignedStaff: [...current, { staffId, payoutAmount: '' }],
+            assignedStaff: [
+              ...current,
+              { staffId, payoutAmount: '', payoutStatus: 'planned' },
+            ],
           }
         }
         return {
@@ -182,6 +190,20 @@ export default function OrderModal({
         ...prev,
         assignedStaff: (prev.assignedStaff || []).map((s) =>
           s.staffId === staffId ? { ...s, payoutAmount: value } : s
+        ),
+      }))
+    },
+    [setOrderDraft]
+  )
+
+  const handlePayoutStatusChange = useCallback(
+    (staffId, value) => {
+      setOrderDraft((prev) => ({
+        ...prev,
+        assignedStaff: (prev.assignedStaff || []).map((s) =>
+          s.staffId === staffId
+            ? { ...s, payoutStatus: normalizePartyPayoutStatus(value) }
+            : s
         ),
       }))
     },
@@ -318,10 +340,14 @@ export default function OrderModal({
   // Автосохранение перед открытием транзакции (для нового заказа)
   const handleAutosaveBeforeTransaction = useCallback(async () => {
     if (isNewOrder) {
+      const savedOrder = await onSubmit({ keepOpen: true })
+      if (savedOrder?._id) {
+        return savedOrder._id
+      }
       return null
     }
     return orderDraft._id
-  }, [isNewOrder, orderDraft._id])
+  }, [isNewOrder, onSubmit, orderDraft._id])
 
   // Валидация полей и отправка формы
   const handleSubmit = useCallback(async () => {
@@ -570,17 +596,38 @@ export default function OrderModal({
                         )}
                       </div>
                       {assigned && (
-                        <Input
-                          label="Выплата"
-                          type="number"
-                          value={assigned.payoutAmount}
-                          onChange={(val) =>
-                            handlePayoutChange(person._id, val)
-                          }
-                          className="w-36"
-                          tone="party"
-                          postfix="₽"
-                        />
+                        <div className="grid gap-2 sm:grid-cols-[9rem_12rem]">
+                          <Input
+                            label="Выплата"
+                            type="number"
+                            value={assigned.payoutAmount}
+                            onChange={(val) =>
+                              handlePayoutChange(person._id, val)
+                            }
+                            tone="party"
+                            postfix="₽"
+                          />
+                          <InputWrapper label="Статус выплаты" tone="party">
+                            <select
+                              className="w-full cursor-pointer appearance-none bg-transparent px-1 text-sm text-black outline-none"
+                              value={normalizePartyPayoutStatus(
+                                assigned.payoutStatus
+                              )}
+                              onChange={(e) =>
+                                handlePayoutStatusChange(
+                                  person._id,
+                                  e.target.value
+                                )
+                              }
+                            >
+                              {PARTY_ORDER_PAYOUT_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {getPartyPayoutStatusLabel(status)}
+                                </option>
+                              ))}
+                            </select>
+                          </InputWrapper>
+                        </div>
                       )}
                     </div>
                   </div>

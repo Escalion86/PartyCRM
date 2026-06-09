@@ -168,6 +168,14 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const canUseCompany = interfaceRoles.includes('company')
   const canUsePerformer = interfaceRoles.includes('performer')
   const canUseBoth = canUseCompany && canUsePerformer
+  const activeCompanyId =
+    typeof window !== 'undefined'
+      ? window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
+      : ''
+  const activeMembership =
+    memberships.find((item) => item.tenantId === activeCompanyId) ||
+    memberships[0] ||
+    null
   const companySettingsActive = isCompanySettingsPath(pathname || '')
   const companySettingsOpen = companySettingsExpanded ?? companySettingsActive
   const siteSettingsActive = isPartySiteSettingsPath(pathname || '')
@@ -176,8 +184,13 @@ export default function PartyAppShell({ variant = 'company', children }) {
     pathname === '/company/orders' || pathname === '/company/orders-past'
   const ordersOpen = ordersExpanded ?? ordersActive
   const visibleCompanySettingsMenu = useMemo(
-    () => getVisibleCompanySettingsTabs(partyUser?.role),
-    [partyUser?.role]
+    () =>
+      getVisibleCompanySettingsTabs({
+        globalRole: partyUser?.role,
+        companyRole: activeMembership?.role,
+        isCompanyManager: activeMembership?.isAdmin,
+      }),
+    [activeMembership?.isAdmin, activeMembership?.role, partyUser?.role]
   )
   const canUseSiteSettings = canAccessPartySiteSettings(partyUser?.role)
   const isCompanyVariant =
@@ -211,14 +224,6 @@ export default function PartyAppShell({ variant = 'company', children }) {
     if (siteSettingsActive) return 'Настройка сайта'
     if (effectiveVariant === 'company-settings') return 'Настройки компании'
 
-    const activeCompanyId =
-      typeof window !== 'undefined'
-        ? window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
-        : ''
-    const activeMembership =
-      memberships.find((item) => item.tenantId === activeCompanyId) ||
-      memberships[0] ||
-      null
     const companyTitle = activeMembership?.company?.title || ''
     return companyTitle ? `Компания "${companyTitle}"` : 'Компания'
   })()

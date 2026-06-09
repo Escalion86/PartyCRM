@@ -5,6 +5,7 @@ import {
 } from './partyModels'
 import {
   addMonths,
+  buildPartyCompanyTrialActivationState,
   buildPartyCompanyTariffPurchaseState,
 } from './partyCompanyBillingCore'
 
@@ -83,6 +84,24 @@ const assignDefaultPartyCompanyTariff = async ({
   })
 }
 
+const activatePartyCompanyTrial = async ({
+  companyId,
+  days = 14,
+  now = new Date(),
+}) => {
+  if (!companyId) return { ok: false, error: 'Не указана компания' }
+
+  const PartyCompanies = await getPartyCompanyModel()
+  const company = await PartyCompanies.findById(companyId)
+  const state = buildPartyCompanyTrialActivationState({ company, days, now })
+  if (!state.ok) return state
+
+  Object.assign(company, state.nextCompany)
+  await company.save()
+
+  return { ok: true, company }
+}
+
 const applyPartyTariffPurchase = async ({
   companyId,
   userId,
@@ -97,6 +116,7 @@ const applyPartyTariffPurchase = async ({
 
 export {
   addMonths,
+  activatePartyCompanyTrial,
   applyPartyCompanyTariffPurchase,
   applyPartyTariffPurchase,
   assignDefaultPartyCompanyTariff,

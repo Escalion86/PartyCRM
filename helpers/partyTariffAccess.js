@@ -86,4 +86,17 @@ export const canCreatePartyStaffByTariff = ({
   return { ok: true }
 }
 
+export const filterPartyOrderPayloadByTariffAccess = (payload = {}, access = {}) => {
+  if (access.allowCalendarSync) return payload
+  if (!Array.isArray(payload.additionalEvents)) return payload
+
+  return {
+    ...payload,
+    additionalEvents: payload.additionalEvents.map((item) => ({
+      ...item,
+      googleCalendarEventId: '',
+    })),
+  }
+}
+
 export const getPartyUserTariffAccess = getPartyCompanyTariffAccess

@@ -5,6 +5,7 @@ import {
   getPartyOrderModel,
   getPartyServiceModel,
   getPartyStaffModel,
+  getPartyTransactionModel,
 } from '@server/partyModels'
 import {
   getPartyRequestContext,
@@ -17,7 +18,10 @@ import {
   hasPartyOrderConflicts,
 } from '@server/partyOrderConflicts'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
-import { canCreatePartyOrderByTariff } from '@helpers/partyTariffAccess'
+import {
+  canCreatePartyOrderByTariff,
+  filterPartyOrderPayloadByTariffAccess,
+} from '@helpers/partyTariffAccess'
 
 const parseDate = (value) => {
   if (!value) return null
@@ -351,8 +355,42 @@ export async function GET(req) {
     .sort({ eventDate: 1, createdAt: -1 })
     .limit(120)
     .lean()
+  const orderIds = orders.map((order) => String(order._id))
+  const PartyTransactions = await getPartyTransactionModel()
+  const transactions = orderIds.length
+    ? await PartyTransactions.find({
+        tenantId: context.tenantId,
+        orderId: { $in: orderIds },
+      })
+        .sort({ date: -1, createdAt: -1 })
+        .lean()
+    : []
+  const transactionsByOrderId = transactions.reduce((map, transaction) => {
+    const orderId = String(transaction.orderId)
+    if (!map.has(orderId)) map.set(orderId, [])
+    map.get(orderId).push({
+      _id: String(transaction._id),
+      amount: Number(transaction.amount || 0),
+      type: transaction.type,
+      category: transaction.category,
+      date: transaction.date ? new Date(transaction.date).toISOString() : null,
+      comment: transaction.comment || '',
+      paymentMethod: transaction.paymentMethod || 'transfer',
+    })
+    return map
+  }, new Map())
+  const ordersWithTransactions = orders.map((order) => {
+    const orderTransactions = transactionsByOrderId.get(String(order._id))
+    return {
+      ...order,
+      transactions:
+        orderTransactions && orderTransactions.length > 0
+          ? orderTransactions
+          : order.transactions,
+    }
+  })
 
-  return NextResponse.json({ success: true, data: orders })
+  return NextResponse.json({ success: true, data: ordersWithTransactions })
 }
 
 export async function POST(req) {
@@ -410,10 +448,15 @@ export async function POST(req) {
     )
   }
 
+  const limitedPayload = filterPartyOrderPayloadByTariffAccess(
+    payloadWithClient,
+    access
+  )
+
   const conflicts = await findPartyOrderConflicts({
     PartyOrders,
     tenantId: context.tenantId,
-    payload: payloadWithClient,
+    payload: limitedPayload,
   })
   if (hasPartyOrderConflicts(conflicts)) {
     return partyError(
@@ -426,7 +469,7 @@ export async function POST(req) {
   }
 
   const order = await PartyOrders.create({
-    ...payloadWithClient,
+    ...limitedPayload,
     tenantId: context.tenantId,
   })
 

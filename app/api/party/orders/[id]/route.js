@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { getPartyOrderModel } from '@server/partyModels'
+import {
+  getPartyOrderModel,
+  getPartyTransactionModel,
+} from '@server/partyModels'
 import {
   getPartyRequestContext,
   isValidObjectId,
@@ -12,6 +15,9 @@ import {
   findPartyOrderConflicts,
   hasPartyOrderConflicts,
 } from '@server/partyOrderConflicts'
+import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
+import { filterPartyOrderPayloadByTariffAccess } from '@helpers/partyTariffAccess'
+import { getPartyOrderCloseReadiness } from '@helpers/partyOrderCloseReadiness'
 
 const getId = async (params) => {
   const resolved = await params
@@ -80,6 +86,56 @@ export async function PATCH(req, { params }) {
   }
 
   const body = await parseJsonBody(req)
+  const PartyOrders = await getPartyOrderModel()
+  const currentOrder = await PartyOrders.findOne({
+    _id: id,
+    tenantId: context.tenantId,
+  }).lean()
+
+  if (!currentOrder) {
+    return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+  }
+
+  const isStatusOnlyPatch =
+    Object.keys(body || {}).length === 1 && typeof body.status === 'string'
+  const nextStatus = ['draft', 'active', 'canceled', 'closed'].includes(
+    body.status
+  )
+    ? body.status
+    : currentOrder.status
+
+  if (nextStatus === 'closed' && currentOrder.status !== 'closed') {
+    const PartyTransactions = await getPartyTransactionModel()
+    const transactions = await PartyTransactions.find({
+      tenantId: context.tenantId,
+      orderId: id,
+    }).lean()
+    const readiness = getPartyOrderCloseReadiness({
+      order: currentOrder,
+      transactions:
+        transactions.length > 0 ? transactions : currentOrder.transactions,
+    })
+    if (!readiness.ok) {
+      return partyError(
+        409,
+        'partycrm_order_close_blocked',
+        'Заказ нельзя закрыть: есть незавершенные финансовые или рабочие пункты',
+        'validation',
+        { blockers: readiness.blockers }
+      )
+    }
+  }
+
+  if (isStatusOnlyPatch) {
+    const order = await PartyOrders.findOneAndUpdate(
+      { _id: id, tenantId: context.tenantId },
+      { $set: { status: nextStatus } },
+      { returnDocument: 'after' }
+    ).lean()
+
+    return NextResponse.json({ success: true, data: order })
+  }
+
   const payload = normalizeOrderPayload(body)
 
   // Валидация клиента и услуги — только если эти поля явно переданы в теле запроса
@@ -114,12 +170,16 @@ export async function PATCH(req, { params }) {
     tenantId: context.tenantId,
     payload,
   })
+  const { access } = await getPartyCompanyTariffAccessState(context.company)
+  const limitedPayload = filterPartyOrderPayloadByTariffAccess(
+    payloadWithClient,
+    access
+  )
 
-  const PartyOrders = await getPartyOrderModel()
   const conflicts = await findPartyOrderConflicts({
     PartyOrders,
     tenantId: context.tenantId,
-    payload: payloadWithClient,
+    payload: limitedPayload,
     excludeOrderId: id,
   })
   if (hasPartyOrderConflicts(conflicts)) {
@@ -134,7 +194,7 @@ export async function PATCH(req, { params }) {
 
   const order = await PartyOrders.findOneAndUpdate(
     { _id: id, tenantId: context.tenantId },
-    { $set: payloadWithClient },
+    { $set: limitedPayload },
     { returnDocument: 'after' }
   ).lean()
 

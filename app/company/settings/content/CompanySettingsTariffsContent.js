@@ -11,6 +11,28 @@ import {
   getPartyTariffSelectOptions,
   getPartyTariffActionState,
 } from '@helpers/partyBillingViewModel'
+import { getPartyActivationWelcomeScenario } from '@helpers/partyWelcomeScenario'
+
+const TARIFF_WELCOME_STEPS = [
+  {
+    id: 'location',
+    title: 'Добавить точку',
+    description: 'Подготовьте площадку или офис для будущих заказов.',
+    href: '/company/locations',
+  },
+  {
+    id: 'service',
+    title: 'Добавить услугу',
+    description: 'Заполните услуги, которые менеджеры смогут выбрать в заказе.',
+    href: '/company/services',
+  },
+  {
+    id: 'order',
+    title: 'Создать первый заказ',
+    description: 'Проверьте рабочий сценарий с клиентом, датой и командой.',
+    href: '/company/orders',
+  },
+]
 
 const formatDate = (value) => {
   if (!value) return ''
@@ -103,6 +125,17 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
   const tariffAccessRows = useMemo(
     () => getPartyTariffAccessRows(userData?.access),
     [userData?.access]
+  )
+  const activationWelcome = useMemo(
+    () =>
+      getPartyActivationWelcomeScenario({
+        billing: {
+          ...userData,
+          tariffTitle: activeTariff?.title,
+        },
+        onboardingSteps: TARIFF_WELCOME_STEPS,
+      }),
+    [activeTariff?.title, userData]
   )
 
   const handleTariffAction = useCallback(
@@ -203,6 +236,11 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
               {userData?.tariffActiveUntil && (
                 <div>Активен до {formatDate(userData.tariffActiveUntil)}</div>
               )}
+              {userData?.access?.trialActive && userData?.trialEndsAt && (
+                <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">
+                  Пробный период до {formatDate(userData.trialEndsAt)}
+                </div>
+              )}
               <div>
                 Баланс:{' '}
                 <span className="font-semibold text-slate-900">
@@ -237,6 +275,34 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
             Обновить
           </button>
         </div>
+        {activationWelcome && (
+          <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+            <div className="text-sm font-semibold text-emerald-900">
+              {activationWelcome.title}
+            </div>
+            <p className="mt-1 text-sm leading-6 text-emerald-700">
+              {activationWelcome.description}
+            </p>
+            {activationWelcome.nextSteps.length > 0 && (
+              <div className="mt-4 grid gap-2 md:grid-cols-3">
+                {activationWelcome.nextSteps.map((step) => (
+                  <a
+                    key={step.id}
+                    href={step.href}
+                    className="rounded-xl border border-emerald-100 bg-white px-3 py-3 text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50"
+                  >
+                    <span className="block font-semibold text-slate-900">
+                      {step.title}
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500">
+                      {step.description}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-sky-100 bg-white p-5">

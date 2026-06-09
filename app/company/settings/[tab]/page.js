@@ -31,7 +31,12 @@ export default async function CompanySettingsTabPage({ params }) {
   if (!state.companyReady) {
     redirect('/company/master')
   }
-  if (!canAccessCompanySettingsTab(tab, sessionUser.role)) {
+  if (
+    !canAccessCompanySettingsTab(tab, {
+      globalRole: sessionUser.role,
+      isCompanyManager: state.companyReady,
+    })
+  ) {
     redirect('/company/settings')
   }
 

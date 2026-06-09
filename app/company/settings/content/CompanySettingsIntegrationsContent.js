@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import useCompanySettings from '../useCompanySettings'
 
@@ -67,39 +67,107 @@ const Field = ({
   </label>
 )
 
+const IntegrationActions = ({
+  provider,
+  webhookUrl = '',
+  disabled = false,
+  loading = false,
+  onConnect,
+  onCheck,
+  onDisconnect,
+}) => (
+  <div className="flex flex-wrap items-center gap-2">
+    {onConnect ? (
+      <button
+        type="button"
+        onClick={onConnect}
+        disabled={disabled || loading}
+        className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+      >
+        Подключить
+      </button>
+    ) : null}
+    {onCheck ? (
+      <button
+        type="button"
+        onClick={onCheck}
+        disabled={disabled || loading}
+        className="rounded-lg border border-sky-200 px-3 py-2 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+      >
+        Проверить
+      </button>
+    ) : null}
+    {webhookUrl ? (
+      <button
+        type="button"
+        onClick={() => navigator.clipboard?.writeText(webhookUrl)}
+        disabled={disabled || loading}
+        className="rounded-lg border border-sky-200 px-3 py-2 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+      >
+        Скопировать webhook
+      </button>
+    ) : null}
+    {onDisconnect ? (
+      <button
+        type="button"
+        onClick={onDisconnect}
+        disabled={disabled || loading}
+        className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+      >
+        Отключить
+      </button>
+    ) : null}
+    {loading ? (
+      <span className="text-xs text-slate-500">
+        Выполняем действие {provider}...
+      </span>
+    ) : null}
+  </div>
+)
+
+const IntegrationDiagnostics = ({ state }) => (
+  <div className="grid gap-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+    <div>Статус: {state?.status || 'not_connected'}</div>
+    <div>Последняя проверка: {state?.lastCheckedAt || 'нет данных'}</div>
+    <div>Последнее событие: {state?.lastWebhookAt || 'нет данных'}</div>
+    {state?.lastError ? (
+      <div className="text-red-600">Последняя ошибка: {state.lastError}</div>
+    ) : null}
+  </div>
+)
+
 export default function CompanySettingsIntegrationsContent({ activeCompanyId }) {
-  const { settings, access, loading, saving, error, savePatch } =
+  const { settings, access, loading, saving, error, reload, savePatch } =
     useCompanySettings(activeCompanyId)
   const [status, setStatus] = useState(null)
   const [statusError, setStatusError] = useState('')
   const [statusLoading, setStatusLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState('')
+  const [actionError, setActionError] = useState('')
 
-  useEffect(() => {
-    if (!activeCompanyId) return
-    let cancelled = false
-    apiJson('/api/party/integrations/status', {
+  const reloadStatus = useCallback(() => {
+    if (!activeCompanyId) return Promise.resolve()
+    setStatusLoading(true)
+    return apiJson('/api/party/integrations/status', {
       cache: 'no-store',
       headers: { 'x-partycrm-company-id': activeCompanyId },
     })
       .then((response) => {
-        if (cancelled) return
         setStatus(response.data ?? {})
         setStatusError('')
       })
       .catch((loadError) => {
-        if (cancelled) return
         setStatusError(
           loadError.message || 'Не удалось загрузить состояние интеграций'
         )
       })
-      .finally(() => {
-        if (cancelled) return
-        setStatusLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [activeCompanyId, settings?.integrations])
+      .finally(() => setStatusLoading(false))
+  }, [activeCompanyId])
+
+  useEffect(() => {
+    if (!activeCompanyId) return
+    reloadStatus()
+  }, [activeCompanyId, reloadStatus, settings?.integrations])
 
   const integrations = settings?.integrations ?? {}
   const origin = buildOrigin()
@@ -129,6 +197,64 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       },
     })
 
+  const patchSettings = (patch) => savePatch(patch)
+
+  const createPublicLeadApiKey = () => {
+    const name = window.prompt('Название ключа', 'Tilda')
+    const trimmedName = name?.trim()
+    if (!trimmedName) return
+    const nextKey = {
+      id: createSecret('lead').slice(0, 80),
+      name: trimmedName,
+      key: createSecret('party_lead'),
+      enabled: true,
+    }
+    patchSettings({
+      publicLeadApiKeys: [...(settings?.publicLeadApiKeys ?? []), nextKey],
+    })
+  }
+
+  const updatePublicLeadApiKey = (id, patch) => {
+    patchSettings({
+      publicLeadApiKeys: (settings?.publicLeadApiKeys ?? []).map((item) =>
+        item.id === id ? { ...item, ...patch } : item
+      ),
+    })
+  }
+
+  const deletePublicLeadApiKey = (id) => {
+    patchSettings({
+      publicLeadApiKeys: (settings?.publicLeadApiKeys ?? []).filter(
+        (item) => item.id !== id
+      ),
+    })
+  }
+
+  const runIntegrationAction = async ({
+    provider,
+    action,
+    method = 'POST',
+    body = null,
+  }) => {
+    setActionLoading(`${provider}:${action}`)
+    setActionError('')
+    try {
+      await apiJson(`/api/party/integrations/${provider}/${action}`, {
+        method,
+        headers: { 'x-partycrm-company-id': activeCompanyId },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      })
+      await reload()
+      await reloadStatus()
+    } catch (actionLoadError) {
+      setActionError(
+        actionLoadError.message || 'Не удалось выполнить действие интеграции'
+      )
+    } finally {
+      setActionLoading('')
+    }
+  }
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-sky-100 bg-sky-50 p-6 text-sm text-slate-500">
@@ -149,6 +275,108 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
           {statusError}
         </div>
       ) : null}
+      {actionError ? (
+        <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+          {actionError}
+        </div>
+      ) : null}
+
+      <CompanyIntegrationCard
+        title="Входящие заявки API / Tilda"
+        description="Публичные endpoints PartyCRM для заявок с сайта, Tilda и внешних форм."
+      >
+        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <input
+            type="checkbox"
+            checked={settings?.publicLeadEnabled === true}
+            onChange={(event) =>
+              patchSettings({ publicLeadEnabled: event.target.checked })
+            }
+          />
+          Принимать заявки по API
+        </label>
+        <div className="grid gap-3 lg:grid-cols-2">
+          <Field
+            label="Public lead URL"
+            value={`${origin}/api/party/public/lead`}
+            readOnly
+          />
+          <Field
+            label="Tilda URL"
+            value={`${origin}/api/party/public/lead/tilda`}
+            readOnly
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={createPublicLeadApiKey}
+            className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-700"
+          >
+            Создать API key
+          </button>
+        </div>
+        <div className="grid gap-2">
+          {(settings?.publicLeadApiKeys ?? []).length === 0 ? (
+            <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+              Ключей пока нет
+            </div>
+          ) : (
+            (settings?.publicLeadApiKeys ?? []).map((item) => (
+              <div
+                key={item.id || item.key}
+                className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3"
+              >
+                <div className="grid gap-2 lg:grid-cols-[1fr_2fr_auto]">
+                  <input
+                    type="text"
+                    value={item.name || ''}
+                    onChange={(event) =>
+                      updatePublicLeadApiKey(item.id, {
+                        name: event.target.value,
+                      })
+                    }
+                    className="h-10 rounded-lg border border-sky-100 px-3 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={item.key || ''}
+                    readOnly
+                    className="h-10 rounded-lg border border-sky-100 px-3 text-sm"
+                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard?.writeText(item.key)}
+                      className="rounded-lg border border-sky-200 px-3 py-2 text-xs font-semibold text-sky-700"
+                    >
+                      Копировать
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updatePublicLeadApiKey(item.id, {
+                          enabled: item.enabled === false,
+                        })
+                      }
+                      className="rounded-lg border border-sky-200 px-3 py-2 text-xs font-semibold text-sky-700"
+                    >
+                      {item.enabled === false ? 'Включить' : 'Отключить'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deletePublicLeadApiKey(item.id)}
+                      className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </CompanyIntegrationCard>
 
       <CompanyIntegrationCard
         title="Avito"
@@ -190,10 +418,34 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
         {statusLoading ? (
           <div className="text-xs text-slate-500">Проверяем статус...</div>
         ) : (
-          <div className="text-xs text-slate-500">
-            Статус: {status?.avito?.status || 'not_connected'}
-          </div>
+          <IntegrationDiagnostics state={status?.avito} />
         )}
+        <IntegrationActions
+          provider="Avito"
+          webhookUrl={avitoWebhookUrl}
+          loading={actionLoading.startsWith('avito:')}
+          onConnect={() =>
+            runIntegrationAction({
+              provider: 'avito',
+              action: 'connect',
+              body: {
+                clientId: integrations.avitoClientId,
+                clientSecret: integrations.avitoClientSecret,
+                userId: integrations.avitoUserId,
+              },
+            })
+          }
+          onCheck={() =>
+            runIntegrationAction({
+              provider: 'avito',
+              action: 'check',
+              method: 'GET',
+            })
+          }
+          onDisconnect={() =>
+            runIntegrationAction({ provider: 'avito', action: 'disconnect' })
+          }
+        />
       </CompanyIntegrationCard>
 
       <CompanyIntegrationCard
@@ -251,10 +503,34 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
         {statusLoading ? (
           <div className="text-xs text-slate-500">Проверяем статус...</div>
         ) : (
-          <div className="text-xs text-slate-500">
-            Статус: {status?.vk?.status || 'not_connected'}
-          </div>
+          <IntegrationDiagnostics state={status?.vk} />
         )}
+        <IntegrationActions
+          provider="VK"
+          webhookUrl={vkWebhookUrl}
+          loading={actionLoading.startsWith('vk:')}
+          onConnect={() =>
+            runIntegrationAction({
+              provider: 'vk',
+              action: 'connect',
+              body: {
+                groupId: integrations.vkGroupId,
+                accessToken: integrations.vkGroupAccessToken,
+                confirmationCode: integrations.vkGroupConfirmationCode,
+              },
+            })
+          }
+          onCheck={() =>
+            runIntegrationAction({
+              provider: 'vk',
+              action: 'check',
+              method: 'GET',
+            })
+          }
+          onDisconnect={() =>
+            runIntegrationAction({ provider: 'vk', action: 'disconnect' })
+          }
+        />
       </CompanyIntegrationCard>
 
       <CompanyIntegrationCard
@@ -292,6 +568,29 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
           />
           <Field label="Webhook URL" value={novofonWebhookUrl} readOnly />
         </div>
+        <IntegrationDiagnostics state={status?.novofon} />
+        <IntegrationActions
+          provider="Novofon"
+          webhookUrl={novofonWebhookUrl}
+          disabled={access && !access.allowTelephony}
+          loading={actionLoading.startsWith('novofon:')}
+          onConnect={() =>
+            runIntegrationAction({
+              provider: 'novofon',
+              action: 'connect',
+              body: {
+                apiKey: integrations.novofonApiKey,
+                virtualPhone: integrations.novofonVirtualPhone,
+              },
+            })
+          }
+          onDisconnect={() =>
+            runIntegrationAction({
+              provider: 'novofon',
+              action: 'disconnect',
+            })
+          }
+        />
       </CompanyIntegrationCard>
 
       <CompanyIntegrationCard
@@ -339,6 +638,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
             onChange={(value) => patchIntegrations({ aiAnalysisModel: value })}
           />
         </div>
+        <IntegrationDiagnostics state={status?.ai} />
       </CompanyIntegrationCard>
 
       {saving ? (

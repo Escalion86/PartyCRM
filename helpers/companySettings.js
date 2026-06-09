@@ -24,8 +24,16 @@ export const DEFAULT_COMPANY_SETTINGS = Object.freeze({
   defaultOrderDurationMinutes: 60,
   towns: [],
   defaultTown: '',
+  orderNumberFormat: 'P-{YYYY}-{SEQ}',
   addresses: [],
   eventTypes: [],
+  serviceTypes: [],
+  preparationStatuses: [],
+  leadSources: [],
+  paymentMethods: [],
+  expenseCategories: [],
+  publicLeadEnabled: false,
+  publicLeadApiKeys: [],
   notifications: {},
   documents: {},
   integrations: {},
@@ -38,6 +46,14 @@ export const normalizeCompanyEventTypes = (eventTypes = []) =>
         .map((item) => normalizeAddressPoolString(item))
         .filter(Boolean)
     )
+  ).sort((a, b) => a.localeCompare(b, 'ru'))
+
+export const normalizeCompanyDictionary = (items = []) =>
+  uniqueBy(
+    items
+      .map((item) => normalizeAddressPoolString(item))
+      .filter(Boolean),
+    (item) => item.toLowerCase()
   ).sort((a, b) => a.localeCompare(b, 'ru'))
 
 export const normalizeCompanyAddresses = (addresses = []) =>
@@ -62,6 +78,56 @@ export const normalizeCompanyTowns = (towns = []) => normalizeTownList(towns)
 const normalizeObjectField = (value) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 
+const REQUISITE_LEGACY_FIELD_MAP = Object.freeze({
+  providerStatus: 'artistStatus',
+  providerFullName: 'artistFullName',
+  providerDisplayName: 'artistName',
+  providerInn: 'artistInn',
+  providerOgrnip: 'artistOgrnip',
+  providerBankName: 'artistBankName',
+  providerBik: 'artistBik',
+  providerCheckingAccount: 'artistCheckingAccount',
+  providerCorrespondentAccount: 'artistCorrespondentAccount',
+  providerLegalAddress: 'artistLegalAddress',
+})
+
+export const normalizeCompanyDocumentRequisites = (value = {}) => {
+  const requisites = normalizeObjectField(value)
+  const normalized = { ...requisites }
+
+  for (const [providerKey, legacyKey] of Object.entries(
+    REQUISITE_LEGACY_FIELD_MAP
+  )) {
+    normalized[providerKey] = normalizeAddressPoolString(
+      requisites[providerKey] ?? requisites[legacyKey]
+    )
+  }
+
+  normalized.defaultTown = normalizeAddressPoolString(requisites.defaultTown)
+
+  return normalized
+}
+
+export const normalizeCompanyDocuments = (value = {}) => {
+  const documents = normalizeObjectField(value)
+  return {
+    ...documents,
+    requisites: normalizeCompanyDocumentRequisites(documents.requisites),
+  }
+}
+
+export const normalizeCompanyPublicLeadApiKeys = (items = []) =>
+  Array.isArray(items)
+    ? items
+        .map((item) => ({
+          id: normalizeAddressPoolString(item?.id).slice(0, 80),
+          name: normalizeAddressPoolString(item?.name).slice(0, 120),
+          key: normalizeAddressPoolString(item?.key).slice(0, 256),
+          enabled: item?.enabled !== false,
+        }))
+        .filter((item) => item.key)
+    : []
+
 const normalizeDuration = (value) => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return DEFAULT_COMPANY_SETTINGS.defaultOrderDurationMinutes
@@ -76,10 +142,26 @@ export const normalizeCompanySettings = (value = {}) => ({
   defaultOrderDurationMinutes: normalizeDuration(value?.defaultOrderDurationMinutes),
   towns: normalizeCompanyTowns(value?.towns ?? []),
   defaultTown: typeof value?.defaultTown === 'string' ? value.defaultTown.trim() : '',
+  orderNumberFormat:
+    normalizeAddressPoolString(value?.orderNumberFormat) ||
+    DEFAULT_COMPANY_SETTINGS.orderNumberFormat,
   addresses: normalizeCompanyAddresses(value?.addresses ?? []),
   eventTypes: normalizeCompanyEventTypes(value?.eventTypes ?? []),
+  serviceTypes: normalizeCompanyDictionary(value?.serviceTypes ?? []),
+  preparationStatuses: normalizeCompanyDictionary(
+    value?.preparationStatuses ?? []
+  ),
+  leadSources: normalizeCompanyDictionary(value?.leadSources ?? []),
+  paymentMethods: normalizeCompanyDictionary(value?.paymentMethods ?? []),
+  expenseCategories: normalizeCompanyDictionary(
+    value?.expenseCategories ?? []
+  ),
+  publicLeadEnabled: value?.publicLeadEnabled === true,
+  publicLeadApiKeys: normalizeCompanyPublicLeadApiKeys(
+    value?.publicLeadApiKeys ?? []
+  ),
   notifications: normalizeObjectField(value?.notifications),
-  documents: normalizeObjectField(value?.documents),
+  documents: normalizeCompanyDocuments(value?.documents),
   integrations: normalizeObjectField(value?.integrations),
 })
 
@@ -100,6 +182,13 @@ export const mergeCompanySettingsPatch = (current, patch) =>
       ...normalizeObjectField(patch?.integrations),
     },
   })
+
+export const normalizeCompanyProfile = (value = {}) => ({
+  title: normalizeAddressPoolString(value?.title),
+  legalTitle: normalizeAddressPoolString(value?.legalTitle),
+  phone: normalizeAddressPoolString(value?.phone),
+  email: normalizeAddressPoolString(value?.email).toLowerCase(),
+})
 
 const TELEPHONY_INTEGRATION_KEYS = new Set([
   'novofonEnabled',

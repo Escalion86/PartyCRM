@@ -1,27 +1,12 @@
 'use client'
 
 import Modal from '@components/Modal'
-
-const parseDateSafe = (value) => {
-  if (!value) return null
-  const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? null : date
-}
-
-const startOfDay = (date) =>
-  new Date(date.getFullYear(), date.getMonth(), date.getDate())
-
-const addDays = (date, days) => {
-  const result = new Date(date)
-  result.setDate(result.getDate() + days)
-  return result
-}
-
-const isSameDay = (value, day) => {
-  const date = parseDateSafe(value)
-  if (!date) return false
-  return startOfDay(date).getTime() === startOfDay(day).getTime()
-}
+import {
+  addDays,
+  collectPartyUpcomingAdditionalEvents,
+  parseDateSafe,
+  startOfDay,
+} from '@helpers/partyUpcomingEventsModal.mjs'
 
 const formatDateTime = (value) => {
   const date = parseDateSafe(value)
@@ -42,43 +27,6 @@ const getOrderEndDate = (order) => {
   const explicitEnd = parseDateSafe(order?.dateEnd)
   if (explicitEnd) return explicitEnd
   return parseDateSafe(order?.eventDate)
-}
-
-const collectAdditionalEvents = (orders, now) => {
-  const today = startOfDay(now)
-  const tomorrow = startOfDay(addDays(now, 1))
-  const segments = {
-    overdue: [],
-    today: [],
-    tomorrow: [],
-  }
-
-  orders.forEach((order) => {
-    ;(Array.isArray(order.additionalEvents) ? order.additionalEvents : []).forEach(
-      (item, index) => {
-        if (item?.done) return
-        const date = parseDateSafe(item?.date)
-        if (!date) return
-        const payload = { order, item, index }
-        if (startOfDay(date).getTime() < today.getTime()) {
-          segments.overdue.push(payload)
-        } else if (isSameDay(date, today)) {
-          segments.today.push(payload)
-        } else if (isSameDay(date, tomorrow)) {
-          segments.tomorrow.push(payload)
-        }
-      }
-    )
-  })
-
-  Object.values(segments).forEach((items) =>
-    items.sort(
-      (a, b) =>
-        parseDateSafe(a.item.date).getTime() - parseDateSafe(b.item.date).getTime()
-    )
-  )
-
-  return segments
 }
 
 const Section = ({ title, count, emptyText, children }) => (
@@ -117,7 +65,7 @@ export default function PartyUpcomingEventsModal({
   saving,
 }) {
   const now = new Date()
-  const segments = collectAdditionalEvents(orders, now)
+  const segments = collectPartyUpcomingAdditionalEvents(orders, now)
   const upcomingOrders = orders
     .filter((order) => !['closed', 'canceled'].includes(order.status))
     .filter((order) => {
@@ -151,6 +99,13 @@ export default function PartyUpcomingEventsModal({
     updateAdditionalEvent(order, index, {
       done: true,
       doneAt: new Date().toISOString(),
+    })
+  }
+
+  const returnAdditionalEvent = (order, index) => {
+    updateAdditionalEvent(order, index, {
+      done: false,
+      doneAt: null,
     })
   }
 
@@ -200,6 +155,45 @@ export default function PartyUpcomingEventsModal({
     </div>
   )
 
+  const renderCompletedAdditionalItem = ({ order, item, index }) => (
+    <div
+      key={`${order._id}-${index}`}
+      className="rounded-xl border border-emerald-100 bg-emerald-50/70 p-3"
+    >
+      <div className="flex flex-col gap-1">
+        <div className="text-sm font-bold text-slate-900">
+          {normalizeText(item.title, 'Доп. событие')}
+        </div>
+        <div className="text-xs text-slate-600">
+          Выполнено: {formatDateTime(item.doneAt)}
+        </div>
+        <div className="text-xs text-slate-500">
+          Срок: {formatDateTime(item.date)}
+        </div>
+        {item.description ? (
+          <div className="text-xs text-slate-600">
+            {normalizeText(item.description, '')}
+          </div>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => onOpenOrder?.(order)}
+          className="mt-1 cursor-pointer text-left text-xs font-semibold text-sky-700 hover:text-sky-900"
+        >
+          {normalizeText(order.title || order.serviceTitle, 'Открыть заказ')}
+        </button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ActionButton
+          disabled={saving}
+          onClick={() => returnAdditionalEvent(order, index)}
+        >
+          Вернуть
+        </ActionButton>
+      </div>
+    </div>
+  )
+
   return (
     <Modal
       open={open}
@@ -240,6 +234,13 @@ export default function PartyUpcomingEventsModal({
           {segments.tomorrow.map(renderAdditionalItem)}
         </Section>
         <Section
+          title="Выполнено сегодня"
+          count={segments.completedToday.length}
+          emptyText="Сегодня выполненных доп. событий нет"
+        >
+          {segments.completedToday.map(renderCompletedAdditionalItem)}
+        </Section>
+        <Section
           title="Заказы на 3 дня"
           count={upcomingOrders.length}
           emptyText="В ближайшие 3 дня заказов нет"
@@ -268,4 +269,9 @@ export default function PartyUpcomingEventsModal({
   )
 }
 
-export { collectAdditionalEvents, getOrderEndDate, parseDateSafe, startOfDay }
+export {
+  collectPartyUpcomingAdditionalEvents as collectAdditionalEvents,
+  getOrderEndDate,
+  parseDateSafe,
+  startOfDay,
+}

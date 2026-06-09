@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildPartyCompanyTrialActivationState,
   buildPartyCompanyTariffPurchaseState,
   isPartyCompanyBalanceEnough,
 } from './partyCompanyBillingCore.js'
@@ -28,7 +29,11 @@ test('buildPartyCompanyTariffPurchaseState activates free tariff without balance
 
 test('buildPartyCompanyTariffPurchaseState charges paid tariff from company balance', () => {
   const state = buildPartyCompanyTariffPurchaseState({
-    company: { balance: 1500 },
+    company: {
+      balance: 1500,
+      trialEndsAt: new Date('2026-06-20T00:00:00Z'),
+      trialUsed: true,
+    },
     tariff: { _id: 'paid', price: 990 },
     now: new Date('2026-06-07T00:00:00Z'),
   })
@@ -44,6 +49,7 @@ test('buildPartyCompanyTariffPurchaseState charges paid tariff from company bala
     state.nextCompany.nextChargeAt.toISOString(),
     '2026-07-07T00:00:00.000Z'
   )
+  assert.equal(state.nextCompany.trialEndsAt, null)
 })
 
 test('buildPartyCompanyTariffPurchaseState rejects paid tariff when company balance is low', () => {
@@ -55,4 +61,33 @@ test('buildPartyCompanyTariffPurchaseState rejects paid tariff when company bala
 
   assert.equal(state.ok, false)
   assert.match(state.error, /Недостаточно средств/)
+})
+
+test('buildPartyCompanyTrialActivationState activates unused company trial', () => {
+  const state = buildPartyCompanyTrialActivationState({
+    company: { trialUsed: false },
+    now: new Date('2026-06-07T00:00:00Z'),
+    days: 14,
+  })
+
+  assert.equal(state.ok, true)
+  assert.equal(
+    state.nextCompany.trialActivatedAt.toISOString(),
+    '2026-06-07T00:00:00.000Z'
+  )
+  assert.equal(
+    state.nextCompany.trialEndsAt.toISOString(),
+    '2026-06-21T00:00:00.000Z'
+  )
+  assert.equal(state.nextCompany.trialUsed, true)
+})
+
+test('buildPartyCompanyTrialActivationState rejects reused trial', () => {
+  const state = buildPartyCompanyTrialActivationState({
+    company: { trialUsed: true },
+    now: new Date('2026-06-07T00:00:00Z'),
+  })
+
+  assert.equal(state.ok, false)
+  assert.match(state.error, /уже использован/i)
 })

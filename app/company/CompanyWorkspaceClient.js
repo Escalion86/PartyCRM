@@ -23,6 +23,11 @@ import {
   EMPTY_PARTY_SERVICE,
 } from '@helpers/partyHelpers'
 import { formatMoney } from '@helpers/formatMoney'
+import {
+  getPartyCompanyOnboardingProgress,
+  getPartyCompanyOnboardingSteps,
+} from '@helpers/partyOnboarding'
+import { matchesPartyOrderFinanceFilter } from '@helpers/partyOrderFinanceFilters'
 
 const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
 
@@ -190,6 +195,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [services, setServices] = useState([])
   const [orders, setOrders] = useState([])
   const [companySettings, setCompanySettings] = useState({})
+  const [companyAccess, setCompanyAccess] = useState(null)
   const [orderDraft, setOrderDraft] = useState(() => createEmptyOrderDraft())
   const [clientDraft, setClientDraft] = useState(EMPTY_PARTY_CLIENT)
   const [staffDraft, setStaffDraft] = useState(EMPTY_STAFF)
@@ -209,9 +215,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [accessStatus, setAccessStatus] = useState('loading')
   const [orderFilter, setOrderFilter] = useState('all')
   const [clientSearch, setClientSearch] = useState('')
+  const [financeExportFrom, setFinanceExportFrom] = useState('')
+  const [financeExportTo, setFinanceExportTo] = useState('')
 
   const hasAccess = Boolean(context?.tenantId && context?.staff)
   const canManage = ['owner', 'admin'].includes(context?.role)
+  const canUseStatistics = companyAccess?.allowStatistics !== false
 
   // Load workspace data
   const loadWorkspace = useCallback(async (preferredCompanyId = '') => {
@@ -233,6 +242,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         setServices([])
         setOrders([])
         setCompanySettings({})
+        setCompanyAccess(null)
         setActiveCompanyId('')
         setAccessStatus('not_configured')
         return
@@ -310,7 +320,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       setStaff(staffResponse.data ?? [])
       setServices(servicesResponse.data ?? [])
       setOrders(ordersResponse.data ?? [])
-      setCompanySettings(companySettingsResponse.data ?? {})
+      setCompanySettings(
+        companySettingsResponse.data?.settings ?? companySettingsResponse.data ?? {}
+      )
+      setCompanyAccess(companySettingsResponse.data?.access ?? null)
     } catch (loadError) {
       if (loadError.status === 401) {
         setContext(null)
@@ -345,6 +358,20 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   )
 
   const financeSummary = useMemo(() => buildFinanceSummary(orders), [orders])
+  const onboardingSteps = useMemo(
+    () =>
+      getPartyCompanyOnboardingSteps({
+        locations,
+        services,
+        staff,
+        orders,
+      }),
+    [locations, services, staff, orders]
+  )
+  const onboardingProgress = useMemo(
+    () => getPartyCompanyOnboardingProgress(onboardingSteps),
+    [onboardingSteps]
+  )
 
   const ordersScope = section === 'orders-past' ? 'past' : 'upcoming'
   const scopedOrders = useMemo(() => {
@@ -380,6 +407,34 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         value: 'tasks',
         label: 'Есть задачи',
         count: sourceOrders.filter(hasOpenAdditionalEvents).length,
+      },
+      {
+        value: 'finance_wait_prepayment',
+        label: 'Ждет предоплату',
+        count: sourceOrders.filter((o) =>
+          matchesPartyOrderFinanceFilter(o, 'finance_wait_prepayment')
+        ).length,
+      },
+      {
+        value: 'finance_debt',
+        label: 'Есть долг',
+        count: sourceOrders.filter((o) =>
+          matchesPartyOrderFinanceFilter(o, 'finance_debt')
+        ).length,
+      },
+      {
+        value: 'finance_unpaid_payouts',
+        label: 'Невыплаты',
+        count: sourceOrders.filter((o) =>
+          matchesPartyOrderFinanceFilter(o, 'finance_unpaid_payouts')
+        ).length,
+      },
+      {
+        value: 'finance_negative_margin',
+        label: 'Минус маржа',
+        count: sourceOrders.filter((o) =>
+          matchesPartyOrderFinanceFilter(o, 'finance_negative_margin')
+        ).length,
       },
       {
         value: 'today',
@@ -420,12 +475,33 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         count: sourceOrders.filter((o) => o.status === 'closed').length,
       },
       {
+        value: 'finance_debt',
+        label: 'Есть долг',
+        count: sourceOrders.filter((o) =>
+          matchesPartyOrderFinanceFilter(o, 'finance_debt')
+        ).length,
+      },
+      {
+        value: 'finance_unpaid_payouts',
+        label: 'Невыплаты',
+        count: sourceOrders.filter((o) =>
+          matchesPartyOrderFinanceFilter(o, 'finance_unpaid_payouts')
+        ).length,
+      },
+      {
+        value: 'finance_negative_margin',
+        label: 'Минус маржа',
+        count: sourceOrders.filter((o) =>
+          matchesPartyOrderFinanceFilter(o, 'finance_negative_margin')
+        ).length,
+      },
+      {
         value: 'canceled',
         label: 'Отменены',
         count: sourceOrders.filter((o) => o.status === 'canceled').length,
       },
     ]
-  }, [orders, scopedOrders])
+  }, [scopedOrders])
 
   const orderFilters = useMemo(
     () => (ordersScope === 'past' ? pastOrderFilters : upcomingOrderFilters),
@@ -445,6 +521,13 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         return sourceOrders.filter((o) => hasOrderConflict(o, orders))
       case 'tasks':
         return sourceOrders.filter(hasOpenAdditionalEvents)
+      case 'finance_wait_prepayment':
+      case 'finance_debt':
+      case 'finance_unpaid_payouts':
+      case 'finance_negative_margin':
+        return sourceOrders.filter((o) =>
+          matchesPartyOrderFinanceFilter(o, orderFilter)
+        )
       case 'today':
         return sourceOrders.filter(
           (o) => o.eventDate && isSameDay(o.eventDate, today)
@@ -472,7 +555,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   )
 
   // Order actions
-  const addOrder = useCallback(async () => {
+  const addOrder = useCallback(async (options = {}) => {
     if (hasOrderConflict(orderDraft, orders)) {
       const confirmed = window.confirm(
         'Обнаружен конфликт по времени или исполнителям. Всё равно сохранить заказ?'
@@ -490,14 +573,22 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         })
       )
       if (response.data) {
-        setOrders((prev) => [...prev, response.data])
+        const createdOrder = response.data
+        setOrders((prev) => [...prev, createdOrder])
+        if (options.keepOpen) {
+          setEditingOrderId(String(createdOrder._id))
+          setOrderDraft(normalizeOrderDraft(createdOrder))
+          return createdOrder
+        }
         setActiveModal('')
         setOrderDraft(createEmptyOrderDraft(companySettings, locations))
+        return createdOrder
       }
+      return null
     } finally {
       setSaving(false)
     }
-  }, [orderDraft, orders, activeCompanyId, companySettings])
+  }, [orderDraft, orders, activeCompanyId, companySettings, locations])
 
   const editOrder = useCallback(async () => {
     if (!editingOrderId) return
@@ -531,7 +622,14 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     } finally {
       setSaving(false)
     }
-  }, [orderDraft, editingOrderId, orders, activeCompanyId, companySettings])
+  }, [
+    orderDraft,
+    editingOrderId,
+    orders,
+    activeCompanyId,
+    companySettings,
+    locations,
+  ])
 
   const updateOrder = useCallback(
     async (nextOrder) => {
@@ -630,6 +728,13 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             )
           )
         }
+      } catch (err) {
+        const blockers = err?.payload?.blockers
+        if (Array.isArray(blockers) && blockers.length > 0) {
+          window.alert(blockers.map((blocker) => blocker.message).join('\n'))
+          return
+        }
+        window.alert(err?.message || 'Не удалось изменить статус заказа')
       } finally {
         setSaving(false)
       }
@@ -654,10 +759,47 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           )
         )
       }
+      const skipped = response.data?.skipped ?? []
+      if (skipped.length > 0) {
+        window.alert(
+          `Не закрыто заказов: ${skipped.length}. Проверьте оплату, выплаты и открытые задачи.`
+        )
+      }
     } finally {
       setSaving(false)
     }
   }, [activeCompanyId])
+
+  const downloadFinanceCsv = useCallback(async () => {
+    if (!activeCompanyId) return
+    const search = new URLSearchParams()
+    if (financeExportFrom) search.set('from', financeExportFrom)
+    if (financeExportTo) search.set('to', financeExportTo)
+    const response = await fetch(
+      `/api/party/finance/export${search.toString() ? `?${search}` : ''}`,
+      {
+        headers: {
+          'x-partycrm-company-id': activeCompanyId,
+        },
+      }
+    )
+    if (!response.ok) {
+      window.alert('Не удалось выгрузить финансы')
+      return
+    }
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const suffix = [financeExportFrom, financeExportTo]
+      .filter(Boolean)
+      .join('_')
+    link.href = url
+    link.download = `partycrm-finance-${suffix || 'all'}.csv`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  }, [activeCompanyId, financeExportFrom, financeExportTo])
 
   // Client actions
   const addClient = useCallback(async () => {
@@ -977,35 +1119,113 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'overview' && (
           <>
-            {/* Finance summary */}
-            <div className="mb-6 rounded-2xl bg-sky-50 p-4">
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div>
-                  <p className="text-sm text-gray-600">Заказов</p>
-                  <p className="text-2xl font-bold">
-                    {financeSummary.orderCount}
-                  </p>
+            {!onboardingProgress.finished && (
+              <div className="mb-6 rounded-2xl border border-sky-100 bg-white p-5">
+                <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">
+                      Первые шаги компании
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {onboardingProgress.completedCount} из{' '}
+                      {onboardingProgress.totalCount} выполнено
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700">
+                    Стартовая настройка
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Договоры</p>
-                  <p className="text-2xl font-bold">
-                    {formatMoney(financeSummary.contractAmount)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Получено</p>
-                  <p className="text-2xl font-bold">
-                    {formatMoney(financeSummary.incomeAmount)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Выплаты</p>
-                  <p className="text-2xl font-bold">
-                    {formatMoney(financeSummary.payoutAmount)}
-                  </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {onboardingSteps.map((step) => (
+                    <div
+                      key={step.id}
+                      className={`rounded-xl border p-4 ${
+                        step.completed
+                          ? 'border-emerald-100 bg-emerald-50'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">
+                            {step.title}
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            {step.description}
+                          </p>
+                        </div>
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                            step.completed
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-white text-slate-500'
+                          }`}
+                        >
+                          {step.completed ? 'Готово' : 'Нужно'}
+                        </span>
+                      </div>
+                      {!step.completed && canManage && (
+                        <button
+                          type="button"
+                          className="mt-3 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                          onClick={() => {
+                            if (step.modal === 'order') {
+                              setOrderDraft(
+                                createEmptyOrderDraft(companySettings, locations)
+                              )
+                            }
+                            if (step.modal === 'location') {
+                              setLocationDraft(EMPTY_LOCATION)
+                            }
+                            if (step.modal === 'service') {
+                              setServiceDraft(EMPTY_PARTY_SERVICE)
+                            }
+                            if (step.modal === 'staff') {
+                              setStaffDraft(EMPTY_STAFF)
+                            }
+                            setActiveModal(step.modal)
+                          }}
+                        >
+                          {step.action}
+                        </button>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* Finance summary */}
+            {canUseStatistics ? (
+              <div className="mb-6 rounded-2xl bg-sky-50 p-4">
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                  <div>
+                    <p className="text-sm text-gray-600">Заказов</p>
+                    <p className="text-2xl font-bold">
+                      {financeSummary.orderCount}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Договоры</p>
+                    <p className="text-2xl font-bold">
+                      {formatMoney(financeSummary.contractAmount)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Получено</p>
+                    <p className="text-2xl font-bold">
+                      {formatMoney(financeSummary.incomeAmount)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Выплаты</p>
+                    <p className="text-2xl font-bold">
+                      {formatMoney(financeSummary.payoutAmount)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {/* Filters and actions (overview) */}
             <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1220,9 +1440,47 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           </>
         )}
 
-        {section === 'finance' && (
+        {section === 'finance' && !canUseStatistics && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
+            Финансы и аналитика недоступны на текущем тарифе компании.
+            Подключите тариф с опцией статистики во вкладке `Тарифы`.
+          </div>
+        )}
+
+        {section === 'finance' && canUseStatistics && (
           <div className="rounded-2xl bg-sky-50 p-6">
-            <h2 className="mb-4 text-xl font-semibold">Финансы</h2>
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <h2 className="text-xl font-semibold">Финансы</h2>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="grid gap-1 text-xs font-semibold text-slate-600">
+                  С
+                  <input
+                    type="date"
+                    value={financeExportFrom}
+                    onChange={(event) =>
+                      setFinanceExportFrom(event.target.value)
+                    }
+                    className="rounded-md border border-sky-100 bg-white px-2 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+                  />
+                </label>
+                <label className="grid gap-1 text-xs font-semibold text-slate-600">
+                  По
+                  <input
+                    type="date"
+                    value={financeExportTo}
+                    onChange={(event) => setFinanceExportTo(event.target.value)}
+                    className="rounded-md border border-sky-100 bg-white px-2 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                  onClick={downloadFinanceCsv}
+                >
+                  Скачать CSV
+                </button>
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
               <div>
                 <p className="text-sm text-gray-600">Заказов</p>
@@ -1384,7 +1642,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           canManage={canManage}
           saving={saving}
           onClose={() => setActiveModal('')}
-          onSubmit={addOrder}
+          onSubmit={orderDraft._id ? editOrder : addOrder}
+          isEdit={Boolean(orderDraft._id)}
           onCompanySettingsChange={setCompanySettings}
           onServiceCreated={(newService) =>
             setServices((prev) => [...prev, newService])

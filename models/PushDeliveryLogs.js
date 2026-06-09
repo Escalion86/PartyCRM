@@ -6,6 +6,7 @@ const PushDeliveryLogsSchema = new mongoose.Schema(pushDeliveryLogsSchema, {
 })
 
 PushDeliveryLogsSchema.index({ tenantId: 1, createdAt: -1 })
+PushDeliveryLogsSchema.index({ product: 1, companyId: 1, createdAt: -1 })
 
 export default mongoose.models.PushDeliveryLogs ||
   mongoose.model('PushDeliveryLogs', PushDeliveryLogsSchema)

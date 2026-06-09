@@ -5,6 +5,7 @@ import {
   canCreatePartyOrderByTariff,
   canCreatePartyStaffByTariff,
   getPartyCompanyTariffAccess,
+  filterPartyOrderPayloadByTariffAccess,
   serializePartyTariffAccess,
 } from './partyTariffAccess.js'
 
@@ -97,6 +98,24 @@ test('canCreatePartyStaffByTariff blocks when staff limit is reached', () => {
       currentStaffCount: 100,
     }).ok,
     true
+  )
+})
+
+test('filterPartyOrderPayloadByTariffAccess removes calendar ids without calendar flag', () => {
+  assert.deepEqual(
+    filterPartyOrderPayloadByTariffAccess(
+      {
+        title: 'Order',
+        additionalEvents: [
+          { title: 'Task', googleCalendarEventId: 'calendar-id' },
+        ],
+      },
+      { allowCalendarSync: false }
+    ),
+    {
+      title: 'Order',
+      additionalEvents: [{ title: 'Task', googleCalendarEventId: '' }],
+    }
   )
 })
 

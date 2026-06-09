@@ -60,8 +60,11 @@ const getPushRegistration = async () => {
   return existing || readyRegistration
 }
 
-const fetchPushPublicKey = async () => {
-  const keyResponse = await fetch('/api/push/public-key')
+const fetchPushPublicKey = async ({
+  apiBasePath = '/api/push',
+  headers = {},
+} = {}) => {
+  const keyResponse = await fetch(`${apiBasePath}/public-key`, { headers })
   const keyPayload = await keyResponse.json().catch(() => ({}))
   if (!keyResponse.ok || !keyPayload?.data?.publicKey) {
     throw new Error(keyPayload?.error || 'Не удалось получить VAPID ключ')
@@ -69,10 +72,13 @@ const fetchPushPublicKey = async () => {
   return keyPayload.data.publicKey
 }
 
-const savePushSubscription = async (subscription) => {
-  const saveResponse = await fetch('/api/push/subscribe', {
+const savePushSubscription = async (
+  subscription,
+  { apiBasePath = '/api/push', headers = {} } = {}
+) => {
+  const saveResponse = await fetch(`${apiBasePath}/subscribe`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify({ subscription: subscription.toJSON() }),
   })
 
@@ -87,6 +93,8 @@ const syncPushSubscription = async ({
   subscription,
   ensureLocalSubscription = false,
   forceNewSubscription = false,
+  apiBasePath = '/api/push',
+  headers = {},
 } = {}) => {
   if (!isPushSupported()) return { ok: false, reason: 'unsupported' }
   if (Notification.permission !== 'granted') {
@@ -104,7 +112,9 @@ const syncPushSubscription = async ({
 
   let publicKeyBytes = null
   if (ensureLocalSubscription || forceNewSubscription) {
-    publicKeyBytes = urlBase64ToUint8Array(await fetchPushPublicKey())
+    publicKeyBytes = urlBase64ToUint8Array(
+      await fetchPushPublicKey({ apiBasePath, headers })
+    )
   }
 
   if (currentSubscription && publicKeyBytes) {
@@ -128,7 +138,7 @@ const syncPushSubscription = async ({
 
   if (!currentSubscription) return { ok: false, reason: 'no_subscription' }
 
-  await savePushSubscription(currentSubscription)
+  await savePushSubscription(currentSubscription, { apiBasePath, headers })
   return { ok: true, subscription: currentSubscription }
 }
 

@@ -61,3 +61,27 @@ test('all admin-dev tabs are hidden for regular user', () => {
   )
   assert.equal(adminDevTabs.length, 0, 'user should not see any admin-dev tabs')
 })
+
+test('company owner sees company management tabs without global admin role', () => {
+  const ownerAccess = { globalRole: 'user', companyRole: 'owner' }
+
+  assert.equal(canAccessCompanySettingsTab('integrations', ownerAccess), true)
+  assert.equal(canAccessCompanySettingsTab('documents', ownerAccess), true)
+  assert.equal(canAccessCompanySettingsTab('tariffs', ownerAccess), true)
+
+  assert.deepEqual(
+    getVisibleCompanySettingsTabs(ownerAccess).map((item) => item.slug),
+    ['general', 'integrations', 'lists', 'notifications', 'documents', 'tariffs']
+  )
+})
+
+test('company performer does not see company management tabs', () => {
+  const performerAccess = { globalRole: 'user', companyRole: 'performer' }
+
+  assert.equal(canAccessCompanySettingsTab('tariffs', performerAccess), false)
+
+  assert.deepEqual(
+    getVisibleCompanySettingsTabs(performerAccess).map((item) => item.slug),
+    ['general', 'lists']
+  )
+})

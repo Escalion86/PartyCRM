@@ -76,6 +76,9 @@ const logPushDelivery = async ({ tenantId, endpoint = '', ...entry }) => {
 
 const savePushSubscription = async ({
   tenantId,
+  product = 'artistcrm',
+  companyId = null,
+  userId = null,
   subscription,
   userAgent = '',
   isActive = true,
@@ -102,6 +105,9 @@ const savePushSubscription = async ({
     {
       $set: {
         tenantId,
+        product,
+        companyId,
+        userId,
         endpoint: normalized.endpoint,
         keys: normalized.keys,
         userAgent: String(userAgent || '').slice(0, 500),
@@ -118,6 +124,9 @@ const savePushSubscription = async ({
       eventType: 'subscription',
       status: existing ? 'updated' : 'created',
       message: existing ? 'Push-подписка обновлена' : 'Push-подписка создана',
+      product,
+      companyId,
+      userId,
       meta: {
         userAgent: String(userAgent || '').slice(0, 160),
         isActive: Boolean(isActive),
@@ -128,7 +137,13 @@ const savePushSubscription = async ({
   return saved
 }
 
-const deactivatePushSubscription = async ({ tenantId, endpoint }) => {
+const deactivatePushSubscription = async ({
+  tenantId,
+  endpoint,
+  product = 'artistcrm',
+  companyId = null,
+  userId = null,
+}) => {
   if (!tenantId || !endpoint) return 0
   const result = await PushSubscriptions.updateOne(
     { tenantId, endpoint },
@@ -141,6 +156,9 @@ const deactivatePushSubscription = async ({ tenantId, endpoint }) => {
     eventType: 'subscription',
     status: 'deactivated',
     message: 'Push-подписка отключена',
+    product,
+    companyId,
+    userId,
   })
   return Number(result?.modifiedCount || 0)
 }
@@ -167,7 +185,14 @@ const normalizeWebPushTopic = (value) => {
   return `${normalizedTopic.slice(0, 23)}-${hash}`
 }
 
-const sendPushToTenant = async ({ tenantId, payload, source = 'unknown' }) => {
+const sendPushToTenant = async ({
+  tenantId,
+  payload,
+  source = 'unknown',
+  product = 'artistcrm',
+  companyId = null,
+  userId = null,
+}) => {
   if (!tenantId || !payload || typeof payload !== 'object') {
     return { ok: false, sent: 0, failed: 0, deactivated: 0 }
   }
@@ -180,6 +205,9 @@ const sendPushToTenant = async ({ tenantId, payload, source = 'unknown' }) => {
       status: 'skipped',
       payloadType,
       message: 'VAPID ключи не настроены',
+      product,
+      companyId,
+      userId,
     })
     return { ok: false, sent: 0, failed: 0, deactivated: 0, reason: 'no_vapid' }
   }
@@ -198,6 +226,9 @@ const sendPushToTenant = async ({ tenantId, payload, source = 'unknown' }) => {
       eventType: 'send',
       status: 'skipped',
       payloadType,
+      product,
+      companyId,
+      userId,
       subscriptions: 0,
       sent: 0,
       failed: 0,
@@ -244,6 +275,9 @@ const sendPushToTenant = async ({ tenantId, payload, source = 'unknown' }) => {
         eventType: 'send',
         status: 'sent',
         payloadType,
+        product,
+        companyId,
+        userId,
         statusCode: Number(response?.statusCode || 0) || null,
         message: 'Push отправлен в push-сервис',
       })
@@ -265,6 +299,9 @@ const sendPushToTenant = async ({ tenantId, payload, source = 'unknown' }) => {
         eventType: 'send',
         status: shouldDeactivate ? 'deactivated' : 'failed',
         payloadType,
+        product,
+        companyId,
+        userId,
         statusCode: statusCode || null,
         message: error?.body || error?.message || 'Ошибка отправки push',
       })
@@ -277,6 +314,9 @@ const sendPushToTenant = async ({ tenantId, payload, source = 'unknown' }) => {
     eventType: 'summary',
     status: failed > 0 ? 'partial' : 'ok',
     payloadType,
+    product,
+    companyId,
+    userId,
     subscriptions: docs.length,
     sent,
     failed,

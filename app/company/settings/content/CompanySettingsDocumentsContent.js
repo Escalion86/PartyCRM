@@ -6,6 +6,59 @@ const DEFAULT_CONTRACT_TEMPLATE_DOWNLOAD_URL =
   '/templates/default-contract-template.docx'
 const DEFAULT_ACT_TEMPLATE_DOWNLOAD_URL = '/templates/default-act-template.docx'
 
+const PROVIDER_REQUISITE_FIELDS = [
+  {
+    key: 'providerFullName',
+    label: 'ФИО или полное название поставщика',
+    placeholder: 'Иванов Иван Иванович',
+  },
+  {
+    key: 'providerDisplayName',
+    label: 'Краткое название для документов',
+    placeholder: 'ИП Иванов И.И.',
+  },
+  {
+    key: 'providerInn',
+    label: 'ИНН',
+    placeholder: '123456789012',
+  },
+  {
+    key: 'providerOgrnip',
+    label: 'ОГРНИП',
+    placeholder: '123456789012345',
+  },
+  {
+    key: 'providerBankName',
+    label: 'Банк',
+    placeholder: 'ПАО Сбербанк',
+  },
+  {
+    key: 'providerBik',
+    label: 'БИК',
+    placeholder: '123456789',
+  },
+  {
+    key: 'providerCheckingAccount',
+    label: 'Расчетный счет',
+    placeholder: '12345678901234567890',
+  },
+  {
+    key: 'providerCorrespondentAccount',
+    label: 'Корр. счет',
+    placeholder: '12345678901234567890',
+  },
+  {
+    key: 'providerLegalAddress',
+    label: 'Юридический адрес',
+    placeholder: 'г. Красноярск, ул. ...',
+  },
+  {
+    key: 'defaultTown',
+    label: 'Город по умолчанию',
+    placeholder: 'Красноярск',
+  },
+]
+
 const readFileAsBase64 = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -23,6 +76,18 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
     useCompanySettings(activeCompanyId)
 
   const documents = settings?.documents ?? {}
+  const requisites = documents.requisites ?? {}
+
+  const saveRequisite = (key, value) =>
+    savePatch({
+      documents: {
+        ...documents,
+        requisites: {
+          ...requisites,
+          [key]: value,
+        },
+      },
+    })
 
   const saveDocxTemplate = async (type, file) => {
     if (!file) return
@@ -81,20 +146,12 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <label className="grid gap-1.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Статус артиста
+              Статус поставщика
             </span>
             <select
-              value={documents.requisites?.artistStatus || 'individual_entrepreneur'}
+              value={requisites.providerStatus || 'individual_entrepreneur'}
               onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistStatus: event.target.value,
-                    },
-                  },
-                })
+                saveRequisite('providerStatus', event.target.value)
               }
               className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
             >
@@ -102,226 +159,20 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
               <option value="self_employed">Самозанятый</option>
             </select>
           </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              ФИО артиста (для документов)
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistFullName || ''}
-              placeholder="Иванов Иван Иванович"
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistFullName: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Название артиста (для документов)
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistName || ''}
-              placeholder="Иванов И.И."
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistName: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              ИНН
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistInn || ''}
-              placeholder="123456789012"
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistInn: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              ОГРНИП
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistOgrnip || ''}
-              placeholder="123456789012345"
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistOgrnip: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Банк
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistBankName || ''}
-              placeholder="ПАО Сбербанк"
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistBankName: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              БИК
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistBik || ''}
-              placeholder="123456789"
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistBik: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Расчётный счёт
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistCheckingAccount || ''}
-              placeholder="12345678901234567890"
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistCheckingAccount: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Корр. счёт
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistCorrespondentAccount || ''}
-              placeholder="12345678901234567890"
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistCorrespondentAccount: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Юридический адрес
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.artistLegalAddress || ''}
-              placeholder="г. Красноярск, ул. ..."
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      artistLegalAddress: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Город по умолчанию
-            </span>
-            <input
-              type="text"
-              value={documents.requisites?.defaultTown || ''}
-              placeholder="Красноярск"
-              onChange={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    requisites: {
-                      ...(documents.requisites || {}),
-                      defaultTown: event.target.value,
-                    },
-                  },
-                })
-              }
-              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-            />
-          </label>
+          {PROVIDER_REQUISITE_FIELDS.map((field) => (
+            <label key={field.key} className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {field.label}
+              </span>
+              <input
+                type="text"
+                value={requisites[field.key] || ''}
+                placeholder={field.placeholder}
+                onChange={(event) => saveRequisite(field.key, event.target.value)}
+                className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+              />
+            </label>
+          ))}
         </div>
       </div>
 

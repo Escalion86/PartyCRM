@@ -46,13 +46,39 @@ export const COMPANY_SETTINGS_ACCESS = Object.freeze({
 
 const normalizeGlobalRole = (role) => String(role || '').trim().toLowerCase()
 
-export const canAccessCompanySettingsAccessLevel = (access, role) => {
-  const normalizedRole = normalizeGlobalRole(role)
+const normalizeCompanyRole = (role) => String(role || '').trim().toLowerCase()
+
+const normalizeAccessContext = (context) => {
+  if (typeof context === 'string') {
+    return {
+      globalRole: normalizeGlobalRole(context),
+      companyRole: '',
+      isCompanyManager: false,
+    }
+  }
+
+  return {
+    globalRole: normalizeGlobalRole(context?.globalRole ?? context?.role),
+    companyRole: normalizeCompanyRole(context?.companyRole),
+    isCompanyManager: Boolean(context?.isCompanyManager),
+  }
+}
+
+const isCompanyManagerRole = (role) => ['owner', 'admin'].includes(role)
+
+export const canAccessCompanySettingsAccessLevel = (access, context) => {
+  const { globalRole, companyRole, isCompanyManager } =
+    normalizeAccessContext(context)
   if (access === COMPANY_SETTINGS_ACCESS.DEV) {
-    return normalizedRole === 'dev'
+    return globalRole === 'dev'
   }
   if (access === COMPANY_SETTINGS_ACCESS.ADMIN_DEV) {
-    return normalizedRole === 'admin' || normalizedRole === 'dev'
+    return (
+      globalRole === 'admin' ||
+      globalRole === 'dev' ||
+      isCompanyManager ||
+      isCompanyManagerRole(companyRole)
+    )
   }
   return true
 }
@@ -70,13 +96,13 @@ export const getCompanySettingsHref = (slug) =>
 export const getCompanySettingsTabConfig = (slug) =>
   COMPANY_SETTINGS_TABS.find((item) => item.slug === slug) || null
 
-export const canAccessCompanySettingsTab = (slug, role) => {
+export const canAccessCompanySettingsTab = (slug, context) => {
   const tab = getCompanySettingsTabConfig(slug)
   if (!tab) return false
-  return canAccessCompanySettingsAccessLevel(tab.access, role)
+  return canAccessCompanySettingsAccessLevel(tab.access, context)
 }
 
-export const getVisibleCompanySettingsTabs = (role) =>
+export const getVisibleCompanySettingsTabs = (context) =>
   COMPANY_SETTINGS_TABS.filter((item) =>
-    canAccessCompanySettingsAccessLevel(item.access, role)
+    canAccessCompanySettingsAccessLevel(item.access, context)
   )
