@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { apiJson } from '@helpers/apiClient'
+import Modal from '@components/Modal'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
@@ -21,6 +22,197 @@ const emptyForm = {
   hidden: false,
 }
 
+function TariffForm({
+  form,
+  setForm,
+  featureInput,
+  setFeatureInput,
+  addFeature,
+  removeFeature,
+}) {
+  return (
+    <div className="grid gap-4 pt-1 sm:grid-cols-2">
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Название
+        </label>
+        <input
+          type="text"
+          value={form.title}
+          onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-400 focus:outline-none"
+          placeholder="Например: Базовый"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Подзаголовок
+        </label>
+        <input
+          type="text"
+          value={form.subtitle}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, subtitle: e.target.value }))
+          }
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-400 focus:outline-none"
+          placeholder="Для небольших агентств"
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Цена (₽/мес)
+        </label>
+        <input
+          type="number"
+          step={1000}
+          value={form.price}
+          onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-400 focus:outline-none"
+          placeholder="0 - бесплатный"
+          min={0}
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Заказов в месяц
+        </label>
+        <input
+          type="number"
+          value={form.eventsPerMonth}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, eventsPerMonth: e.target.value }))
+          }
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-400 focus:outline-none"
+          placeholder="0 - без ограничений"
+          min={0}
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Сотрудников
+        </label>
+        <input
+          type="number"
+          value={form.staffLimit}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, staffLimit: e.target.value }))
+          }
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-400 focus:outline-none"
+          placeholder="0 - без ограничений"
+          min={0}
+        />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Скрытый
+        </label>
+        <label className="mt-2 flex cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            checked={form.hidden}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, hidden: e.target.checked }))
+            }
+            className="rounded border-gray-300 text-sky-600 focus:ring-sky-400"
+          />
+          <span className="text-sm text-gray-600">
+            Не показывать на лендинге и пользователям
+          </span>
+        </label>
+      </div>
+      <div className="sm:col-span-2">
+        <div className="mb-2 text-sm font-medium text-gray-700">
+          Доступные опции тарифа
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            ['allowDocuments', 'Документы'],
+            ['allowStatistics', 'Статистика'],
+            ['allowCalendarSync', 'Google Calendar'],
+            ['allowTelephony', 'Телефония'],
+            ['allowAi', 'AI'],
+          ].map(([field, label]) => (
+            <label
+              key={field}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            >
+              <input
+                type="checkbox"
+                checked={form[field]}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, [field]: e.target.checked }))
+                }
+                className="rounded border-gray-300 text-sky-600 focus:ring-sky-400"
+              />
+              <span className="text-gray-700">{label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="sm:col-span-2">
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Описание
+        </label>
+        <textarea
+          value={form.description}
+          onChange={(e) =>
+            setForm((f) => ({ ...f, description: e.target.value }))
+          }
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-400 focus:outline-none"
+          rows={2}
+          placeholder="Краткое описание тарифа"
+        />
+      </div>
+      <div className="sm:col-span-2">
+        <label className="mb-1 block text-sm font-medium text-gray-700">
+          Возможности (features)
+        </label>
+        <div className="mb-2 flex gap-2">
+          <input
+            type="text"
+            value={featureInput}
+            onChange={(e) => setFeatureInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addFeature()
+              }
+            }}
+            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-400 focus:outline-none"
+            placeholder="Введите возможность и нажмите Enter"
+          />
+          <button
+            type="button"
+            onClick={addFeature}
+            className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-600"
+          >
+            Добавить
+          </button>
+        </div>
+        {form.features && form.features.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {form.features.map((feat, index) => (
+              <span
+                key={index}
+                className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-sm text-sky-800"
+              >
+                {feat}
+                <button
+                  type="button"
+                  onClick={() => removeFeature(index)}
+                  className="ml-1 text-sky-400 transition-colors hover:text-red-500"
+                >
+                  x
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function PartyTariffsAdmin({ embedded = false }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -31,6 +223,7 @@ export default function PartyTariffsAdmin({ embedded = false }) {
   const [editingId, setEditingId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [featureInput, setFeatureInput] = useState('')
+  const [tariffModalOpen, setTariffModalOpen] = useState(false)
 
   // Проверка авторизации и загрузка тарифов
   const load = useCallback(async () => {
@@ -86,13 +279,13 @@ export default function PartyTariffsAdmin({ embedded = false }) {
       if (editingId) {
         const res = await apiJson(`/api/party/tariffs/${editingId}`, {
           method: 'PATCH',
-          body,
+          body: JSON.stringify(body),
         })
         if (!res?.success) throw new Error(res?.error || 'Ошибка обновления')
       } else {
         const res = await apiJson('/api/party/tariffs', {
           method: 'POST',
-          body,
+          body: JSON.stringify(body),
         })
         if (!res?.success) throw new Error(res?.error || 'Ошибка создания')
       }
@@ -100,6 +293,7 @@ export default function PartyTariffsAdmin({ embedded = false }) {
       setForm({ ...emptyForm })
       setEditingId(null)
       setFeatureInput('')
+      setTariffModalOpen(false)
       await load()
     } catch (err) {
       setError(err.message)
@@ -126,6 +320,7 @@ export default function PartyTariffsAdmin({ embedded = false }) {
     })
     setEditingId(tariff._id)
     setError('')
+    setTariffModalOpen(true)
   }
 
   // Удаление
@@ -148,6 +343,7 @@ export default function PartyTariffsAdmin({ embedded = false }) {
     setEditingId(null)
     setFeatureInput('')
     setError('')
+    setTariffModalOpen(false)
   }
 
   // Добавление фичи
@@ -163,6 +359,14 @@ export default function PartyTariffsAdmin({ embedded = false }) {
       ...f,
       features: (f.features || []).filter((_, i) => i !== index),
     }))
+  }
+
+  const handleCreate = () => {
+    setForm({ ...emptyForm })
+    setEditingId(null)
+    setFeatureInput('')
+    setError('')
+    setTariffModalOpen(true)
   }
 
   if (loading) {
@@ -213,227 +417,29 @@ export default function PartyTariffsAdmin({ embedded = false }) {
       ) : null}
 
       <div className={embedded ? '' : 'max-w-6xl px-5 py-8 mx-auto'}>
-        <h1 className="text-2xl font-semibold font-futuraPT text-black">
-          Управление тарифами
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Создание и редактирование тарифных планов PartyCRM
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold font-futuraPT text-black">
+              Управление тарифами
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Создание и редактирование тарифных планов PartyCRM
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCreate}
+            className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-700"
+          >
+            Создать тариф
+          </button>
+        </div>
 
         {error && (
           <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
             {error}
           </div>
         )}
-
-        {/* Форма создания/редактирования */}
-        <div className="mt-6 p-6 bg-white border border-gray-200/70 rounded-2xl shadow-sm">
-          <h2 className="text-lg font-semibold text-black font-futuraPT">
-            {editingId ? 'Редактировать тариф' : 'Новый тариф'}
-          </h2>
-          <div className="grid gap-4 mt-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Название
-              </label>
-              <input
-                type="text"
-                value={form.title}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, title: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                placeholder="Например: Базовый"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Подзаголовок
-              </label>
-              <input
-                type="text"
-                value={form.subtitle}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, subtitle: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                placeholder="Для небольших агентств"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Цена (₽/мес)
-              </label>
-              <input
-                type="number"
-                step={1000}
-                value={form.price}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, price: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                placeholder="0 - бесплатный"
-                min={0}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Заказов в месяц
-              </label>
-              <input
-                type="number"
-                value={form.eventsPerMonth}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, eventsPerMonth: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                placeholder="0 - без ограничений"
-                min={0}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Сотрудников
-              </label>
-              <input
-                type="number"
-                value={form.staffLimit}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, staffLimit: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                placeholder="0 - без ограничений"
-                min={0}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Скрытый
-              </label>
-              <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.hidden}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, hidden: e.target.checked }))
-                  }
-                  className="rounded border-gray-300 text-sky-600 focus:ring-sky-400"
-                />
-                <span className="text-sm text-gray-600">
-                  Не показывать на лендинге и пользователям
-                </span>
-              </label>
-            </div>
-            <div className="sm:col-span-2">
-              <div className="text-sm font-medium text-gray-700 mb-2">
-                Доступные опции тарифа
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {[
-                  ['allowDocuments', 'Документы'],
-                  ['allowStatistics', 'Статистика'],
-                  ['allowCalendarSync', 'Google Calendar'],
-                  ['allowTelephony', 'Телефония'],
-                  ['allowAi', 'AI'],
-                ].map(([field, label]) => (
-                  <label
-                    key={field}
-                    className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={form[field]}
-                      onChange={(e) =>
-                        setForm((f) => ({ ...f, [field]: e.target.checked }))
-                      }
-                      className="rounded border-gray-300 text-sky-600 focus:ring-sky-400"
-                    />
-                    <span className="text-gray-700">{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Описание
-              </label>
-              <textarea
-                value={form.description}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, description: e.target.value }))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                rows={2}
-                placeholder="Краткое описание тарифа"
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Возможности (features)
-              </label>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  value={featureInput}
-                  onChange={(e) => setFeatureInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      addFeature()
-                    }
-                  }}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 focus:border-transparent"
-                  placeholder="Введите возможность и нажмите Enter"
-                />
-                <button
-                  onClick={addFeature}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-sky-500 rounded-lg hover:bg-sky-600 transition-colors"
-                >
-                  Добавить
-                </button>
-              </div>
-              {form.features && form.features.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {form.features.map((feat, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center gap-1 px-3 py-1 bg-sky-50 border border-sky-200 rounded-full text-sm text-sky-800"
-                    >
-                      {feat}
-                      <button
-                        onClick={() => removeFeature(index)}
-                        className="ml-1 text-sky-400 hover:text-red-500 transition-colors"
-                      >
-                        x
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex gap-3 mt-6">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-6 py-2 text-sm font-semibold text-white bg-sky-500 rounded-lg hover:bg-sky-600 transition-colors disabled:opacity-50"
-            >
-              {saving
-                ? 'Сохранение...'
-                : editingId
-                  ? 'Сохранить изменения'
-                  : 'Создать тариф'}
-            </button>
-            {editingId && (
-              <button
-                onClick={handleCancel}
-                className="px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                Отменить
-              </button>
-            )}
-          </div>
-        </div>
 
         {/* Список тарифов */}
         <div className="mt-6 space-y-3">
@@ -520,6 +526,46 @@ export default function PartyTariffsAdmin({ embedded = false }) {
             ))
           )}
         </div>
+
+        <Modal
+          open={tariffModalOpen}
+          onClose={handleCancel}
+          title={editingId ? 'Редактировать тариф' : 'Создать тариф'}
+          tone="party"
+          size="full"
+          footer={
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving
+                  ? 'Сохранение...'
+                  : editingId
+                    ? 'Сохранить изменения'
+                    : 'Создать тариф'}
+              </button>
+            </div>
+          }
+        >
+          <TariffForm
+            form={form}
+            setForm={setForm}
+            featureInput={featureInput}
+            setFeatureInput={setFeatureInput}
+            addFeature={addFeature}
+            removeFeature={removeFeature}
+          />
+        </Modal>
       </div>
     </div>
   )
