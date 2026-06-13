@@ -3,6 +3,10 @@ import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext, parseJsonBody } from '@server/partyApi'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
 import {
+  preservePartyGoogleCalendarSettings,
+  serializePartyCompanySettingsForResponse,
+} from '@server/partyGoogleCalendarSettings'
+import {
   filterCompanySettingsPatchByTariffAccess,
   mergeCompanySettingsPatch,
   normalizeCompanyProfile,
@@ -28,13 +32,17 @@ export async function GET(req) {
       trialEndsAt: 1,
     })
     .lean()
-  const { serializedAccess } = await getPartyCompanyTariffAccessState(company)
+  const { access, serializedAccess } =
+    await getPartyCompanyTariffAccessState(company)
 
   return NextResponse.json({
     success: true,
     data: {
       company: normalizeCompanyProfile(company ?? {}),
-      settings: normalizeCompanySettings(company?.settings ?? {}),
+      settings: serializePartyCompanySettingsForResponse(
+        normalizeCompanySettings(company?.settings ?? {}),
+        { allowCalendarSync: access.allowCalendarSync }
+      ),
       access: serializedAccess,
     },
   })
@@ -68,9 +76,9 @@ export async function PATCH(req) {
     settingsPatch,
     access
   )
-  const nextSettings = mergeCompanySettingsPatch(
+  const nextSettings = preservePartyGoogleCalendarSettings(
     company?.settings ?? {},
-    filteredBody
+    mergeCompanySettingsPatch(company?.settings ?? {}, filteredBody)
   )
   const nextCompany = normalizeCompanyProfile(companyPatch ?? {})
   const updateSet = { settings: nextSettings }
@@ -96,7 +104,9 @@ export async function PATCH(req) {
         ...company,
         ...companySet,
       }),
-      settings: nextSettings,
+      settings: serializePartyCompanySettingsForResponse(nextSettings, {
+        allowCalendarSync: access.allowCalendarSync,
+      }),
       access: serializedAccess,
     },
   })
