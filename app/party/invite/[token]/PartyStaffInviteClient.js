@@ -112,7 +112,7 @@ export default function PartyStaffInviteClient({ token }) {
                   Войти
                 </Link>
                 <Link
-                  href={`/party/login?mode=register&callbackUrl=${callbackParam}`}
+                  href={`/party/login?mode=register&inviteToken=${encodeURIComponent(token)}&callbackUrl=${callbackParam}`}
                   className="rounded-md border border-sky-200 bg-white px-4 py-2 text-center text-sm font-semibold text-sky-700 hover:bg-sky-50"
                 >
                   Зарегистрироваться

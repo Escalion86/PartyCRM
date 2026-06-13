@@ -111,11 +111,14 @@ const POLL_INTERVAL_MS = 3000
 export default function PartyLoginClient({
   callbackUrl = '/party/entry',
   initialMode = 'login',
+  inviteToken = '',
 }) {
   const [mode, setMode] = useState(
     initialMode === 'register' ? 'register' : 'login'
   )
-  const [interfaceRoleMode, setInterfaceRoleMode] = useState('both')
+  const [interfaceRoleMode, setInterfaceRoleMode] = useState(
+    inviteToken ? 'performer' : 'both'
+  )
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [passwordRepeat, setPasswordRepeat] = useState('')
@@ -157,6 +160,44 @@ export default function PartyLoginClient({
   useEffect(() => {
     return () => stopPolling()
   }, [stopPolling])
+
+  useEffect(() => {
+    if (initialMode !== 'register' || !inviteToken) return undefined
+
+    let active = true
+    fetch(`/api/party/invites/${encodeURIComponent(inviteToken)}`, {
+      cache: 'no-store',
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok || payload?.success === false) {
+          throw new Error(payload?.error?.message || 'Приглашение недействительно')
+        }
+        return payload?.data?.registrationPrefill
+      })
+      .then((registrationPrefill) => {
+        if (!active || !registrationPrefill) return
+        setPhone(formatPhone(registrationPrefill.phone || ''))
+        setFirstName(registrationPrefill.firstName || '')
+        setSecondName(registrationPrefill.secondName || '')
+        setInterfaceRoleMode(
+          registrationPrefill.interfaceRoleMode === 'company'
+            ? 'company'
+            : 'performer'
+        )
+      })
+      .catch((requestError) => {
+        if (active) {
+          setError(
+            requestError.message || 'Не удалось загрузить данные приглашения'
+          )
+        }
+      })
+
+    return () => {
+      active = false
+    }
+  }, [initialMode, inviteToken])
 
   const startPhoneVerification = async () => {
     setVerifyError('')

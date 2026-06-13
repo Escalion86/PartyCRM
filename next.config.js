@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    cpus: 4,
+  },
   images: {
     unoptimized: false,
     formats: ['image/avif', 'image/webp'],

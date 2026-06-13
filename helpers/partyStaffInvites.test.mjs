@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   PARTY_STAFF_INVITE_TTL_MS,
+  buildPartyStaffInviteUrl,
   buildPartyStaffInviteShareContent,
   buildPartyStaffInvitePublicView,
   createPartyStaffInviteToken,
@@ -28,6 +29,27 @@ test('invite share content prepares copy text and manual delivery links', () => 
   assert.match(share.emailUrl, /^mailto:\?subject=/)
   assert.match(share.telegramUrl, /^https:\/\/t\.me\/share\/url\?/)
   assert.match(share.whatsappUrl, /^https:\/\/wa\.me\/\?text=/)
+})
+
+test('invite URL prefers configured DOMAIN and removes trailing slash', () => {
+  assert.equal(
+    buildPartyStaffInviteUrl({
+      token: 'secret-token',
+      domain: 'https://partycrm.ru/',
+      requestUrl: 'http://localhost:3007/api/party/staff/1/invite',
+    }),
+    'https://partycrm.ru/party/invite/secret-token'
+  )
+})
+
+test('invite URL falls back to request origin in local development', () => {
+  assert.equal(
+    buildPartyStaffInviteUrl({
+      token: 'secret-token',
+      requestUrl: 'http://localhost:3007/api/party/staff/1/invite',
+    }),
+    'http://localhost:3007/party/invite/secret-token'
+  )
 })
 
 test('invite token is random base64url and hash is deterministic sha256', () => {
@@ -76,7 +98,23 @@ test('public invite view masks phone and omits internal ids', () => {
     expiresAt: '2026-06-20T00:00:00.000Z',
     companyTitle: 'Праздник',
     staffName: 'Петров Иван',
+    registrationPrefill: {
+      phone: '79991234567',
+      firstName: 'Иван',
+      secondName: 'Петров',
+      interfaceRoleMode: 'performer',
+    },
   })
+})
+
+test('inactive invite does not expose registration prefill', () => {
+  const view = buildPartyStaffInvitePublicView({
+    invite: { status: 'revoked', role: 'admin', phone: '79991234567' },
+    company: { title: 'Праздник' },
+    staff: { firstName: 'Иван', secondName: 'Петров' },
+  })
+
+  assert.equal(view.registrationPrefill, null)
 })
 
 test('acceptance requires active invite and matching phone', () => {

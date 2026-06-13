@@ -34,28 +34,16 @@ export default function PartyStaffInvitePanel({ staffId, activeCompanyId }) {
     },
   })
 
-  const loadInvite = async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const response = await apiJson(
-        `/api/party/staff/${staffId}/invite`,
-        requestOptions({ cache: 'no-store' })
-      )
-      setInvite(response.data ?? null)
-    } catch (requestError) {
-      setError(requestError.message || 'Не удалось загрузить приглашение')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const toggle = async (event) => {
     event.stopPropagation()
-    const nextOpen = !open
-    setOpen(nextOpen)
     setCopied('')
-    if (nextOpen && invite === null) await loadInvite()
+    if (open) {
+      setOpen(false)
+      return
+    }
+
+    setOpen(true)
+    if (!inviteUrl) await createInvite(event)
   }
 
   const createInvite = async (event) => {
@@ -118,10 +106,15 @@ export default function PartyStaffInvitePanel({ staffId, activeCompanyId }) {
     <div className="mt-3" onClick={(event) => event.stopPropagation()}>
       <button
         type="button"
+        disabled={loading}
         onClick={toggle}
-        className="cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-50"
+        className="cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {open ? 'Скрыть приглашение' : 'Пригласить в систему'}
+        {loading
+          ? 'Создаём приглашение...'
+          : open
+            ? 'Скрыть приглашение'
+            : 'Пригласить в систему'}
       </button>
 
       {open ? (
@@ -194,37 +187,26 @@ export default function PartyStaffInvitePanel({ staffId, activeCompanyId }) {
             </div>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
-            {invite?.status === 'active' ? (
-              <>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={createInvite}
-                  className="cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
-                >
-                  Перевыпустить
-                </button>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={revokeInvite}
-                  className="cursor-pointer rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
-                >
-                  Отменить
-                </button>
-              </>
-            ) : (
+          {invite?.status === 'active' ? (
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 disabled={loading}
                 onClick={createInvite}
-                className="cursor-pointer rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+                className="cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-50 disabled:opacity-50"
               >
-                Создать ссылку на 7 дней
+                Перевыпустить
               </button>
-            )}
-          </div>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={revokeInvite}
+                className="cursor-pointer rounded-md border border-rose-200 bg-white px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+              >
+                Отменить
+              </button>
+            </div>
+          ) : null}
           {!inviteUrl && invite?.status === 'active' ? (
             <p className="text-xs text-slate-500">
               Открытая ссылка показывается только сразу после выпуска. При

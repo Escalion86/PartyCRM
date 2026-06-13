@@ -31,6 +31,18 @@ export const isPartyStaffInviteRole = (role) =>
 export const getPartyStaffInviteRoleLabel = (role) =>
   INVITE_ROLE_LABELS[String(role ?? '').trim()] || 'Сотрудник'
 
+export const buildPartyStaffInviteUrl = ({
+  token = '',
+  domain = '',
+  requestUrl = '',
+} = {}) => {
+  const configuredDomain = String(domain || '').trim()
+  const baseUrl = configuredDomain
+    ? configuredDomain.replace(/\/+$/, '')
+    : new URL(requestUrl).origin
+  return `${baseUrl}/party/invite/${encodeURIComponent(String(token || '').trim())}`
+}
+
 export const buildPartyStaffInviteShareContent = ({
   companyTitle = '',
   staffName = '',
@@ -85,17 +97,34 @@ export const isPartyStaffInviteTargetCurrent = ({ invite, staff }) => {
   return true
 }
 
-export const buildPartyStaffInvitePublicView = ({ invite, company, staff }) => ({
-  status: String(invite?.status ?? 'invalid'),
-  role: String(invite?.role ?? ''),
-  roleLabel: getPartyStaffInviteRoleLabel(invite?.role),
-  maskedPhone: maskPartyStaffInvitePhone(invite?.phone),
-  expiresAt: invite?.expiresAt ? new Date(invite.expiresAt).toISOString() : null,
-  companyTitle: String(company?.title ?? 'Компания'),
-  staffName:
-    [staff?.secondName, staff?.firstName].filter(Boolean).join(' ').trim() ||
-    'Сотрудник',
-})
+export const buildPartyStaffInvitePublicView = ({ invite, company, staff }) => {
+  const status = String(invite?.status ?? 'invalid')
+  const role = String(invite?.role ?? '')
+  const firstName = String(staff?.firstName ?? '').trim()
+  const secondName = String(staff?.secondName ?? '').trim()
+
+  return {
+    status,
+    role,
+    roleLabel: getPartyStaffInviteRoleLabel(role),
+    maskedPhone: maskPartyStaffInvitePhone(invite?.phone),
+    expiresAt: invite?.expiresAt
+      ? new Date(invite.expiresAt).toISOString()
+      : null,
+    companyTitle: String(company?.title ?? 'Компания'),
+    staffName:
+      [secondName, firstName].filter(Boolean).join(' ').trim() || 'Сотрудник',
+    registrationPrefill:
+      status === 'active'
+        ? {
+            phone: normalizePhone(invite?.phone),
+            firstName,
+            secondName,
+            interfaceRoleMode: role === 'admin' ? 'company' : 'performer',
+          }
+        : null,
+  }
+}
 
 const rejection = (code, message) => ({ ok: false, code, message })
 

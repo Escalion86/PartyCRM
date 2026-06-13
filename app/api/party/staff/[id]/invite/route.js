@@ -11,6 +11,7 @@ import {
 import { normalizePartyPhone } from '@server/partyAuth'
 import {
   createPartyStaffInviteToken,
+  buildPartyStaffInviteUrl,
   buildPartyStaffInviteShareContent,
   getPartyStaffInviteEffectiveStatus,
   getPartyStaffInviteExpiry,
@@ -148,8 +149,11 @@ export async function POST(req, { params }) {
     { $set: { status: 'invited', linkStatus: 'unlinked' } }
   )
 
-  const origin = new URL(req.url).origin
-  const inviteUrl = `${origin}/party/invite/${token}`
+  const inviteUrl = buildPartyStaffInviteUrl({
+    token,
+    domain: process.env.DOMAIN,
+    requestUrl: req.url,
+  })
   const staffName = [staff.secondName, staff.firstName]
     .filter(Boolean)
     .join(' ')
