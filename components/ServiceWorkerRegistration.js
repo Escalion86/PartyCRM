@@ -1,6 +1,10 @@
 'use client'
 
 import { useEffect } from 'react'
+import {
+  PARTY_SERVICE_WORKER_URL,
+  getPartyServiceWorkerRegistrationOptions,
+} from '@helpers/serviceWorkerRegistration'
 
 const ServiceWorkerRegistration = () => {
   useEffect(() => {
@@ -8,7 +12,13 @@ const ServiceWorkerRegistration = () => {
     if (typeof window === 'undefined') return
     if (!('serviceWorker' in navigator)) return
 
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => null)
+    navigator.serviceWorker
+      .register(
+        PARTY_SERVICE_WORKER_URL,
+        getPartyServiceWorkerRegistrationOptions()
+      )
+      .then((registration) => registration.update())
+      .catch(() => null)
   }, [])
 
   return null

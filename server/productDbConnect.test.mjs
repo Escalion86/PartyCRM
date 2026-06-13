@@ -13,6 +13,7 @@ const ENV_KEYS = [
   'PARTYCRM_MONGODB_DBNAME',
   'ARTISTCRM_MONGODB_URI',
   'ARTISTCRM_MONGODB_DBNAME',
+  'PARTYCRM_SHARED_RUNTIME',
 ]
 
 const withEnv = (values, callback) => {
@@ -60,13 +61,59 @@ test('product DB config falls back to common variables for standalone deploys', 
   )
 })
 
-test('shared runtime rejects identical ArtistCRM and PartyCRM databases', () => {
+test('standalone PartyCRM allows common and PartyCRM variables to resolve to the same database', () => {
   withEnv(
     {
       MONGODB_URI: 'mongodb://shared',
       MONGODB_DBNAME: 'production',
       PARTYCRM_MONGODB_URI: 'mongodb://shared',
       PARTYCRM_MONGODB_DBNAME: 'production',
+    },
+    () => assert.doesNotThrow(() => assertProductDbIsolation())
+  )
+})
+
+test('explicit shared runtime rejects identical product databases', () => {
+  withEnv(
+    {
+      ARTISTCRM_MONGODB_URI: 'mongodb://shared',
+      ARTISTCRM_MONGODB_DBNAME: 'production',
+      PARTYCRM_MONGODB_URI: 'mongodb://shared',
+      PARTYCRM_MONGODB_DBNAME: 'production',
+    },
+    () => {
+      assert.throws(
+        () => assertProductDbIsolation(),
+        /must use different MongoDB databases/
+      )
+    }
+  )
+})
+
+test('shared runtime flag compares common ArtistCRM and PartyCRM variables', () => {
+  withEnv(
+    {
+      MONGODB_URI: 'mongodb://shared',
+      MONGODB_DBNAME: 'production',
+      PARTYCRM_MONGODB_URI: 'mongodb://shared',
+      PARTYCRM_MONGODB_DBNAME: 'production',
+      PARTYCRM_SHARED_RUNTIME: 'true',
+    },
+    () => {
+      assert.throws(
+        () => assertProductDbIsolation(),
+        /must use different MongoDB databases/
+      )
+    }
+  )
+})
+
+test('shared runtime flag rejects missing PartyCRM database override', () => {
+  withEnv(
+    {
+      MONGODB_URI: 'mongodb://shared',
+      MONGODB_DBNAME: 'production',
+      PARTYCRM_SHARED_RUNTIME: 'true',
     },
     () => {
       assert.throws(

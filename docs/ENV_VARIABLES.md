@@ -15,14 +15,15 @@ PARTYCRM_SECRET=...
 обычные `MONGODB_*` остаются за ArtistCRM, а PartyCRM получает отдельные:
 
 ```env
+PARTYCRM_SHARED_RUNTIME=true
 PARTYCRM_MONGODB_URI=...
 PARTYCRM_MONGODB_DBNAME=partycrm_dev
 ```
 
 `server/productDbConnect.js` сначала читает product-specific переменные и
 только затем использует `MONGODB_*` как fallback. При наличии
-`PARTYCRM_MONGODB_*` совпадающая пара URI+DB для двух продуктов считается
-ошибкой конфигурации.
+При `PARTYCRM_SHARED_RUNTIME=true` совпадающая пара URI+DB для двух продуктов
+считается ошибкой конфигурации. В отдельном PartyCRM runtime флаг не задаётся.
 
 ## Дополнительно нужны для текущего состояния кода
 

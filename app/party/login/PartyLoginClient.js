@@ -48,7 +48,15 @@ const interfaceRoleOptions = [
   },
 ]
 
-const Field = ({ label, value, onChange, type = 'text', readOnly = false }) => {
+const Field = ({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  readOnly = false,
+  name,
+  autoComplete,
+}) => {
   const handleChange = (event) => {
     if (type === 'phone') {
       let inputValue = event.target.value
@@ -75,7 +83,10 @@ const Field = ({ label, value, onChange, type = 'text', readOnly = false }) => {
     <label className="grid gap-1 text-sm">
       <span className="font-medium text-black/65">{label}</span>
       <input
+        name={name}
         type={type === 'phone' ? 'text' : type}
+        inputMode={type === 'phone' ? 'tel' : undefined}
+        autoComplete={autoComplete}
         value={value}
         onChange={handleChange}
         readOnly={readOnly}
@@ -288,6 +299,8 @@ export default function PartyLoginClient({
         return
       }
       window.location.replace(normalizedCallbackUrl)
+    } catch {
+      setError('Сервис регистрации временно недоступен')
     } finally {
       setLoading(false)
     }
@@ -323,6 +336,8 @@ export default function PartyLoginClient({
         return
       }
       window.location.replace(normalizedCallbackUrl)
+    } catch {
+      setError('Сервис авторизации временно недоступен')
     } finally {
       setLoading(false)
     }
@@ -373,12 +388,16 @@ export default function PartyLoginClient({
             value={phone}
             onChange={setPhone}
             type="phone"
+            name="phone"
+            autoComplete="tel"
           />
           <Field
             label="Пароль"
             type="password"
             value={password}
             onChange={setPassword}
+            name="password"
+            autoComplete="current-password"
           />
 
           <button
@@ -409,6 +428,8 @@ export default function PartyLoginClient({
             value={phone}
             onChange={setPhone}
             type="phone"
+            name="phone"
+            autoComplete="tel"
           />
 
           <div className="rounded-lg border border-sky-100 bg-sky-50/50 p-4">
@@ -563,7 +584,13 @@ export default function PartyLoginClient({
           className="mt-6 grid gap-4 rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5"
         >
           {/* Телефон — показан, но не редактируется */}
-          <Field label="Телефон" value={phoneDisplay} readOnly />
+          <Field
+            label="Телефон"
+            value={phoneDisplay}
+            readOnly
+            name="phone"
+            autoComplete="tel"
+          />
 
           <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
             <svg
@@ -587,20 +614,32 @@ export default function PartyLoginClient({
             type="password"
             value={password}
             onChange={setPassword}
+            name="new-password"
+            autoComplete="new-password"
           />
           <Field
             label="Повторите пароль"
             type="password"
             value={passwordRepeat}
             onChange={setPasswordRepeat}
+            name="password-repeat"
+            autoComplete="new-password"
           />
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Имя" value={firstName} onChange={setFirstName} />
+            <Field
+              label="Имя"
+              value={firstName}
+              onChange={setFirstName}
+              name="given-name"
+              autoComplete="given-name"
+            />
             <Field
               label="Фамилия"
               value={secondName}
               onChange={setSecondName}
+              name="family-name"
+              autoComplete="family-name"
             />
           </div>
 

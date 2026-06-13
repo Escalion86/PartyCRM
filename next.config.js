@@ -10,6 +10,25 @@ const nextConfig = {
   async headers() {
     return [
       {
+        source: '/party-sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
+        source: '/sw.js',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+        ],
+      },
+      {
         source: '/img/:path*',
         headers: [
           {

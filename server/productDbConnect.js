@@ -20,10 +20,16 @@ export const getProductDbConfig = (product) => {
 }
 
 export const assertProductDbIsolation = () => {
+  const hasArtistOverride = Boolean(
+    process.env.ARTISTCRM_MONGODB_URI || process.env.ARTISTCRM_MONGODB_DBNAME
+  )
   const hasPartyOverride = Boolean(
     process.env.PARTYCRM_MONGODB_URI || process.env.PARTYCRM_MONGODB_DBNAME
   )
-  if (!hasPartyOverride) return true
+  const sharedRuntime =
+    process.env.PARTYCRM_SHARED_RUNTIME === 'true' ||
+    (hasArtistOverride && hasPartyOverride)
+  if (!sharedRuntime) return true
 
   const artistConfig = getProductDbConfig(PRODUCTS.ARTISTCRM)
   const partyConfig = getProductDbConfig(PRODUCTS.PARTYCRM)

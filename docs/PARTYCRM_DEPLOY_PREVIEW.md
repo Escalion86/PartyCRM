@@ -54,15 +54,17 @@ NEXTAUTH_SECRET=...
 
 ```env
 DOMAIN=partycrm.ru
+PARTYCRM_SHARED_RUNTIME=true
 PARTYCRM_MONGODB_URI=...
 PARTYCRM_MONGODB_DBNAME=...
 AUTH_SECRET=...
 ```
 
 Для отдельного PartyCRM process допустим fallback на обычные
-`MONGODB_URI/MONGODB_DBNAME`. В описанном здесь общем runtime обязательны
-`PARTYCRM_MONGODB_*`; приложение остановит подключение, если итоговая пара
-URI+DB совпадёт с ArtistCRM.
+`MONGODB_URI/MONGODB_DBNAME`, а `PARTYCRM_SHARED_RUNTIME` задавать не нужно. В
+описанном здесь общем runtime обязательны флаг и `PARTYCRM_MONGODB_*`;
+приложение остановит подключение, если итоговая пара URI+DB совпадёт с
+ArtistCRM.
 
 Auth-переменные ArtistCRM остаются привязаны к `artistcrm.ru`:
 
@@ -181,6 +183,18 @@ npm install
 npm run build
 PORT=3006 npm run start
 ```
+
+Перед build удалить legacy-файлы старого `next-pwa`, поскольку они игнорируются
+Git и не удаляются обычным `git pull`:
+
+```bash
+rm -f public/sw.js public/sw.js.map public/workbox-*.js public/workbox-*.js.map
+rm -f public/worker-*.js public/worker-*.js.map
+```
+
+Актуальный service worker хранится в Git как `public/party-sw.js`. После deploy
+проверить, что `https://partycrm.ru/party-sw.js` возвращает `200` и заголовок
+`Cache-Control: no-cache, no-store, must-revalidate`.
 
 Сборка не использует `output: 'standalone'`: deploy идет обычным `next start` из проекта с установленными `node_modules`. Это уменьшает лишний tracing/copy-слой при production build.
 

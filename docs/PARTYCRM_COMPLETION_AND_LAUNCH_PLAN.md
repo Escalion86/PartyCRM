@@ -63,6 +63,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [x] Изменить `productDbConnect`, чтобы PartyCRM предпочитал `PARTYCRM_MONGODB_URI/PARTYCRM_MONGODB_DBNAME`.
 - [x] Обновить local/deploy/env документацию и описать fallback standalone runtime.
 - [x] Добавить startup check: итоговая пара URI+DB ArtistCRM и PartyCRM не совпадает в shared runtime.
+- [x] Исправить определение standalone/shared runtime: проверка изоляции включается флагом `PARTYCRM_SHARED_RUNTIME=true` или двумя явными product-specific наборами.
 - [ ] Проверить `/api/party/health`, `/api/party/memberships`, `/api/party/me` с валидным и чужим `x-partycrm-company-id`.
 - [ ] Подготовить backup/restore отдельно для PartyCRM DB.
 

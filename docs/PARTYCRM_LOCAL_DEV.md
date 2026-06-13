@@ -54,6 +54,7 @@ DOMAIN=artistcrm.ru
 PartyCRM использует отдельные переменные:
 
 ```env
+PARTYCRM_SHARED_RUNTIME=true
 PARTYCRM_MONGODB_URI=...
 PARTYCRM_MONGODB_DBNAME=partycrm_dev
 DOMAIN=partycrm.ru
@@ -62,7 +63,8 @@ AUTH_SECRET=local-partycrm-secret
 
 Если запускается отдельный process только для PartyCRM, product-specific
 переменные можно не задавать: `MONGODB_URI/MONGODB_DBNAME` становятся
-fallback и должны указывать на PartyCRM DB.
+fallback и должны указывать на PartyCRM DB. `PARTYCRM_SHARED_RUNTIME` в этом
+режиме не задаётся.
 
 Для локальной проверки подключения:
 

@@ -1,5 +1,10 @@
 'use client'
 
+import {
+  PARTY_SERVICE_WORKER_URL,
+  getPartyServiceWorkerRegistrationOptions,
+} from './serviceWorkerRegistration'
+
 const isPushSupported = () =>
   typeof window !== 'undefined' &&
   'serviceWorker' in navigator &&
@@ -49,7 +54,10 @@ const getPushRegistration = async () => {
 
   if (!existing) {
     await navigator.serviceWorker
-      .register('/sw.js', { scope: '/' })
+      .register(
+        PARTY_SERVICE_WORKER_URL,
+        getPartyServiceWorkerRegistrationOptions()
+      )
       .catch(() => null)
   }
 
