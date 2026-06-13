@@ -1,8 +1,11 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import useCompanySettings from '../useCompanySettings'
+import { getCompanyIntegrationIndicatorState } from './companyIntegrationState'
 
 const createSecret = (prefix) => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -14,35 +17,100 @@ const createSecret = (prefix) => {
 const buildOrigin = () =>
   typeof window === 'undefined' ? '' : window.location.origin.replace(/\/+$/, '')
 
+const INTEGRATION_INDICATOR_VIEW = {
+  connected: {
+    className: 'bg-emerald-500 ring-4 ring-emerald-100',
+    label: 'Интеграция подключена',
+  },
+  disconnected: {
+    className: 'bg-slate-300 ring-4 ring-slate-100',
+    label: 'Интеграция не подключена',
+  },
+  warning: {
+    className: 'bg-amber-400 ring-4 ring-amber-100',
+    label: 'Интеграция требует внимания',
+  },
+  loading: {
+    className: 'animate-pulse bg-slate-300 ring-4 ring-slate-100',
+    label: 'Проверяем состояние интеграции',
+  },
+}
+
 const CompanyIntegrationCard = ({
   title,
   description,
   children,
   note = '',
   locked = false,
-}) => (
-  <div
-    className={`rounded-2xl border p-5 ${
-      locked ? 'border-amber-200 bg-amber-50' : 'border-sky-100 bg-white'
-    }`}
-  >
-    <div className="text-base font-semibold">{title}</div>
-    <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
-    {locked ? (
-      <div className="mt-3 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs leading-5 text-amber-900">
-        Недоступно на текущем тарифе компании.
-      </div>
-    ) : null}
-    {note ? (
-      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-        {note}
-      </div>
-    ) : null}
-    <div className={locked ? 'pointer-events-none mt-4 grid gap-3 opacity-50' : 'mt-4 grid gap-3'}>
-      {children}
-    </div>
-  </div>
-)
+  indicatorState = 'disconnected',
+}) => {
+  const [open, setOpen] = useState(false)
+  const contentId = useId()
+  const indicator =
+    INTEGRATION_INDICATOR_VIEW[indicatorState] ||
+    INTEGRATION_INDICATOR_VIEW.disconnected
+
+  return (
+    <section
+      className={`overflow-hidden rounded-2xl border ${
+        locked ? 'border-amber-200 bg-amber-50' : 'border-sky-100 bg-white'
+      }`}
+    >
+      <button
+        type="button"
+        aria-controls={contentId}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex min-h-20 w-full cursor-pointer items-center justify-between gap-4 px-5 py-4 text-left transition hover:bg-sky-50/70"
+      >
+        <span className="flex min-w-0 items-center gap-4">
+          <span
+            className={`h-2.5 w-2.5 shrink-0 rounded-full ${indicator.className}`}
+            aria-hidden="true"
+          />
+          <span className="min-w-0">
+            <span className="block text-base font-semibold text-slate-900">
+              {title}
+            </span>
+            <span className="mt-1 block text-sm leading-5 text-slate-500">
+              {description}
+            </span>
+            <span className="sr-only">{indicator.label}</span>
+          </span>
+        </span>
+        <FontAwesomeIcon
+          icon={faChevronDown}
+          className={`h-4 w-4 shrink-0 text-sky-600 transition-transform ${
+            open ? 'rotate-180' : ''
+          }`}
+        />
+      </button>
+      {open ? (
+        <div id={contentId} className="border-t border-sky-100 px-5 py-4">
+          {locked ? (
+            <div className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs leading-5 text-amber-900">
+              Недоступно на текущем тарифе компании.
+            </div>
+          ) : null}
+          {note ? (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+              {note}
+            </div>
+          ) : null}
+          <div
+            className={
+              locked
+                ? 'pointer-events-none mt-4 grid gap-3 opacity-50'
+                : 'grid gap-3'
+            }
+          >
+            {children}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  )
+}
 
 const Field = ({
   label,
@@ -171,6 +239,40 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
 
   const integrations = settings?.integrations ?? {}
   const origin = buildOrigin()
+  const telephonyLocked = Boolean(access && !access.allowTelephony)
+  const aiLocked = Boolean(access && !access.allowAi)
+
+  const publicLeadIndicatorState = getCompanyIntegrationIndicatorState({
+    type: 'publicLead',
+    enabled: settings?.publicLeadEnabled === true,
+    apiKeys: settings?.publicLeadApiKeys ?? [],
+  })
+  const avitoIndicatorState = getCompanyIntegrationIndicatorState({
+    type: 'avito',
+    enabled: status?.avito?.enabled ?? integrations.avitoEnabled === true,
+    status: status?.avito?.status,
+    loading: statusLoading,
+  })
+  const vkIndicatorState = getCompanyIntegrationIndicatorState({
+    type: 'vk',
+    enabled: status?.vk?.enabled ?? integrations.vkGroupEnabled === true,
+    status: status?.vk?.status,
+    loading: statusLoading,
+  })
+  const novofonIndicatorState = getCompanyIntegrationIndicatorState({
+    type: 'novofon',
+    enabled:
+      status?.novofon?.enabled ?? integrations.novofonEnabled === true,
+    apiKey: status?.novofon?.apiKey ?? integrations.novofonApiKey,
+    locked: telephonyLocked,
+    loading: statusLoading,
+  })
+  const aiIndicatorState = getCompanyIntegrationIndicatorState({
+    type: 'ai',
+    apiKey: status?.ai?.aitunnelKey ?? integrations.aitunnelKey,
+    locked: aiLocked,
+    loading: statusLoading,
+  })
 
   const avitoWebhookUrl = useMemo(() => {
     const token = integrations.avitoWebhookToken || ''
@@ -284,6 +386,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       <CompanyIntegrationCard
         title="Входящие заявки API / Tilda"
         description="Публичные endpoints PartyCRM для заявок с сайта, Tilda и внешних форм."
+        indicatorState={publicLeadIndicatorState}
       >
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <input
@@ -381,6 +484,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       <CompanyIntegrationCard
         title="Avito"
         description="Поля подключения и webhook компании для Avito."
+        indicatorState={avitoIndicatorState}
       >
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <input
@@ -451,6 +555,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       <CompanyIntegrationCard
         title="VK"
         description="Настройки группы VK и Callback API на уровне компании."
+        indicatorState={vkIndicatorState}
       >
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <input
@@ -536,7 +641,8 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       <CompanyIntegrationCard
         title="Novofon"
         description="Секрет webhook и ключ телефонии компании."
-        locked={access && !access.allowTelephony}
+        locked={telephonyLocked}
+        indicatorState={novofonIndicatorState}
       >
         <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
           <input
@@ -596,7 +702,8 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       <CompanyIntegrationCard
         title="AITunnel / AI"
         description="Ключ и модели AI на уровне компании."
-        locked={access && !access.allowAi}
+        locked={aiLocked}
+        indicatorState={aiIndicatorState}
       >
         <Field
           label="AITunnel key"
