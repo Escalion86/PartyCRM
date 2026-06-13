@@ -26,6 +26,7 @@ npm run dev
 
 - `AGENTS.md` — руководство для ИИ-агентов и разработчиков (архитектура, правила, roadmap).
 - `docs/PARTYCRM_ROADMAP.md` — план развития продукта.
+- `docs/PARTYCRM_PILOT_CHECKLIST.md` — ручной smoke-test закрытого pilot.
 
 ## Переменные окружения
 
@@ -36,6 +37,11 @@ npm run dev
 - `MONGODB_URI`, `MONGODB_DBNAME`
 - `AUTH_SECRET`
 - `PARTYCRM_SECRET`
+
+В отдельном PartyCRM runtime используются обычные `MONGODB_*`. Если ArtistCRM
+и PartyCRM запущены одним Next.js process, PartyCRM обязан использовать
+`PARTYCRM_MONGODB_URI` и `PARTYCRM_MONGODB_DBNAME`; совпадающая с ArtistCRM
+пара URI+DB блокируется при подключении.
 
 Подробная раскладка по обязательным, legacy и удаляемым переменным:
 - `docs/ENV_VARIABLES.md`

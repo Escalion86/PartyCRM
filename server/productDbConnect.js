@@ -1,22 +1,44 @@
 import mongoose from 'mongoose'
-import { PRODUCTS, normalizeProduct } from './productContext'
+import { PRODUCTS, normalizeProduct } from './productContext.js'
 
-const getProductDbConfig = (product) => {
+export const getProductDbConfig = (product) => {
   const normalizedProduct = normalizeProduct(product)
 
   if (normalizedProduct === PRODUCTS.PARTYCRM) {
     return {
       product: PRODUCTS.PARTYCRM,
-      uri: process.env.MONGODB_URI,
-      dbName: process.env.MONGODB_DBNAME,
+      uri: process.env.PARTYCRM_MONGODB_URI || process.env.MONGODB_URI,
+      dbName: process.env.PARTYCRM_MONGODB_DBNAME || process.env.MONGODB_DBNAME,
     }
   }
 
   return {
     product: PRODUCTS.ARTISTCRM,
-    uri: process.env.MONGODB_URI,
-    dbName: process.env.MONGODB_DBNAME,
+    uri: process.env.ARTISTCRM_MONGODB_URI || process.env.MONGODB_URI,
+    dbName: process.env.ARTISTCRM_MONGODB_DBNAME || process.env.MONGODB_DBNAME,
   }
+}
+
+export const assertProductDbIsolation = () => {
+  const hasPartyOverride = Boolean(
+    process.env.PARTYCRM_MONGODB_URI || process.env.PARTYCRM_MONGODB_DBNAME
+  )
+  if (!hasPartyOverride) return true
+
+  const artistConfig = getProductDbConfig(PRODUCTS.ARTISTCRM)
+  const partyConfig = getProductDbConfig(PRODUCTS.PARTYCRM)
+  const sameUri =
+    String(artistConfig.uri || '').trim() === String(partyConfig.uri || '').trim()
+  const sameDbName =
+    String(artistConfig.dbName || '').trim() ===
+    String(partyConfig.dbName || '').trim()
+
+  if (sameUri && sameDbName) {
+    throw new Error(
+      'ArtistCRM and PartyCRM must use different MongoDB databases in a shared runtime.'
+    )
+  }
+  return true
 }
 
 const getGlobalCache = () => {
@@ -27,6 +49,7 @@ const getGlobalCache = () => {
 }
 
 export const getProductDbConnection = async (product = PRODUCTS.ARTISTCRM) => {
+  assertProductDbIsolation()
   const config = getProductDbConfig(product)
 
   if (!config.uri) {

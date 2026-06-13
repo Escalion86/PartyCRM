@@ -114,11 +114,6 @@ const MenuGroupButton = ({ item, active, open, onClick }) => (
   </button>
 )
 
-const accessMarkerClassName = {
-  [COMPANY_SETTINGS_ACCESS.ADMIN_DEV]: 'text-amber-300',
-  [COMPANY_SETTINGS_ACCESS.DEV]: 'text-violet-300',
-}
-
 const SubMenuLink = ({ item, active, onClick }) => (
   <Link
     href={item.href}
@@ -130,20 +125,7 @@ const SubMenuLink = ({ item, active, onClick }) => (
         : 'border-white/10 text-white/65 hover:border-white/25 hover:bg-white/6 hover:text-white'
     )}
   >
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span className="truncate">{item.label}</span>
-      {item.access !== COMPANY_SETTINGS_ACCESS.PUBLIC ? (
-        <FontAwesomeIcon
-          icon={faStar}
-          className={cn('h-3 w-3 min-w-3', accessMarkerClassName[item.access])}
-          title={
-            item.access === COMPANY_SETTINGS_ACCESS.DEV
-              ? 'Только для dev'
-              : 'Только для admin и dev'
-          }
-        />
-      ) : null}
-    </span>
+    <span className="truncate">{item.label}</span>
   </Link>
 )
 

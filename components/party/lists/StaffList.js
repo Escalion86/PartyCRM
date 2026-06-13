@@ -6,6 +6,7 @@ import PartyCard, {
   PartyCardActions,
   PartyCardHeader,
 } from '@components/party/PartyCard'
+import PartyStaffInvitePanel from '@components/party/staff/PartyStaffInvitePanel'
 
 const roleLabels = {
   owner: 'Владелец',
@@ -35,6 +36,7 @@ const StaffCard = ({
   onEdit,
   onRequestLink,
   linkingStaffId,
+  activeCompanyId,
 }) => {
   const displayName =
     [person.secondName, person.firstName].filter(Boolean).join(' ') ||
@@ -114,6 +116,14 @@ const StaffCard = ({
               )}
             </div>
           )}
+          {!person.authUserId &&
+            ['admin', 'performer'].includes(person.role) &&
+            activeCompanyId ? (
+              <PartyStaffInvitePanel
+                staffId={person._id}
+                activeCompanyId={activeCompanyId}
+              />
+            ) : null}
           {person.description && (
             <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
               {person.description}
@@ -162,6 +172,7 @@ export default function StaffList({
   linkingStaffId,
   onCreateClick,
   staffCount,
+  activeCompanyId,
 }) {
   return (
     <div className="mx-auto max-w-6xl">
@@ -198,6 +209,7 @@ export default function StaffList({
             onEdit={onEdit}
             onRequestLink={onRequestLink}
             linkingStaffId={linkingStaffId}
+            activeCompanyId={activeCompanyId}
           />
         ))}
       </div>

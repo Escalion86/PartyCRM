@@ -2,10 +2,6 @@
 
 import useCompanySettings from '../useCompanySettings'
 
-const DEFAULT_CONTRACT_TEMPLATE_DOWNLOAD_URL =
-  '/templates/default-contract-template.docx'
-const DEFAULT_ACT_TEMPLATE_DOWNLOAD_URL = '/templates/default-act-template.docx'
-
 const PROVIDER_REQUISITE_FIELDS = [
   {
     key: 'providerFullName',
@@ -180,6 +176,8 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
         <div className="text-base font-semibold">DOCX-шаблоны компании</div>
         <p className="mt-2 text-sm leading-6 text-slate-500">
           Шаблоны сохраняются на уровне компании в `companySettings.documents`.
+          Если шаблон не загружен, система сформирует документ по встроенному
+          PartyCRM-шаблону.
         </p>
       </div>
 
@@ -199,13 +197,9 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
               event.target.value = ''
             }}
           />
-          <a
-            href={DEFAULT_CONTRACT_TEMPLATE_DOWNLOAD_URL}
-            download
-            className="mt-4 inline-flex text-sm font-semibold text-sky-700 underline"
-          >
-            Скачать стандартный шаблон договора
-          </a>
+          <div className="mt-4 text-xs leading-5 text-slate-500">
+            Без пользовательского файла используется встроенный шаблон договора.
+          </div>
         </label>
 
         <label className="rounded-2xl border border-sky-100 bg-white p-5">
@@ -222,13 +216,9 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
               event.target.value = ''
             }}
           />
-          <a
-            href={DEFAULT_ACT_TEMPLATE_DOWNLOAD_URL}
-            download
-            className="mt-4 inline-flex text-sm font-semibold text-sky-700 underline"
-          >
-            Скачать стандартный шаблон акта
-          </a>
+          <div className="mt-4 text-xs leading-5 text-slate-500">
+            Без пользовательского файла используется встроенный шаблон акта.
+          </div>
         </label>
       </div>
 

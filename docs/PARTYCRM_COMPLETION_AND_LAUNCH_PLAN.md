@@ -28,22 +28,22 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 ## Сравнение с ArtistCRM
 
-| Блок | ArtistCRM | PartyCRM сейчас | Что нужно сделать в PartyCRM |
-| --- | --- | --- | --- |
-| Auth | NextAuth, телефон, VK ID, восстановление пароля | Отдельная Party auth и phone verify endpoints | Довести rate-limit, восстановление доступа, юридические согласия, session security |
-| Tenant model | Tenant в рамках пользователя/аккаунта | Multi-company membership с `x-partycrm-company-id` | Протестировать прямые URL/API, убрать противоречия env-документации |
-| Заявки/мероприятия | Стабильные Events, statuses, additionalEvents | PartyOrders, точки, исполнители, конфликты | Довести order lifecycle: заявка -> бронь -> предоплата -> проведение -> выплаты -> закрытие |
-| Финансы | Отдельные Transactions, категории, статистика | В `partyOrdersSchema` есть nested transactions, в `OrderModal` UI-заглушка | Сделать полноценный UI/API транзакций, выплаты, расходы, статусы оплат |
-| Документы | Договор/акт, DOCX, реквизиты клиента/артиста | Settings upload DOCX, но поля называются `artist*` | Company requisites, templates, генерация договора/акта из заказа |
-| Google Calendar | Подключение, import/export/sync, reminders | Не портирован в PartyCRM | Синхронизация заказов, точек, исполнителей и доп. событий |
-| Public leads/Tilda | `/api/public/lead`, `/api/public/lead/tilda`, API keys | Нет Party endpoint'ов | `/api/party/public/lead`, Tilda adapter, маршрутизация по точке/услуге/источнику |
-| VK/Avito | Tenant-aware webhooks, conversations, messages, lead creation | Поля настроек есть, webhook URL указывает на общие `/api/integrations/*` | Party-specific webhooks, создание PartyOrder/PartyClient, переписки в Party DB |
-| Телефония/AI | Calls, Novofon, transcription, AI draft | Настройки Novofon/AI есть, но нет Party call/order flow | Party calls, AI draft order, связь звонка с клиентом и заказом |
-| Push/offline | Push subscribe/test/reminders, public lead push, offline queue | В настройках только флаг push | Party push subscriptions, admin/performer notifications, reminders |
-| Тарифы/биллинг | Пользовательские тарифы и платежи | Party tariffs/payments есть, billing привязан к PartyCompany | Feature flags и реальные E2E-платежи |
-| Настройки | Профиль, услуги, интеграции, документы, списки, уведомления | Есть shell и часть полей | Расширить company profile, roles, requisites, integrations diagnostics |
-| SEO/landing | Несколько посадочных, sitemap, OG, monitoring | Один лендинг с обещаниями | Привести обещания к факту или ускорить реализацию обещанных функций |
-| Тесты | Несколько helper unit tests | Точечные tests для настроек и логина | Добавить API/unit/E2E по core flows |
+| Блок               | ArtistCRM                                                      | PartyCRM сейчас                                                            | Что нужно сделать в PartyCRM                                                                |
+| ------------------ | -------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Auth               | NextAuth, телефон, VK ID, восстановление пароля                | Отдельная Party auth и phone verify endpoints                              | Довести rate-limit, восстановление доступа, юридические согласия, session security          |
+| Tenant model       | Tenant в рамках пользователя/аккаунта                          | Multi-company membership с `x-partycrm-company-id`                         | Протестировать прямые URL/API, убрать противоречия env-документации                         |
+| Заявки/мероприятия | Стабильные Events, statuses, additionalEvents                  | PartyOrders, точки, исполнители, конфликты                                 | Довести order lifecycle: заявка -> бронь -> предоплата -> проведение -> выплаты -> закрытие |
+| Финансы            | Отдельные Transactions, категории, статистика                  | В `partyOrdersSchema` есть nested transactions, в `OrderModal` UI-заглушка | Сделать полноценный UI/API транзакций, выплаты, расходы, статусы оплат                      |
+| Документы          | Договор/акт, DOCX, реквизиты клиента/артиста                   | Company-реквизиты, пользовательские DOCX и встроенные PartyCRM-шаблоны     | Проверить шаблоны на данных пилотной компании                                                |
+| Google Calendar    | Подключение, import/export/sync, reminders                     | Не портирован в PartyCRM                                                   | Синхронизация заказов, точек, исполнителей и доп. событий                                   |
+| Public leads/Tilda | `/api/public/lead`, `/api/public/lead/tilda`, API keys         | Нет Party endpoint'ов                                                      | `/api/party/public/lead`, Tilda adapter, маршрутизация по точке/услуге/источнику            |
+| VK/Avito           | Tenant-aware webhooks, conversations, messages, lead creation  | Поля настроек есть, webhook URL указывает на общие `/api/integrations/*`   | Party-specific webhooks, создание PartyOrder/PartyClient, переписки в Party DB              |
+| Телефония/AI       | Calls, Novofon, transcription, AI draft                        | Настройки Novofon/AI есть, но нет Party call/order flow                    | Party calls, AI draft order, связь звонка с клиентом и заказом                              |
+| Push/offline       | Push subscribe/test/reminders, public lead push, offline queue | В настройках только флаг push                                              | Party push subscriptions, admin/performer notifications, reminders                          |
+| Тарифы/биллинг     | Пользовательские тарифы и платежи                              | Party tariffs/payments есть, billing привязан к PartyCompany               | Feature flags и реальные E2E-платежи                                                        |
+| Настройки          | Профиль, услуги, интеграции, документы, списки, уведомления    | Есть shell и часть полей                                                   | Расширить company profile, roles, requisites, integrations diagnostics                      |
+| SEO/landing        | Несколько посадочных, sitemap, OG, monitoring                  | Один лендинг с обещаниями                                                  | Привести обещания к факту или ускорить реализацию обещанных функций                         |
+| Тесты              | Несколько helper unit tests                                    | Точечные tests для настроек и логина                                       | Добавить API/unit/E2E по core flows                                                         |
 
 ## P0: довести до надежного закрытого pilot
 
@@ -57,12 +57,12 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 ### 2. Привести env и DB isolation к одному правилу
 
-Текущее противоречие: часть документации говорит про общий runtime и отдельные `PARTYCRM_MONGODB_*`, а `server/productDbConnect.js` для PartyCRM читает `MONGODB_URI/MONGODB_DBNAME`. Это может быть допустимо при отдельном деплое PartyCRM, но должно быть явно зафиксировано.
+Поддерживаются два явных режима: общий runtime использует отдельные `PARTYCRM_MONGODB_*`, а отдельный PartyCRM runtime может использовать обычные `MONGODB_*` как fallback.
 
-- [ ] Выбрать модель: один runtime с двумя DB env наборами или отдельный runtime PartyCRM с обычными `MONGODB_*`.
-- [ ] Если один runtime: изменить `productDbConnect` так, чтобы PartyCRM использовал `PARTYCRM_MONGODB_URI/PARTYCRM_MONGODB_DBNAME`.
-- [ ] Если отдельный runtime: обновить `docs/PARTYCRM_DEPLOY_PREVIEW.md` и убрать ожидание `PARTYCRM_MONGODB_*`.
-- [ ] Добавить startup check: ArtistCRM DB name и PartyCRM DB name не совпадают.
+- [x] Зафиксировать оба режима: shared runtime с двумя DB env наборами и standalone PartyCRM с обычными `MONGODB_*`.
+- [x] Изменить `productDbConnect`, чтобы PartyCRM предпочитал `PARTYCRM_MONGODB_URI/PARTYCRM_MONGODB_DBNAME`.
+- [x] Обновить local/deploy/env документацию и описать fallback standalone runtime.
+- [x] Добавить startup check: итоговая пара URI+DB ArtistCRM и PartyCRM не совпадает в shared runtime.
 - [ ] Проверить `/api/party/health`, `/api/party/memberships`, `/api/party/me` с валидным и чужим `x-partycrm-company-id`.
 - [ ] Подготовить backup/restore отдельно для PartyCRM DB.
 
@@ -85,7 +85,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 - [x] Завершить документацию прав в `docs/PARTYCRM_ROLES.md`: кто видит клиентские суммы, выплаты, контакты, настройки, тарифы, интеграции.
 - [x] Проверить route guard на прямые URL `/company/settings/integrations`, `/company/settings/documents`, `/company/settings/notifications`, `/company/settings/tariffs`.
-- [x] Разделить глобальную роль PartyUser (`admin/dev`) и роль в компании (`owner/admin/performer`) во всех settings/API flow.
+- [x] Разделить глобальную роль PartyUser (`admin/dev`) и роль в компании (`owner/admin/performer`) во всех settings/API flow: настройки компании доступны `owner/admin`, а глобальная роль сама по себе доступ не даёт.
 - [x] Добавить тесты для `companySettingsTabs`, `getPartyRequestContext`, API management-only endpoints через общий `resolvePartyRequestContext`.
 - [x] Запретить исполнителю доступ к `/company/*`, если режим интерфейса только performer.
 - [x] Запретить показ полной клиентской суммы и внутренних заметок исполнителю во всех endpoints, не только в UI.
@@ -110,12 +110,12 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 Переносить основу из ArtistCRM, но не копировать без адаптации.
 
-- [ ] Использовать `helpers/generateContractTemplate.js`, `helpers/generateActTemplate.js`, `helpers/exportDocxFromTemplate.js` как техническую основу.
-- [ ] Добавить Party-specific переменные: компания, клиент, заказ, точка, адрес, услуги, исполнители, суммы, предоплата, остаток, дата/время, реквизиты.
-- [ ] В заказе добавить кнопки: сформировать договор, сформировать акт, скачать DOCX.
-- [ ] Поддержать стандартные шаблоны PartyCRM и пользовательские DOCX-шаблоны компании.
-- [ ] Добавить реквизиты клиента в `partyClientsSchema`, если текущих полей недостаточно.
-- [ ] Добавить документацию по переменным шаблона.
+- [x] Использовать `helpers/generateContractTemplate.js`, `helpers/generateActTemplate.js`, `helpers/exportDocxFromTemplate.js` как техническую основу.
+- [x] Добавить Party-specific переменные: компания, клиент, заказ, точка, адрес, услуги, исполнители, суммы, предоплата, остаток, дата/время, реквизиты.
+- [x] В заказе добавить кнопки: сформировать договор, сформировать акт, скачать DOCX.
+- [x] Поддержать стандартные шаблоны PartyCRM и пользовательские DOCX-шаблоны компании.
+- [x] Добавить реквизиты клиента в `partyClientsSchema`, если текущих полей недостаточно.
+- [x] Добавить документацию по переменным шаблона в `docs/PARTYCRM_DOCUMENTS_GUIDE.md`.
 
 ### 2. Входящие лиды и Tilda
 
@@ -183,7 +183,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 ## P2: развитие после первого pilot
 
-- [ ] Invite-flow сотрудников: безопасная invite-link модель, срок действия, экран принятия приглашения, уведомления владельцу.
+- [x] Invite-flow сотрудников: одноразовые ссылки на 7 дней, вход/регистрация, автоматическая привязка, push управляющим и ручная отправка через SMS/email/Telegram/WhatsApp.
 - [ ] Каталог исполнителей: статус доступности, специализация, история выполненных заказов, публичный профиль.
 - [ ] Admin checklist: пункты подготовки заказа, назначение администратору, фильтр заказов с открытыми пунктами.
 - [ ] Расширенные роли: администратор точки, бухгалтер, менеджер заявок.
@@ -198,23 +198,23 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 ### Sprint 0: Audit и честный preview
 
 - [ ] Смягчить лендинг под фактическое состояние или закрыть обещанные блоки.
-- [ ] Закрыть env/DB contradiction.
-- [ ] Подготовить pilot checklist и ручной smoke-test.
+- [x] Закрыть env/DB contradiction.
+- [x] Подготовить pilot checklist и ручной smoke-test (`docs/PARTYCRM_PILOT_CHECKLIST.md`).
 - [ ] Пройти регистрацию, создание компании, точек, услуг, сотрудников, заказа, исполнителя и закрытие заказа.
 
 ### Sprint 1: Финансы заказов
 
-- [ ] Реализовать UI транзакций в `OrderModal`.
-- [ ] Добавить операции доход/расход/выплата/возврат.
-- [ ] Обновить `CompanyWorkspaceClient` finance summary.
-- [ ] Добавить фильтры долгов и невыплаченных исполнителей.
-- [ ] Добавить тесты расчетов.
+- [x] Реализовать UI транзакций в `OrderModal`.
+- [x] Добавить операции доход/расход/выплата/возврат.
+- [x] Обновить `CompanyWorkspaceClient` finance summary.
+- [x] Добавить фильтры долгов и невыплаченных исполнителей.
+- [x] Добавить тесты расчетов.
 
 ### Sprint 2: Settings, роли и документы
 
 - [ ] Расширить company profile и реквизиты.
 - [ ] Исправить artist-терминологию в Party documents.
-- [ ] Добавить генерацию договора/акта из заказа.
+- [x] Добавить генерацию договора/акта из заказа.
 - [ ] Завершить docs по ролям и прямым URL guards.
 
 ### Sprint 3: Leads, Tilda и уведомления
@@ -270,7 +270,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [ ] Исполнитель видит назначение в `/performer`, подтверждает участие и отмечает выполнение.
 - [ ] Owner закрывает прошедший заказ, видит финансовый результат и статус выплат.
 - [ ] Входящая заявка из API/Tilda создает PartyOrder `draft` и уведомляет администратора.
-- [ ] Договор и акт по заказу скачиваются в DOCX с реквизитами компании и клиента.
+- [x] Договор и акт по заказу скачиваются в DOCX с реквизитами компании и клиента.
 - [ ] Настройки интеграций показывают реальные статусы и последнюю ошибку.
 - [ ] Тариф/оплата работают на тестовом платеже и корректно меняют доступные функции.
 - [ ] Исполнитель не видит клиентскую сумму и внутренние заметки ни через UI, ни через API.

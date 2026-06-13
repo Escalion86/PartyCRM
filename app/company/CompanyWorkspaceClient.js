@@ -1572,6 +1572,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               staff={staff}
               canManage={canManage}
               linkingStaffId={linkingStaffId}
+              activeCompanyId={activeCompanyId}
               onRequestLink={requestStaffLink}
               onEdit={(staffMember) => {
                 setStaffDraft(staffMember)

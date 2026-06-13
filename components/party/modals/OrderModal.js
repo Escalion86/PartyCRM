@@ -19,6 +19,7 @@ import Textarea from '@components/Textarea'
 import ServiceMultiSelect from '@components/ServiceMultiSelect'
 import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPicker'
 import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTransactionsSection'
+import PartyOrderDocumentsSection from '@components/party/orders/PartyOrderDocumentsSection'
 import partyServicesAtom from '@state/atoms/partyServicesAtom'
 import AddIconButton from '@components/AddIconButton'
 import TabContext from '@components/Tabs/TabContext'
@@ -374,23 +375,23 @@ export default function OrderModal({
 
   // Footer with action buttons
   const footerContent = (
-    <div className="flex w-full flex-col gap-1">
+    <div className="flex flex-col w-full gap-1">
       {submitError && (
-        <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-600">
+        <div className="px-3 py-2 text-sm text-red-600 rounded bg-red-50">
           {submitError}
         </div>
       )}
-      <div className="flex w-full items-center justify-end gap-1">
+      <div className="flex items-center justify-end w-full gap-1">
         <button
           type="button"
-          className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+          className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
           onClick={onClose}
         >
           Отмена
         </button>
         <button
           type="button"
-          className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="px-4 py-2 text-sm font-semibold text-white transition rounded cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleSubmit}
           disabled={saving}
         >
@@ -460,9 +461,9 @@ export default function OrderModal({
 
             {orderDraft.placeType === 'company_location' ? (
               <InputWrapper label="Точка" tone="party">
-                <div className="relative flex flex-1 items-center">
+                <div className="relative flex items-center flex-1">
                   <select
-                    className="peer w-full cursor-pointer appearance-none bg-transparent px-1 text-black outline-none"
+                    className="w-full px-1 text-black bg-transparent outline-none appearance-none cursor-pointer peer"
                     value={orderDraft.locationId || ''}
                     onChange={(e) => handleChange('locationId', e.target.value)}
                   >
@@ -473,9 +474,9 @@ export default function OrderModal({
                       </option>
                     ))}
                   </select>
-                  <div className="pointer-events-none shrink-0 text-gray-400">
+                  <div className="text-gray-400 pointer-events-none shrink-0">
                     <svg
-                      className="h-4 w-4"
+                      className="w-4 h-4"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -609,7 +610,7 @@ export default function OrderModal({
                           />
                           <InputWrapper label="Статус выплаты" tone="party">
                             <select
-                              className="w-full cursor-pointer appearance-none bg-transparent px-1 text-sm text-black outline-none"
+                              className="w-full px-1 text-sm text-black bg-transparent outline-none appearance-none cursor-pointer"
                               value={normalizePartyPayoutStatus(
                                 assigned.payoutStatus
                               )}
@@ -676,6 +677,21 @@ export default function OrderModal({
               isDraft={orderDraft.status === 'draft'}
               onRequestAutosave={handleAutosaveBeforeTransaction}
             />
+
+            <hr className="border-t border-gray-200" />
+
+            <div className="mt-2">
+              <div className="mb-2 text-xs font-semibold tracking-wide uppercase text-slate-500">
+                Документы
+              </div>
+              <PartyOrderDocumentsSection
+                order={orderDraft}
+                client={selectedClient}
+                services={services}
+                companySettings={companySettings}
+                activeCompanyId={activeCompanyId}
+              />
+            </div>
           </div>
         </TabPanel>
 
@@ -701,7 +717,7 @@ export default function OrderModal({
                 {(orderDraft.additionalEvents || []).map((item, index) => (
                   <div
                     key={item._id || index}
-                    className="rounded-2xl border border-sky-100 bg-sky-50/50 p-3"
+                    className="p-3 border rounded-2xl border-sky-100 bg-sky-50/50"
                   >
                     <div className="grid gap-2 md:grid-cols-[1fr_auto]">
                       <Input
@@ -731,8 +747,8 @@ export default function OrderModal({
                       fullWidth
                       tone="party"
                     />
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                      <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
+                      <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer text-slate-700">
                         <input
                           type="checkbox"
                           checked={Boolean(item.done)}

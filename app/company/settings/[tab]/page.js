@@ -31,10 +31,13 @@ export default async function CompanySettingsTabPage({ params }) {
   if (!state.companyReady) {
     redirect('/company/master')
   }
+  const managementMembership = memberships.find(
+    (membership) => membership?.isAdmin
+  )
   if (
     !canAccessCompanySettingsTab(tab, {
-      globalRole: sessionUser.role,
-      isCompanyManager: state.companyReady,
+      companyRole: managementMembership?.role,
+      isCompanyManager: managementMembership?.isAdmin,
     })
   ) {
     redirect('/company/settings')

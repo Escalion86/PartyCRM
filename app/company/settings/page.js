@@ -35,10 +35,13 @@ export default async function CompanySettingsPage() {
   if (!state.companyReady) {
     redirect('/company/master')
   }
+  const managementMembership = memberships.find(
+    (membership) => membership?.isAdmin
+  )
   if (
     !canAccessCompanySettingsTab('general', {
-      globalRole: sessionUser.role,
-      isCompanyManager: state.companyReady,
+      companyRole: managementMembership?.role,
+      isCompanyManager: managementMembership?.isAdmin,
     })
   ) {
     redirect('/company')

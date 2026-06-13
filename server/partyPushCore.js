@@ -34,3 +34,23 @@ export const buildPartyTestPushPayload = ({
     url: '/company/settings/notifications',
   },
 })
+
+export const buildPartyInviteAcceptedPushPayload = ({
+  companyId = '',
+  companyTitle = '',
+  staffId = '',
+  staffName = '',
+  roleLabel = '',
+} = {}) => ({
+  title: cleanText(companyTitle, 160) || 'PartyCRM',
+  body: `${cleanText(staffName, 160) || 'Сотрудник'} принял приглашение и подключён как ${cleanText(roleLabel, 80) || 'сотрудник'}`,
+  icon: '/icons/icon-192.png',
+  badge: '/icons/icon-192.png',
+  tag: `party-invite-accepted-${cleanText(staffId, 80) || 'staff'}`,
+  data: {
+    type: 'party_staff_invite_accepted',
+    companyId: cleanText(companyId, 80),
+    staffId: cleanText(staffId, 80),
+    url: '/company/staff',
+  },
+})

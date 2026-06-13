@@ -19,6 +19,7 @@ const normalizeCallbackUrl = (value) => {
 export default async function PartyLoginPage({ searchParams }) {
   const params = await searchParams
   const callbackUrl = normalizeCallbackUrl(params?.callbackUrl)
+  const initialMode = params?.mode === 'register' ? 'register' : 'login'
 
   return (
     <main className="min-h-screen bg-[#eaf6ff] text-slate-950">
@@ -36,7 +37,7 @@ export default async function PartyLoginPage({ searchParams }) {
         </div>
       </header>
 
-      <PartyLoginClient callbackUrl={callbackUrl} />
+      <PartyLoginClient callbackUrl={callbackUrl} initialMode={initialMode} />
     </main>
   )
 }

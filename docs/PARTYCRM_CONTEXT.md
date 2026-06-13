@@ -31,8 +31,8 @@ PartyCRM пока живет в том же Next.js приложении, что
 artistcrm.ru -> ArtistCRM
 partycrm.ru  -> PartyCRM
 
-ArtistCRM DB -> отдельный env набор ArtistCRM
-PartyCRM DB  -> MONGODB_URI / MONGODB_DBNAME
+ArtistCRM DB -> MONGODB_URI / MONGODB_DBNAME
+PartyCRM DB  -> PARTYCRM_MONGODB_URI / PARTYCRM_MONGODB_DBNAME
 ```
 
 Auth/users тоже разделены:
@@ -191,12 +191,9 @@ P0 core:
 
 Ближайшая архитектурная линия:
 
-1. Продолжить contractor/linking track:
-   - поиск похожего User по телефону;
-   - ручной запрос на привязку;
-   - подтверждение привязки в `/performer`.
-2. Подготовить основу будущего каталога исполнителей: специализация, описание, история выполненных заказов, статус доступности.
-3. Обновить документацию локального запуска и деплоя под multi-company контекст там, где еще остались старые примеры без `x-partycrm-company-id`.
+1. Подготовить pilot checklist и пройти ручной smoke-test основного сценария.
+2. Подготовить основу будущего каталога исполнителей: история выполненных заказов и статус доступности.
+3. Продолжить P1/P2 по `docs/PARTYCRM_ROADMAP.md` после проверки закрытого pilot.
 
 ## Важные ограничения
 

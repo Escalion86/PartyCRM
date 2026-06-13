@@ -11,6 +11,19 @@ AUTH_SECRET=...
 PARTYCRM_SECRET=...
 ```
 
+Это набор для отдельного PartyCRM runtime. Для общего runtime с ArtistCRM
+обычные `MONGODB_*` остаются за ArtistCRM, а PartyCRM получает отдельные:
+
+```env
+PARTYCRM_MONGODB_URI=...
+PARTYCRM_MONGODB_DBNAME=partycrm_dev
+```
+
+`server/productDbConnect.js` сначала читает product-specific переменные и
+только затем использует `MONGODB_*` как fallback. При наличии
+`PARTYCRM_MONGODB_*` совпадающая пара URI+DB для двух продуктов считается
+ошибкой конфигурации.
+
 ## Дополнительно нужны для текущего состояния кода
 
 Сейчас `PartyCRM` дополнительно использует:

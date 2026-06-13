@@ -7,6 +7,7 @@ import partyLocationsSchema from "@schemas/partyLocationsSchema"
 import partyOrdersSchema from "@schemas/partyOrdersSchema"
 import partyServicesSchema from "@schemas/partyServicesSchema"
 import partyStaffSchema from "@schemas/partyStaffSchema"
+import partyStaffInvitesSchema from "@schemas/partyStaffInvitesSchema"
 import partyUsersSchema from "@schemas/partyUsersSchema"
 import partyTariffsSchema from "@schemas/partyTariffsSchema"
 import partyPaymentsSchema from "@schemas/partyPaymentsSchema"
@@ -166,6 +167,20 @@ export const getPartyPaymentModel = () =>
       schema.index({ providerPaymentId: 1 })
       schema.index({ userId: 1, status: 1 })
       schema.index({ userId: 1, createdAt: -1 })
+    },
+  })
+
+export const getPartyStaffInviteModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: "StaffInvite",
+    collectionName: "staffInvites",
+    schemaDefinition: partyStaffInvitesSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tokenHash: 1 }, { unique: true })
+      schema.index({ tenantId: 1, staffId: 1, status: 1, createdAt: -1 })
+      schema.index({ status: 1, expiresAt: 1 })
     },
   })
 

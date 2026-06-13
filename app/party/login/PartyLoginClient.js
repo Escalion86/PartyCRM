@@ -97,8 +97,13 @@ const safeCallbackUrl = (value) => {
 
 const POLL_INTERVAL_MS = 3000
 
-export default function PartyLoginClient({ callbackUrl = '/party/entry' }) {
-  const [mode, setMode] = useState('login')
+export default function PartyLoginClient({
+  callbackUrl = '/party/entry',
+  initialMode = 'login',
+}) {
+  const [mode, setMode] = useState(
+    initialMode === 'register' ? 'register' : 'login'
+  )
   const [interfaceRoleMode, setInterfaceRoleMode] = useState('both')
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')

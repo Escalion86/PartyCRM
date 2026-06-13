@@ -42,7 +42,8 @@ http://localhost:3000/cabinet
 
 ## Переменные окружения
 
-ArtistCRM использует текущие переменные:
+При запуске обоих продуктов одним локальным process ArtistCRM использует
+текущие переменные:
 
 ```env
 MONGODB_URI=...
@@ -53,11 +54,15 @@ DOMAIN=artistcrm.ru
 PartyCRM использует отдельные переменные:
 
 ```env
-MONGODB_URI=...
-MONGODB_DBNAME=partycrm_dev
+PARTYCRM_MONGODB_URI=...
+PARTYCRM_MONGODB_DBNAME=partycrm_dev
 DOMAIN=partycrm.ru
 AUTH_SECRET=local-partycrm-secret
 ```
+
+Если запускается отдельный process только для PartyCRM, product-specific
+переменные можно не задавать: `MONGODB_URI/MONGODB_DBNAME` становятся
+fallback и должны указывать на PartyCRM DB.
 
 Для локальной проверки подключения:
 
@@ -164,3 +169,4 @@ Endpoint возвращает только заказы, назначенные 
 - PartyCRM API должны работать только с PartyCRM БД.
 - Даже в PartyCRM БД все сущности компаний должны хранить `tenantId`.
 - Общие схемы и helpers можно переиспользовать, но подключение к БД должно явно получать product context.
+- В общем runtime одинаковая пара URI+DB для ArtistCRM и PartyCRM блокируется до подключения.

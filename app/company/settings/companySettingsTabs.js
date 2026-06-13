@@ -3,43 +3,44 @@ export const COMPANY_SETTINGS_TABS = Object.freeze([
     slug: 'general',
     label: 'Общие',
     href: '/company/settings',
-    access: 'public',
+    access: 'management',
   },
   {
     slug: 'integrations',
     label: 'Интеграции',
     href: '/company/settings/integrations',
-    access: 'admin-dev',
+    access: 'management',
   },
   {
     slug: 'lists',
     label: 'Списки',
     href: '/company/settings/lists',
-    access: 'public',
+    access: 'management',
   },
   {
     slug: 'notifications',
     label: 'Уведомления',
     href: '/company/settings/notifications',
-    access: 'admin-dev',
+    access: 'management',
   },
   {
     slug: 'documents',
     label: 'Документы',
     href: '/company/settings/documents',
-    access: 'admin-dev',
+    access: 'management',
   },
   {
     slug: 'tariffs',
     label: 'Тарифы',
     href: '/company/settings/tariffs',
-    access: 'admin-dev',
+    access: 'management',
   },
 ])
 
 export const DEFAULT_COMPANY_SETTINGS_TAB = 'general'
 export const COMPANY_SETTINGS_ACCESS = Object.freeze({
   PUBLIC: 'public',
+  MANAGEMENT: 'management',
   ADMIN_DEV: 'admin-dev',
   DEV: 'dev',
 })
@@ -67,18 +68,15 @@ const normalizeAccessContext = (context) => {
 const isCompanyManagerRole = (role) => ['owner', 'admin'].includes(role)
 
 export const canAccessCompanySettingsAccessLevel = (access, context) => {
-  const { globalRole, companyRole, isCompanyManager } =
-    normalizeAccessContext(context)
+  const { companyRole, isCompanyManager } = normalizeAccessContext(context)
+  if (access === COMPANY_SETTINGS_ACCESS.MANAGEMENT) {
+    return isCompanyManager || isCompanyManagerRole(companyRole)
+  }
   if (access === COMPANY_SETTINGS_ACCESS.DEV) {
-    return globalRole === 'dev'
+    return false
   }
   if (access === COMPANY_SETTINGS_ACCESS.ADMIN_DEV) {
-    return (
-      globalRole === 'admin' ||
-      globalRole === 'dev' ||
-      isCompanyManager ||
-      isCompanyManagerRole(companyRole)
-    )
+    return isCompanyManager || isCompanyManagerRole(companyRole)
   }
   return true
 }

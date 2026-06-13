@@ -13,7 +13,8 @@ artistcrm.ru -> текущий ArtistCRM
 partycrm.ru  -> PartyCRM landing через rewrite на /party
 
 ArtistCRM DB -> отдельный env набор ArtistCRM
-PartyCRM DB  -> MONGODB_URI / MONGODB_DBNAME
+ArtistCRM DB -> MONGODB_URI / MONGODB_DBNAME
+PartyCRM DB  -> PARTYCRM_MONGODB_URI / PARTYCRM_MONGODB_DBNAME
 ```
 
 Для текущего сервера:
@@ -53,10 +54,15 @@ NEXTAUTH_SECRET=...
 
 ```env
 DOMAIN=partycrm.ru
-MONGODB_URI=...
-MONGODB_DBNAME=...
+PARTYCRM_MONGODB_URI=...
+PARTYCRM_MONGODB_DBNAME=...
 AUTH_SECRET=...
 ```
+
+Для отдельного PartyCRM process допустим fallback на обычные
+`MONGODB_URI/MONGODB_DBNAME`. В описанном здесь общем runtime обязательны
+`PARTYCRM_MONGODB_*`; приложение остановит подключение, если итоговая пара
+URI+DB совпадёт с ArtistCRM.
 
 Auth-переменные ArtistCRM остаются привязаны к `artistcrm.ru`:
 
