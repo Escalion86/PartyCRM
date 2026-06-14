@@ -9,6 +9,10 @@ MONGODB_URI=...
 MONGODB_DBNAME=partycrm_dev
 AUTH_SECRET=...
 PARTYCRM_SECRET=...
+GOOGLE_OAUTH_CLIENT_ID=...
+GOOGLE_OAUTH_CLIENT_SECRET=...
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/api/party/google-calendar/callback
+NEXTAUTH_SECRET=...
 ```
 
 Это набор для отдельного PartyCRM runtime. Для общего runtime с ArtistCRM
@@ -52,14 +56,10 @@ BILLING_CRON_SECRET
 Из копии `ArtistCRM` в `PartyCRM` больше не нужно переносить:
 
 ```env
-NEXTAUTH_SECRET
 LOGIN
 PASSWORD
 SECRET
 GOOGLE_CALENDAR_ID
-GOOGLE_OAUTH_CLIENT_ID
-GOOGLE_OAUTH_CLIENT_SECRET
-GOOGLE_OAUTH_REDIRECT_URI
 YOOKASSA_RETURN_URL
 TOCHKA_RETURN_URL
 TOCHKA_RECEIPT_CLIENT_CONTACT
@@ -109,5 +109,6 @@ OPENAI_TRANSCRIPTION_MODEL
 
 - Шаблоны лежат в `.env.example` и `.env.deploy.example`.
 - Реальные `.env.local` и `.env.deploy` должны оставаться только локально.
+- Redirect URI Google OAuth должен точно совпадать с `${DOMAIN}/api/party/google-calendar/callback` и быть добавлен в Google Cloud Console. `NEXTAUTH_SECRET` используется для подписи краткоживущего OAuth state и обязателен в production.
 - Webhook YooKassa: `https://partycrm.ru/api/party/billing/yookassa/webhook?token=<YOOKASSA_WEBHOOK_SECRET>`.
 - Webhook Точки: `https://partycrm.ru/api/party/billing/tochka/webhook`; тело запроса должно быть JWT, подписанным публичным ключом Точки.
