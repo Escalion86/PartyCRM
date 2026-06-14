@@ -182,6 +182,14 @@ const partyOrdersSchema = {
     type: [partyOrderAdditionalEventSchema],
     default: [],
   },
+  googleCalendarEventId: { type: String, default: '' },
+  googleCalendarCalendarId: { type: String, default: '' },
+  calendarSyncError: {
+    type: String,
+    enum: ['', 'calendar_sync_unavailable', 'calendar_sync_failed'],
+    default: '',
+  },
+  calendarSyncedAt: { type: Date, default: null },
   // Legacy field kept for backward-compatible reads of early PartyCRM orders.
   clientPayment: {
     totalAmount: { type: Number, default: 0, min: 0 },
