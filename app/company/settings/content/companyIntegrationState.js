@@ -14,6 +14,10 @@ export const getCompanyIntegrationIndicatorState = ({
   status = '',
   apiKey = '',
   apiKeys = [],
+  connected = false,
+  calendarId = '',
+  lastError = '',
+  reconnectRequired = false,
   locked = false,
   loading = false,
 }) => {
@@ -30,6 +34,19 @@ export const getCompanyIntegrationIndicatorState = ({
     return hasActiveKey
       ? INTEGRATION_INDICATOR_STATE.connected
       : INTEGRATION_INDICATOR_STATE.warning
+  }
+
+  if (type === 'googleCalendar') {
+    if (!connected) return INTEGRATION_INDICATOR_STATE.disconnected
+    if (
+      !enabled ||
+      !hasValue(calendarId) ||
+      hasValue(lastError) ||
+      reconnectRequired
+    ) {
+      return INTEGRATION_INDICATOR_STATE.warning
+    }
+    return INTEGRATION_INDICATOR_STATE.connected
   }
 
   if (type === 'avito' || type === 'vk') {

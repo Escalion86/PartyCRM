@@ -2,8 +2,10 @@
 
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import PartyGoogleCalendarSettings from '@components/party/settings/PartyGoogleCalendarSettings'
+import { isGoogleCalendarLocked } from '@components/party/settings/PartyGoogleCalendarSettingsState'
 import useCompanySettings from '../useCompanySettings'
 import { getCompanyIntegrationIndicatorState } from './companyIntegrationState'
 
@@ -212,6 +214,16 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   const [statusLoading, setStatusLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState('')
   const [actionError, setActionError] = useState('')
+  const [googleCalendarStatus, setGoogleCalendarStatus] = useState(null)
+  const [googleCalendarLoading, setGoogleCalendarLoading] = useState(true)
+  const [googleCalendarError, setGoogleCalendarError] = useState('')
+  const [googleCalendarOauthNotice, setGoogleCalendarOauthNotice] =
+    useState(null)
+  const [googleCalendarDraftSyncVersion, setGoogleCalendarDraftSyncVersion] =
+    useState(0)
+  const activeCompanyIdRef = useRef(activeCompanyId)
+  const googleCalendarRequestIdRef = useRef(0)
+  activeCompanyIdRef.current = activeCompanyId
 
   const reloadStatus = useCallback(() => {
     if (!activeCompanyId) return Promise.resolve()
@@ -237,10 +249,97 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
     reloadStatus()
   }, [activeCompanyId, reloadStatus, settings?.integrations])
 
+  const reloadGoogleCalendarStatus = useCallback(({ syncDraft = false } = {}) => {
+    if (!activeCompanyId) return Promise.resolve()
+    const requestedCompanyId = activeCompanyId
+    const requestId = googleCalendarRequestIdRef.current + 1
+    googleCalendarRequestIdRef.current = requestId
+    setGoogleCalendarLoading(true)
+    return apiJson('/api/party/google-calendar/status', {
+      cache: 'no-store',
+      headers: { 'x-partycrm-company-id': activeCompanyId },
+      })
+      .then((response) => {
+        if (
+          activeCompanyIdRef.current !== requestedCompanyId ||
+          googleCalendarRequestIdRef.current !== requestId
+        ) {
+          return
+        }
+        setGoogleCalendarStatus(response.data ?? null)
+        setGoogleCalendarError('')
+        if (syncDraft) setGoogleCalendarDraftSyncVersion((value) => value + 1)
+      })
+      .catch((loadError) => {
+        if (
+          activeCompanyIdRef.current !== requestedCompanyId ||
+          googleCalendarRequestIdRef.current !== requestId
+        ) {
+          return
+        }
+        setGoogleCalendarStatus(null)
+        setGoogleCalendarError(
+          loadError.message || 'Не удалось загрузить состояние Google Calendar'
+        )
+      })
+      .finally(() => {
+        if (
+          activeCompanyIdRef.current === requestedCompanyId &&
+          googleCalendarRequestIdRef.current === requestId
+        ) {
+          setGoogleCalendarLoading(false)
+        }
+      })
+  }, [activeCompanyId])
+
+  useEffect(() => {
+    setGoogleCalendarStatus(null)
+    setGoogleCalendarError('')
+    setGoogleCalendarLoading(true)
+    setGoogleCalendarOauthNotice(null)
+    reloadGoogleCalendarStatus({ syncDraft: true })
+  }, [reloadGoogleCalendarStatus])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const oauthStatus = params.get('googleCalendar')
+    if (!oauthStatus) return
+
+    setGoogleCalendarOauthNotice({
+      success: oauthStatus === 'connected',
+      error: params.get('error') || 'oauth_failed',
+    })
+    params.delete('googleCalendar')
+    params.delete('error')
+    const query = params.toString()
+    window.history.replaceState(
+      {},
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+    )
+    reloadGoogleCalendarStatus({ syncDraft: true })
+  }, [reloadGoogleCalendarStatus])
+
   const integrations = settings?.integrations ?? {}
   const origin = buildOrigin()
   const telephonyLocked = Boolean(access && !access.allowTelephony)
   const aiLocked = Boolean(access && !access.allowAi)
+  const googleCalendarLocked = isGoogleCalendarLocked({
+    access,
+    status: googleCalendarStatus,
+  })
+
+  const googleCalendarIndicatorState = getCompanyIntegrationIndicatorState({
+    type: 'googleCalendar',
+    connected: googleCalendarStatus?.connected === true,
+    calendarId: googleCalendarStatus?.calendarId,
+    enabled: googleCalendarStatus?.enabled === true,
+    lastError: googleCalendarStatus?.diagnostics?.lastSyncError,
+    reconnectRequired:
+      googleCalendarStatus?.diagnostics?.lastSyncError === 'reconnect_required',
+    locked: googleCalendarLocked,
+    loading: googleCalendarLoading,
+  })
 
   const publicLeadIndicatorState = getCompanyIntegrationIndicatorState({
     type: 'publicLead',
@@ -382,6 +481,29 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
           {actionError}
         </div>
       ) : null}
+      {googleCalendarError ? (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {googleCalendarError}
+        </div>
+      ) : null}
+
+      <CompanyIntegrationCard
+        title="Google Calendar"
+        description="Односторонняя синхронизация заказов компании и напоминаний с выбранным календарём."
+        indicatorState={googleCalendarIndicatorState}
+        locked={googleCalendarLocked}
+      >
+        <PartyGoogleCalendarSettings
+          activeCompanyId={activeCompanyId}
+          companyTimeZone={settings?.timeZone}
+          locked={googleCalendarLocked}
+          status={googleCalendarStatus}
+          statusLoading={googleCalendarLoading}
+          reloadStatus={reloadGoogleCalendarStatus}
+          oauthNotice={googleCalendarOauthNotice}
+          draftSyncVersion={googleCalendarDraftSyncVersion}
+        />
+      </CompanyIntegrationCard>
 
       <CompanyIntegrationCard
         title="Входящие заявки API / Tilda"

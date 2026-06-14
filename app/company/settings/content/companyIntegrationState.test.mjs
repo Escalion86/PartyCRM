@@ -119,6 +119,55 @@ test('locked has priority over loading and connected states', () => {
   )
 })
 
+test('returns Google Calendar indicator states for its connection lifecycle', () => {
+  assert.equal(
+    getCompanyIntegrationIndicatorState({
+      type: 'googleCalendar',
+      loading: true,
+    }),
+    loading
+  )
+  assert.equal(
+    getCompanyIntegrationIndicatorState({ type: 'googleCalendar' }),
+    disconnected
+  )
+
+  for (const input of [
+    { connected: true },
+    { connected: true, calendarId: 'primary' },
+    {
+      connected: true,
+      calendarId: 'primary',
+      enabled: true,
+      lastError: 'calendar_sync_failed',
+    },
+    {
+      connected: true,
+      calendarId: 'primary',
+      enabled: true,
+      reconnectRequired: true,
+    },
+  ]) {
+    assert.equal(
+      getCompanyIntegrationIndicatorState({
+        type: 'googleCalendar',
+        ...input,
+      }),
+      warning
+    )
+  }
+
+  assert.equal(
+    getCompanyIntegrationIndicatorState({
+      type: 'googleCalendar',
+      connected: true,
+      calendarId: 'primary',
+      enabled: true,
+    }),
+    connected
+  )
+})
+
 test('returns disconnected for disabled and unknown integrations', () => {
   assert.equal(
     getCompanyIntegrationIndicatorState({ type: 'publicLead' }),
