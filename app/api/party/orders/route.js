@@ -18,6 +18,7 @@ import {
   hasPartyOrderConflicts,
 } from '@server/partyOrderConflicts'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
+import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
 import {
   canCreatePartyOrderByTariff,
   filterPartyOrderPayloadByTariffAccess,
@@ -471,6 +472,11 @@ export async function POST(req) {
   const order = await PartyOrders.create({
     ...limitedPayload,
     tenantId: context.tenantId,
+  })
+
+  await syncPartyOrderCalendarAfterCrud({
+    tenantId: context.tenantId,
+    orderId: String(order._id),
   })
 
   return NextResponse.json({ success: true, data: order }, { status: 201 })

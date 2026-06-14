@@ -11,6 +11,7 @@ import {
   serializePartyTransaction,
   validatePartyTransactionOrder,
 } from '@server/partyTransactions'
+import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
 
 export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
@@ -74,6 +75,11 @@ export async function POST(req) {
     ...payload,
     tenantId: context.tenantId,
     clientId: payload.clientId || order.clientId || null,
+  })
+
+  await syncPartyOrderCalendarAfterCrud({
+    tenantId: context.tenantId,
+    orderId: payload.orderId,
   })
 
   return NextResponse.json(

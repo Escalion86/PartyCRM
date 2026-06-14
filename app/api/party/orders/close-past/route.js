@@ -5,6 +5,7 @@ import {
 } from '@server/partyModels'
 import { getPartyRequestContext } from '@server/partyApi'
 import { getPartyOrderCloseReadiness } from '@helpers/partyOrderCloseReadiness'
+import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
 
 const startOfToday = () => {
   const now = new Date()
@@ -71,6 +72,15 @@ export async function POST(req) {
     await PartyOrders.updateMany(
       { _id: { $in: closedIds }, tenantId: context.tenantId },
       { $set: { status: 'closed' } }
+    )
+    await Promise.all(
+      closedIds.map((orderId) =>
+        syncPartyOrderCalendarAfterCrud({
+          tenantId: context.tenantId,
+          orderId,
+          previousOrder: orders.find((order) => String(order._id) === orderId),
+        })
+      )
     )
   }
 

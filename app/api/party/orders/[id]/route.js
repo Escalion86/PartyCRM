@@ -18,6 +18,10 @@ import {
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
 import { filterPartyOrderPayloadByTariffAccess } from '@helpers/partyTariffAccess'
 import { getPartyOrderCloseReadiness } from '@helpers/partyOrderCloseReadiness'
+import {
+  deletePartyOrderCalendarEventsAfterCrud,
+  syncPartyOrderCalendarAfterCrud,
+} from '@server/partyOrderCalendarHooks'
 
 const getId = async (params) => {
   const resolved = await params
@@ -133,6 +137,12 @@ export async function PATCH(req, { params }) {
       { returnDocument: 'after' }
     ).lean()
 
+    await syncPartyOrderCalendarAfterCrud({
+      tenantId: context.tenantId,
+      orderId: id,
+      previousOrder: currentOrder,
+    })
+
     return NextResponse.json({ success: true, data: order })
   }
 
@@ -202,6 +212,12 @@ export async function PATCH(req, { params }) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
 
+  await syncPartyOrderCalendarAfterCrud({
+    tenantId: context.tenantId,
+    orderId: id,
+    previousOrder: currentOrder,
+  })
+
   return NextResponse.json({ success: true, data: order })
 }
 
@@ -221,6 +237,13 @@ export async function DELETE(req, { params }) {
   const permanent = searchParams.get('permanent') === 'true'
 
   const PartyOrders = await getPartyOrderModel()
+  const currentOrder = permanent
+    ? null
+    : await PartyOrders.findOne({ _id: id, tenantId: context.tenantId }).lean()
+
+  if (!permanent && !currentOrder) {
+    return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+  }
 
   if (permanent) {
     // Полное удаление заказа из БД
@@ -232,6 +255,11 @@ export async function DELETE(req, { params }) {
     if (!order) {
       return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
     }
+
+    await deletePartyOrderCalendarEventsAfterCrud({
+      tenantId: context.tenantId,
+      orderSnapshot: order,
+    })
 
     return NextResponse.json({ success: true, data: order })
   }
@@ -246,6 +274,12 @@ export async function DELETE(req, { params }) {
   if (!order) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
+
+  await syncPartyOrderCalendarAfterCrud({
+    tenantId: context.tenantId,
+    orderId: id,
+    previousOrder: currentOrder,
+  })
 
   return NextResponse.json({ success: true, data: order })
 }

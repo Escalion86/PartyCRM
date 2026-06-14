@@ -11,6 +11,7 @@ import {
   serializePartyTransaction,
   validatePartyTransactionOrder,
 } from '@server/partyTransactions'
+import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
 
 const getId = async (params) => {
   const resolved = await params
@@ -80,6 +81,11 @@ export async function PATCH(req, { params }) {
     { returnDocument: 'after' }
   )
 
+  await syncPartyOrderCalendarAfterCrud({
+    tenantId: context.tenantId,
+    orderId: String(transaction.orderId),
+  })
+
   return NextResponse.json({
     success: true,
     data: serializePartyTransaction(transaction),
@@ -115,6 +121,11 @@ export async function DELETE(req, { params }) {
       'Транзакция не найдена'
     )
   }
+
+  await syncPartyOrderCalendarAfterCrud({
+    tenantId: context.tenantId,
+    orderId: String(transaction.orderId),
+  })
 
   return NextResponse.json({
     success: true,
