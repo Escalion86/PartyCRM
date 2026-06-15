@@ -3,6 +3,7 @@ import {
   REDIRECT_PATH,
   getPartyGoogleCalendarNonceCookieNames,
 } from '@server/partyGoogleCalendarApiCore'
+import { getPartyGoogleCalendarPublicOrigin } from '@server/partyGoogleCalendarRedirect'
 import { authorizeCallback, createCore, nonceCookieOptions } from '../_shared'
 
 const clearNonceCookies = (req, response) => {
@@ -14,7 +15,10 @@ const clearNonceCookies = (req, response) => {
 }
 
 const redirect = (req, status, errorCode = '') => {
-  const target = new URL(REDIRECT_PATH, req.url)
+  const target = new URL(
+    REDIRECT_PATH,
+    getPartyGoogleCalendarPublicOrigin({ requestUrl: req.url })
+  )
   target.searchParams.set('googleCalendar', status)
   if (errorCode) target.searchParams.set('error', errorCode)
   const response = NextResponse.redirect(target)
