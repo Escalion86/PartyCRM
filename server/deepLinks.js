@@ -3,7 +3,7 @@ const MOBILE_SCHEME = 'artistcrm'
 const MOBILE_HOST = 'app'
 
 const getWebHost = () => {
-  const domain = String(process.env.DOMAIN || 'https://artistcrm.com').trim()
+  const domain = String(process.env.DOMAIN || 'https://artistcrm.ru').trim()
   return domain.replace(/^https?:\/\//, '').replace(/\/+$/, '')
 }
 
@@ -20,11 +20,22 @@ const getWebHost = () => {
  * @param {string} [params.date] — Optional ISO date YYYY-MM-DD (event only)
  * @returns {string} Deep link URL
  */
-const buildDeepLink = ({ resource, resourceId, orgId, target = 'mobile', tab, action, date }) => {
+const buildDeepLink = ({
+  resource,
+  resourceId,
+  orgId,
+  target = 'mobile',
+  tab,
+  action,
+  date,
+}) => {
   if (!resource || !resourceId || !orgId) return ''
 
   const idParam = resource === 'request' ? 'request_id' : 'event_id'
-  const params = new URLSearchParams({ [idParam]: String(resourceId), org_id: String(orgId) })
+  const params = new URLSearchParams({
+    [idParam]: String(resourceId),
+    org_id: String(orgId),
+  })
   if (tab) params.set('tab', String(tab))
   if (resource === 'request' && action) params.set('action', String(action))
   if (resource === 'event' && date) params.set('date', String(date))
