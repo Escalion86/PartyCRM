@@ -53,22 +53,6 @@ const partyUsersSchema = {
     enum: ['active', 'blocked', 'archived'],
     default: 'active',
   },
-  consentPrivacyPolicyAccepted: {
-    type: Boolean,
-    default: false,
-  },
-  consentPersonalDataAccepted: {
-    type: Boolean,
-    default: false,
-  },
-  privacyPolicyAcceptedAt: {
-    type: Date,
-    default: null,
-  },
-  personalDataProcessingAcceptedAt: {
-    type: Date,
-    default: null,
-  },
   lastLoginAt: {
     type: Date,
     default: null,

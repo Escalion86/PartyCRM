@@ -124,6 +124,7 @@ export default function PartyLoginClient({
   const [passwordRepeat, setPasswordRepeat] = useState('')
   const [firstName, setFirstName] = useState('')
   const [secondName, setSecondName] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
   const [privacyAccepted, setPrivacyAccepted] = useState(false)
   const [personalDataAccepted, setPersonalDataAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -330,6 +331,7 @@ export default function PartyLoginClient({
           firstName,
           secondName,
           interfaceRoles,
+          consentTerms: termsAccepted,
           consentPrivacyPolicy: privacyAccepted,
           consentPersonalData: personalDataAccepted,
         }),
@@ -714,6 +716,23 @@ export default function PartyLoginClient({
           <label className="flex cursor-pointer items-start gap-2 text-sm">
             <input
               type="checkbox"
+              required
+              checked={termsAccepted}
+              onChange={(event) => setTermsAccepted(event.target.checked)}
+              className="mt-1"
+            />
+            <span>
+              Принимаю{' '}
+              <Link href="/terms" className="text-sky-700 underline">
+                Пользовательское соглашение
+              </Link>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              required
               checked={privacyAccepted}
               onChange={(event) => setPrivacyAccepted(event.target.checked)}
               className="mt-1"
@@ -729,6 +748,7 @@ export default function PartyLoginClient({
           <label className="flex cursor-pointer items-start gap-2 text-sm">
             <input
               type="checkbox"
+              required
               checked={personalDataAccepted}
               onChange={(event) =>
                 setPersonalDataAccepted(event.target.checked)

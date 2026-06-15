@@ -15,6 +15,7 @@ export async function POST(req) {
   const phone = normalizePartyPhone(body.phone)
   const password = String(body.password || '')
   const interfaceRoles = normalizePartyInterfaceRoles(body.interfaceRoles)
+  const consentTerms = body?.consentTerms === true
   const consentPrivacyPolicy = body?.consentPrivacyPolicy === true
   const consentPersonalData = body?.consentPersonalData === true
 
@@ -36,12 +37,12 @@ export async function POST(req) {
       { status: 400 }
     )
   }
-  if (!consentPrivacyPolicy || !consentPersonalData) {
+  if (!consentTerms || !consentPrivacyPolicy || !consentPersonalData) {
     return NextResponse.json(
       {
         success: false,
         error:
-          'Для регистрации требуется согласие с Политикой конфиденциальности и обработкой персональных данных',
+          'Для регистрации необходимо принять Пользовательское соглашение, Политику конфиденциальности и Согласие на обработку персональных данных',
       },
       { status: 400 }
     )
@@ -91,10 +92,6 @@ export async function POST(req) {
       secondName: String(body.secondName || '').trim().slice(0, 100),
       interfaceRoles,
       lastWorkspace,
-      consentPrivacyPolicyAccepted: true,
-      consentPersonalDataAccepted: true,
-      privacyPolicyAcceptedAt: now,
-      personalDataProcessingAcceptedAt: now,
       lastLoginAt: now,
     })
   } catch (error) {
