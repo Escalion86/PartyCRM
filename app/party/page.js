@@ -584,6 +584,14 @@ export default function PartyCrmLandingPage() {
               Пользовательское соглашение
             </Link>
             <Link
+              href="/personal-data-consent"
+              className="text-sky-600"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Согласие на обработку персональных данных
+            </Link>
+            <Link
               href="/payment"
               className="text-sky-600"
               target="_blank"

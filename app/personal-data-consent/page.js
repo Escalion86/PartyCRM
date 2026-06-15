@@ -41,7 +41,7 @@ export const metadata = {
   },
 }
 
-const EffectiveDate = '25.05.2026'
+const EffectiveDate = '15.06.2026'
 
 export default function PersonalDataConsentPage() {
   return (
@@ -158,6 +158,13 @@ export default function PersonalDataConsentPage() {
             и{' '}
             <Link href="/terms" className="text-general">
               Пользовательским соглашением
+            </Link>
+            .
+          </p>
+          <p>
+            6.2. Актуальные версии документов опубликованы на сайте{' '}
+            <Link href="/party" className="text-general">
+              https://partycrm.ru
             </Link>
             .
           </p>

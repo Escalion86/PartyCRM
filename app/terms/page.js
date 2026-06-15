@@ -38,40 +38,41 @@ export const metadata = {
   },
 }
 
-const EffectiveDate = '20.01.2026'
+const EffectiveDate = '15.06.2026'
 
 export default function TermsPage() {
   return (
     <main className="bg-white">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-6 py-12 text-sm text-gray-700">
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-general">
+          <p className="text-general text-xs font-semibold tracking-[0.2em] uppercase">
             Документы
           </p>
-          <h1 className="text-3xl font-semibold text-black font-futuraPT">
+          <h1 className="font-futuraPT text-3xl font-semibold text-black">
             Пользовательское соглашение
           </h1>
           <p className="text-sm text-gray-500">Действует с: {EffectiveDate}</p>
         </div>
 
         <p>
-          Настоящее Пользовательское соглашение (далее — «Соглашение») определяет
-          условия использования сервиса ArtistCRM (далее — «Сервис») и заключено
-          между ИП Белинский Алексей Алексеевич (ИНН 245727560982, ОГРНИП
-          319246800103511), адрес: РФ, Красноярский край, г. Красноярск, ул. 4
-          Продольная 34 (далее — «Исполнитель») и пользователем Сервиса (далее —
-          «Пользователь»).
+          Настоящее Пользовательское соглашение (далее — «Соглашение»)
+          определяет условия использования сервиса PartyCRM (далее — «Сервис»)
+          и заключено между ИП Белинский Алексей Алексеевич (ИНН 245727560982,
+          ОГРНИП 319246800103511), адрес: РФ, Красноярский край, г. Красноярск,
+          ул. 4 Продольная 34 (далее — «Исполнитель») и пользователем Сервиса
+          (далее — «Пользователь»).
         </p>
 
         <section className="flex flex-col gap-3">
           <h2 className="text-lg font-semibold text-black">1. Предмет</h2>
           <p>
-            1.1. Исполнитель предоставляет Пользователю доступ к CRM и личному
-            кабинету для ведения клиентов, заявок и мероприятий.
+            1.1. Исполнитель предоставляет Пользователю доступ к CRM для
+            управления компаниями, заказами, клиентами, площадками,
+            исполнителями, финансами и мероприятиями.
           </p>
           <p>
-            1.2. Сервис может включать интеграцию с Google Calendar по инициативе
-            пользователя.
+            1.2. Сервис может включать интеграцию с Google Calendar по
+            инициативе пользователя.
           </p>
         </section>
 
@@ -112,7 +113,8 @@ export default function TermsPage() {
             4. Использование Сервиса
           </h2>
           <p>
-            4.1. Пользователь обязан использовать Сервис законно и добросовестно.
+            4.1. Пользователь обязан использовать Сервис законно и
+            добросовестно.
           </p>
           <p>
             4.2. Запрещено использовать Сервис для спама и необоснованного
@@ -125,7 +127,9 @@ export default function TermsPage() {
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold text-black">5. Ответственность</h2>
+          <h2 className="text-lg font-semibold text-black">
+            5. Ответственность
+          </h2>
           <p>5.1. Сервис предоставляется «как есть».</p>
           <p>
             5.2. Исполнитель не несет ответственности за возможные сбои,
@@ -141,13 +145,20 @@ export default function TermsPage() {
             6.1. Обработка персональных данных осуществляется в соответствии с
             Политикой конфиденциальности, опубликованной на{' '}
             <Link href="/privacy" className="text-general">
-              https://artistcrm.com/privacy
+              https://partycrm.ru/privacy
             </Link>
             .
           </p>
           <p>
             6.2. Пользователь подтверждает право вносить данные третьих лиц
             (клиентов) в Сервис.
+          </p>
+          <p>
+            6.3. Согласие на обработку персональных данных опубликовано на{' '}
+            <Link href="/personal-data-consent" className="text-general">
+              https://partycrm.ru/personal-data-consent
+            </Link>
+            .
           </p>
         </section>
 
@@ -158,7 +169,10 @@ export default function TermsPage() {
           <p>
             7.1. Соглашение действует с момента начала использования Сервиса.
           </p>
-          <p>7.2. Пользователь может прекратить использование Сервиса в любой момент.</p>
+          <p>
+            7.2. Пользователь может прекратить использование Сервиса в любой
+            момент.
+          </p>
         </section>
 
         <section className="flex flex-col gap-3">
@@ -187,7 +201,7 @@ export default function TermsPage() {
             10.1. Исполнитель вправе изменять Соглашение. Актуальная версия
             публикуется на сайте{' '}
             <Link href="/" className="text-general">
-              https://artistcrm.com
+              https://partycrm.ru
             </Link>
             .
           </p>
