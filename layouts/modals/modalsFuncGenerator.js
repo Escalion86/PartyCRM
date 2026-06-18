@@ -23,6 +23,7 @@ import selectEventsFunc from './modalsFunc/selectEventsFunc'
 import selectUsersFunc from './modalsFunc/selectUsersFunc'
 // import serviceApplyFunc from './modalsFunc/serviceApplyFunc'
 import serviceFunc from './modalsFunc/serviceFunc'
+import serviceGroupFunc from './modalsFunc/serviceGroupFunc'
 // import serviceUserStatusEditFunc from './modalsFunc/serviceStatusEditFunc'
 // import serviceUserFunc from './modalsFunc/serviceUserFunc'
 // import serviceUserViewFunc from './modalsFunc/serviceUserViewFunc'
@@ -204,7 +205,8 @@ const modalsFuncGenerator = (router, itemsFunc, loggedUser, options = {}) => {
             onSaved,
           })
         ),
-      edit: (eventId, options) => addModal(eventFunc(eventId, false, null, options)),
+      edit: (eventId, options) =>
+        addModal(eventFunc(eventId, false, null, options)),
       history: (eventId) => addModal(eventHistoryFunc(eventId)),
       statusEdit: (eventId) => addModal(eventStatusEditFunc(eventId)),
       close: (eventId) =>
@@ -284,7 +286,8 @@ const modalsFuncGenerator = (router, itemsFunc, loggedUser, options = {}) => {
         }
       },
       view: (eventId, options) => addModal(eventViewFunc(eventId, options)),
-      additionalEvents: (eventId) => addModal(eventAdditionalEventsFunc(eventId)),
+      additionalEvents: (eventId) =>
+        addModal(eventAdditionalEventsFunc(eventId)),
       upcomingOverview: () => addModal(upcomingEventsOverviewFunc()),
       // editLikes: (eventId) => addModal(likesEditFunc(eventId)),
       // viewLikes: (eventId) => addModal(likesViewFunc(eventId)),
@@ -362,8 +365,7 @@ const modalsFuncGenerator = (router, itemsFunc, loggedUser, options = {}) => {
           if (reasons.length > 0) {
             const reasonLines = reasons
               .map((item) => {
-                if (item.type === 'events')
-                  return `Мероприятия: ${item.count}`
+                if (item.type === 'events') return `Мероприятия: ${item.count}`
                 return null
               })
               .filter(Boolean)
@@ -405,6 +407,11 @@ const modalsFuncGenerator = (router, itemsFunc, loggedUser, options = {}) => {
           },
         }),
     },
+    serviceGroup: {
+      add: (onSuccess) => addModal(serviceGroupFunc(null, true, onSuccess)),
+      edit: (serviceGroupId, onSuccess) =>
+        addModal(serviceGroupFunc(serviceGroupId, false, onSuccess)),
+    },
     client: {
       edit: (clientId, onSuccess) =>
         addModal(clientFunc(clientId, false, onSuccess)),
@@ -426,9 +433,7 @@ const modalsFuncGenerator = (router, itemsFunc, loggedUser, options = {}) => {
           return
         }
         try {
-          const response = await fetch(
-            `/api/clients/${clientId}/delete-check`
-          )
+          const response = await fetch(`/api/clients/${clientId}/delete-check`)
           const result = await response.json()
           const reasons = Array.isArray(result?.data?.reasons)
             ? result.data.reasons
@@ -446,8 +451,7 @@ const modalsFuncGenerator = (router, itemsFunc, loggedUser, options = {}) => {
           if (reasons.length > 0) {
             const reasonLines = reasons
               .map((item) => {
-                if (item.type === 'events')
-                  return `Мероприятия: ${item.count}`
+                if (item.type === 'events') return `Мероприятия: ${item.count}`
                 if (item.type === 'transactions')
                   return `Транзакции: ${item.count}`
                 return null
@@ -463,14 +467,14 @@ const modalsFuncGenerator = (router, itemsFunc, loggedUser, options = {}) => {
             })
             return
           }
-            addModal({
-              title: 'Удаление клиента',
-              text: 'Вы уверены, что хотите удалить клиента?',
-              onConfirm: async (refreshPage) => {
-                await itemsFunc.client.delete(clientId)
-                if (typeof refreshPage === 'function') refreshPage()
-              },
-            })
+          addModal({
+            title: 'Удаление клиента',
+            text: 'Вы уверены, что хотите удалить клиента?',
+            onConfirm: async (refreshPage) => {
+              await itemsFunc.client.delete(clientId)
+              if (typeof refreshPage === 'function') refreshPage()
+            },
+          })
         } catch (error) {
           addModal({
             title: 'Удаление клиента недоступно',

@@ -14,6 +14,12 @@ import {
 const DEFAULT_ADDITIONAL_EVENTS_PUSH_TIME = '10:00'
 const REMINDER_TIME_PATTERN = /^([01]\d|2[0-3]):(00|15|30|45)$/
 
+const TIME_OPTIONS = Array.from({ length: 96 }, (_, i) => {
+  const hours = String(Math.floor(i / 4)).padStart(2, '0')
+  const minutes = String((i % 4) * 15).padStart(2, '0')
+  return `${hours}:${minutes}`
+})
+
 const getCustomValue = (custom, key) => {
   if (!custom) return undefined
   if (typeof custom.get === 'function') return custom.get(key)
@@ -279,7 +285,7 @@ const PushNotificationsSettings = () => {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-sm text-gray-600">
+      {/* <div className="text-sm text-gray-600">
         Push-уведомления приходят в установленное PWA-приложение по новым
         входящим API-заявкам и системным напоминаниям.
       </div>
@@ -287,7 +293,7 @@ const PushNotificationsSettings = () => {
         Статус: {pushAvailable ? 'поддерживается' : 'не поддерживается'} |
         Разрешение: {pushPermission} | Подписка:{' '}
         {pushSubscribed ? 'активна' : 'нет'}
-      </div>
+      </div> */}
       <div className="flex items-center">
         <span
           className={`inline-flex min-w-[110px] items-center justify-center rounded-full border px-3 py-1 text-xs font-semibold ${
@@ -302,7 +308,7 @@ const PushNotificationsSettings = () => {
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          className={`action-icon-button flex h-10 w-full cursor-pointer items-center justify-center rounded px-3 text-sm font-semibold tablet:w-auto ${
+          className={`action-icon-button tablet:w-auto flex h-10 w-full cursor-pointer items-center justify-center rounded px-3 text-sm font-semibold ${
             isPushEnabled
               ? 'action-icon-button--danger'
               : 'action-icon-button--success'
@@ -324,34 +330,38 @@ const PushNotificationsSettings = () => {
         </button>
         <button
           type="button"
-          className="action-icon-button action-icon-button--warning flex h-10 w-full cursor-pointer items-center justify-center rounded px-3 text-sm font-semibold tablet:w-auto"
+          className="flex items-center justify-center w-full h-10 px-3 text-sm font-semibold rounded cursor-pointer action-icon-button action-icon-button--warning tablet:w-auto"
           onClick={sendTestPush}
           disabled={pushBusy || !pushAvailable}
         >
           {pushBusy && pushAction === 'test' ? 'Отправка...' : 'Тест push'}
         </button>
       </div>
-      <div className="rounded border border-gray-200 bg-white/70 p-3">
+      <div className="p-3 border border-gray-200 rounded bg-white/70">
         <label className="flex flex-col gap-2 text-sm text-gray-700 tablet:max-w-xs">
           <span className="font-semibold text-gray-800">
             Время ежедневных напоминаний
           </span>
-          <input
-            type="time"
-            step="900"
+          <select
             value={additionalEventsPushTime}
-            className="h-10 cursor-pointer rounded border border-gray-300 bg-white px-3 text-sm"
-            onChange={(event) => saveAdditionalEventsPushTime(event.target.value)}
-          />
+            className="h-10 px-3 text-sm bg-white border border-gray-300 rounded cursor-pointer"
+            onChange={(event) =>
+              saveAdditionalEventsPushTime(event.target.value)
+            }
+          >
+            {TIME_OPTIONS.map((time) => (
+              <option key={time} value={time}>
+                {time}
+              </option>
+            ))}
+          </select>
         </label>
-        <div className="mt-2 text-xs text-gray-500">
-          Проверка cron идет каждые 15 минут. Если время не задано, используется
-          10:00 в часовом поясе из настроек профиля.
-        </div>
       </div>
-      <div className="mt-2 rounded border border-gray-200 bg-white/70 p-3 text-xs">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <div className="font-semibold text-gray-800">Последние события push</div>
+      <div className="p-3 mt-2 text-xs border border-gray-200 rounded bg-white/70">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="font-semibold text-gray-800">
+            Последние события push
+          </div>
           <button
             type="button"
             className="cursor-pointer text-general hover:underline"
@@ -382,10 +392,14 @@ const PushNotificationsSettings = () => {
                     </span>
                     <span className="text-gray-500">{createdAt}</span>
                     {log.source ? (
-                      <span className="text-gray-500">Источник: {log.source}</span>
+                      <span className="text-gray-500">
+                        Источник: {log.source}
+                      </span>
                     ) : null}
                     {log.statusCode ? (
-                      <span className="text-gray-500">HTTP {log.statusCode}</span>
+                      <span className="text-gray-500">
+                        HTTP {log.statusCode}
+                      </span>
                     ) : null}
                   </div>
                   <div className="mt-1 text-gray-600">

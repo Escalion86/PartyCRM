@@ -19,7 +19,10 @@ import {
   faUsers,
   faWandMagicSparkles,
 } from '@fortawesome/free-solid-svg-icons'
-import { faCalendar, faCalendarCheck } from '@fortawesome/free-regular-svg-icons'
+import {
+  faCalendar,
+  faCalendarCheck,
+} from '@fortawesome/free-regular-svg-icons'
 
 import {
   faInstagram,
@@ -319,7 +322,6 @@ export const DAYS_OF_WEEK_FULL = [
   'суббота',
 ]
 
-
 export const AUDIENCE = [
   { value: 'adults', name: 'Взрослые (18-99 лет)' },
   { value: 'teenagers', name: 'Подростки (10-18 лет)' },
@@ -530,7 +532,11 @@ export const TRANSACTION_CATEGORIES = Object.freeze([
   { value: 'deposit', name: 'Задаток', type: 'income' },
   { value: 'final_payment', name: 'Остаток оплаты', type: 'income' },
   { value: 'referral_in', name: 'Рекомендация (входящий %)', type: 'income' },
-  { value: 'referral_out', name: 'Рекомендация (исходящий %)', type: 'expense' },
+  {
+    value: 'referral_out',
+    name: 'Рекомендация (исходящий %)',
+    type: 'expense',
+  },
   // Legacy categories for backward compatibility
   { value: 'client_payment', name: 'Оплата клиента (legacy)', type: 'income' },
   { value: 'advance', name: 'Задаток (legacy)', type: 'income' },
@@ -568,6 +574,13 @@ export const DEFAULT_SERVICE = Object.freeze({
   description: '',
   images: [],
   duration: 0,
+  price: 0,
+  groupId: null,
+})
+
+export const DEFAULT_SERVICE_GROUP = Object.freeze({
+  title: '',
+  order: 0,
 })
 
 export const DEFAULT_TARIFF = Object.freeze({

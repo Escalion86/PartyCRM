@@ -47,8 +47,14 @@ export const partyTransactionCategoryLabels = {
 
 export const partyTransactionCategoryOptions = [
   { value: 'deposit', label: partyTransactionCategoryLabels.deposit },
-  { value: 'final_payment', label: partyTransactionCategoryLabels.final_payment },
-  { value: 'client_payment', label: partyTransactionCategoryLabels.client_payment },
+  {
+    value: 'final_payment',
+    label: partyTransactionCategoryLabels.final_payment,
+  },
+  {
+    value: 'client_payment',
+    label: partyTransactionCategoryLabels.client_payment,
+  },
   { value: 'payout', label: partyTransactionCategoryLabels.payout },
   { value: 'refund', label: partyTransactionCategoryLabels.refund },
   { value: 'taxes', label: partyTransactionCategoryLabels.taxes },
@@ -147,6 +153,7 @@ export const EMPTY_PARTY_SERVICE = {
   specialization: 'other',
   duration: 0,
   price: 0,
+  groupId: null,
 }
 
 export const EMPTY_ORDER = {

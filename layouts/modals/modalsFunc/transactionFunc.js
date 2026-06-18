@@ -66,7 +66,9 @@ const transactionFunc = ({ eventId, transactionId, contractSum } = {}) => {
       [transaction?.type]
     )
     const initialCategory = useMemo(
-      () => transaction?.category ?? (initialType === 'income' ? 'final_payment' : 'other'),
+      () =>
+        transaction?.category ??
+        (initialType === 'income' ? 'final_payment' : 'other'),
       [transaction?.category, initialType]
     )
     const initialPaymentMethod = useMemo(
@@ -152,7 +154,7 @@ const transactionFunc = ({ eventId, transactionId, contractSum } = {}) => {
       if (!selectedEvent?.isTransferred) return
       if (category === 'other') setCategory('referral_in')
       if (type !== 'income') setType('income')
-    }, [transactionId, selectedEvent?.isTransferred, category, type])
+    }, [transactionId, selectedEvent?.isTransferred])
 
     useEffect(() => {
       if (transactionId) return
@@ -366,7 +368,7 @@ const transactionFunc = ({ eventId, transactionId, contractSum } = {}) => {
           {isTaxCategory && (
             <button
               type="button"
-              className="mb-2 rounded border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50"
+              className="px-2 py-1 mb-2 text-xs font-semibold text-gray-700 transition bg-white border border-gray-300 rounded shadow-sm hover:bg-gray-50"
               onClick={() => setAmount(taxAmount)}
               disabled={loading || isReadOnly}
               title="Рассчитать 6% от договорной суммы"
@@ -445,7 +447,7 @@ const transactionFunc = ({ eventId, transactionId, contractSum } = {}) => {
           disabled={loading || isReadOnly}
         />
         {error && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="px-3 py-2 text-sm text-red-700 border border-red-200 rounded-md bg-red-50">
             {error}
           </div>
         )}
@@ -463,4 +465,3 @@ const transactionFunc = ({ eventId, transactionId, contractSum } = {}) => {
 }
 
 export default transactionFunc
-

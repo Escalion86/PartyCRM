@@ -1,5 +1,8 @@
 'use client'
 
+import { useSetAtom } from 'jotai'
+import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
+
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import OrdersList from '@components/party/lists/OrdersList'
@@ -185,6 +188,7 @@ const createEmptyOrderDraft = (companySettings = {}, locations = []) => ({
 })
 
 export default function CompanyWorkspaceClient({ section = 'overview' }) {
+  const setServiceGroups = useSetAtom(serviceGroupsAtom)
   const [context, setContext] = useState(null)
   const [memberships, setMemberships] = useState([])
   const [activeCompanyId, setActiveCompanyId] = useState('')
@@ -240,6 +244,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         setClients([])
         setStaff([])
         setServices([])
+        setServiceGroups([])
         setOrders([])
         setCompanySettings({})
         setCompanyAccess(null)
@@ -284,6 +289,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         servicesResponse,
         ordersResponse,
         companySettingsResponse,
+        serviceGroupsResponse,
       ] = await Promise.all([
         apiJson(
           '/api/party/locations',
@@ -313,6 +319,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           '/api/party/company-settings',
           buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
         ),
+        apiJson(
+          '/api/party/service-groups',
+          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+        ),
       ])
       setLocations(locationsResponse.data ?? [])
       setArchivedLocations(archivedLocationsResponse.data ?? [])
@@ -320,8 +330,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       setStaff(staffResponse.data ?? [])
       setServices(servicesResponse.data ?? [])
       setOrders(ordersResponse.data ?? [])
+      setServiceGroups(serviceGroupsResponse.data ?? [])
       setCompanySettings(
-        companySettingsResponse.data?.settings ?? companySettingsResponse.data ?? {}
+        companySettingsResponse.data?.settings ??
+          companySettingsResponse.data ??
+          {}
       )
       setCompanyAccess(companySettingsResponse.data?.access ?? null)
     } catch (loadError) {
@@ -555,40 +568,43 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   )
 
   // Order actions
-  const addOrder = useCallback(async (options = {}) => {
-    if (hasOrderConflict(orderDraft, orders)) {
-      const confirmed = window.confirm(
-        'Обнаружен конфликт по времени или исполнителям. Всё равно сохранить заказ?'
-      )
-      if (!confirmed) return
-    }
+  const addOrder = useCallback(
+    async (options = {}) => {
+      if (hasOrderConflict(orderDraft, orders)) {
+        const confirmed = window.confirm(
+          'Обнаружен конфликт по времени или исполнителям. Всё равно сохранить заказ?'
+        )
+        if (!confirmed) return
+      }
 
-    setSaving(true)
-    try {
-      const response = await apiJson(
-        '/api/party/orders',
-        buildCompanyRequestOptions(activeCompanyId, {
-          method: 'POST',
-          body: JSON.stringify(orderDraft),
-        })
-      )
-      if (response.data) {
-        const createdOrder = response.data
-        setOrders((prev) => [...prev, createdOrder])
-        if (options.keepOpen) {
-          setEditingOrderId(String(createdOrder._id))
-          setOrderDraft(normalizeOrderDraft(createdOrder))
+      setSaving(true)
+      try {
+        const response = await apiJson(
+          '/api/party/orders',
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'POST',
+            body: JSON.stringify(orderDraft),
+          })
+        )
+        if (response.data) {
+          const createdOrder = response.data
+          setOrders((prev) => [...prev, createdOrder])
+          if (options.keepOpen) {
+            setEditingOrderId(String(createdOrder._id))
+            setOrderDraft(normalizeOrderDraft(createdOrder))
+            return createdOrder
+          }
+          setActiveModal('')
+          setOrderDraft(createEmptyOrderDraft(companySettings, locations))
           return createdOrder
         }
-        setActiveModal('')
-        setOrderDraft(createEmptyOrderDraft(companySettings, locations))
-        return createdOrder
+        return null
+      } finally {
+        setSaving(false)
       }
-      return null
-    } finally {
-      setSaving(false)
-    }
-  }, [orderDraft, orders, activeCompanyId, companySettings, locations])
+    },
+    [orderDraft, orders, activeCompanyId, companySettings, locations]
+  )
 
   const editOrder = useCallback(async () => {
     if (!editingOrderId) return
@@ -1070,7 +1086,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   if (accessStatus === 'loading') {
     return (
       <section className="min-h-screen bg-white">
-        <div className="flex h-64 items-center justify-center">
+        <div className="flex items-center justify-center h-64">
           <p className="text-gray-500">Загрузка...</p>
         </div>
       </section>
@@ -1080,7 +1096,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   if (accessStatus === 'unauthenticated') {
     return (
       <section className="min-h-screen bg-white">
-        <div className="flex h-64 items-center justify-center">
+        <div className="flex items-center justify-center h-64">
           <p className="text-gray-500">Необходимо авторизоваться</p>
         </div>
       </section>
@@ -1090,7 +1106,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   if (accessStatus === 'not_configured') {
     return (
       <section className="min-h-screen bg-white">
-        <div className="flex h-64 items-center justify-center">
+        <div className="flex items-center justify-center h-64">
           <p className="text-gray-500">Нет доступных компаний</p>
         </div>
       </section>
@@ -1100,7 +1116,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   if (accessStatus === 'error') {
     return (
       <section className="min-h-screen bg-white">
-        <div className="flex h-64 items-center justify-center">
+        <div className="flex items-center justify-center h-64">
           <p className="text-red-500">{error || 'Ошибка загрузки'}</p>
         </div>
       </section>
@@ -1110,9 +1126,9 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   return (
     <section className="min-h-screen bg-white">
       {/* Main content */}
-      <main className="mx-auto max-w-6xl px-5 py-8">
+      <main className="max-w-6xl px-5 py-8 mx-auto">
         {error && (
-          <div className="border-danger/30 bg-danger/10 text-danger mb-5 rounded-md border p-3 text-sm">
+          <div className="p-3 mb-5 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
             {error}
           </div>
         )}
@@ -1120,7 +1136,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         {section === 'overview' && (
           <>
             {!onboardingProgress.finished && (
-              <div className="mb-6 rounded-2xl border border-sky-100 bg-white p-5">
+              <div className="p-5 mb-6 bg-white border rounded-2xl border-sky-100">
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div>
                     <h2 className="text-lg font-semibold">
@@ -1131,11 +1147,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       {onboardingProgress.totalCount} выполнено
                     </p>
                   </div>
-                  <div className="rounded-lg bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700">
+                  <div className="px-3 py-2 text-sm font-semibold rounded-lg bg-sky-50 text-sky-700">
                     Стартовая настройка
                   </div>
                 </div>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="grid gap-3 mt-4 md:grid-cols-2">
                   {onboardingSteps.map((step) => (
                     <div
                       key={step.id}
@@ -1167,11 +1183,14 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       {!step.completed && canManage && (
                         <button
                           type="button"
-                          className="mt-3 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                          className="px-3 py-2 mt-3 text-sm font-semibold text-white rounded-md bg-sky-600 hover:bg-sky-700"
                           onClick={() => {
                             if (step.modal === 'order') {
                               setOrderDraft(
-                                createEmptyOrderDraft(companySettings, locations)
+                                createEmptyOrderDraft(
+                                  companySettings,
+                                  locations
+                                )
                               )
                             }
                             if (step.modal === 'location') {
@@ -1197,7 +1216,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
             {/* Finance summary */}
             {canUseStatistics ? (
-              <div className="mb-6 rounded-2xl bg-sky-50 p-4">
+              <div className="p-4 mb-6 rounded-2xl bg-sky-50">
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                   <div>
                     <p className="text-sm text-gray-600">Заказов</p>
@@ -1226,7 +1245,6 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                 </div>
               </div>
             ) : null}
-
           </>
         )}
 
@@ -1250,7 +1268,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       <button
                         type="button"
                         onClick={() => setActiveModal('upcoming-events')}
-                        className="cursor-pointer rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+                        className="px-3 py-2 text-sm font-semibold transition border rounded-md cursor-pointer border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100"
                       >
                         Ближайшие
                       </button>
@@ -1259,7 +1277,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       <button
                         type="button"
                         onClick={closePastOrders}
-                        className="cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
+                        className="px-3 py-2 text-sm font-semibold transition bg-white border rounded-md cursor-pointer border-sky-200 text-sky-700 hover:bg-sky-50"
                       >
                         Закрыть прошедшие
                         <span className="ml-2 text-sky-400">
@@ -1270,7 +1288,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                     {canManage && (
                       <button
                         type="button"
-                        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                        className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
                         onClick={() => {
                           setOrderDraft(
                             createEmptyOrderDraft(companySettings, locations)
@@ -1349,10 +1367,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'clients' && (
           <>
-            <div className="mb-6 flex justify-end">
+            <div className="flex justify-end mb-6">
               <button
                 type="button"
-                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
                 onClick={() => {
                   setClientDraft(EMPTY_PARTY_CLIENT)
                   setActiveModal('client')
@@ -1373,15 +1391,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )}
 
         {section === 'finance' && !canUseStatistics && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
+          <div className="p-6 text-sm leading-6 border rounded-2xl border-amber-200 bg-amber-50 text-amber-900">
             Финансы и аналитика недоступны на текущем тарифе компании.
             Подключите тариф с опцией статистики во вкладке `Тарифы`.
           </div>
         )}
 
         {section === 'finance' && canUseStatistics && (
-          <div className="rounded-2xl bg-sky-50 p-6">
-            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="p-6 rounded-2xl bg-sky-50">
+            <div className="flex flex-col gap-3 mb-4 lg:flex-row lg:items-end lg:justify-between">
               <h2 className="text-xl font-semibold">Финансы</h2>
               <div className="flex flex-wrap items-end gap-2">
                 <label className="grid gap-1 text-xs font-semibold text-slate-600">
@@ -1392,7 +1410,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                     onChange={(event) =>
                       setFinanceExportFrom(event.target.value)
                     }
-                    className="rounded-md border border-sky-100 bg-white px-2 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+                    className="px-2 py-2 text-sm font-normal bg-white border rounded-md outline-none border-sky-100 text-slate-900 focus:border-sky-400"
                   />
                 </label>
                 <label className="grid gap-1 text-xs font-semibold text-slate-600">
@@ -1401,12 +1419,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                     type="date"
                     value={financeExportTo}
                     onChange={(event) => setFinanceExportTo(event.target.value)}
-                    className="rounded-md border border-sky-100 bg-white px-2 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+                    className="px-2 py-2 text-sm font-normal bg-white border rounded-md outline-none border-sky-100 text-slate-900 focus:border-sky-400"
                   />
                 </label>
                 <button
                   type="button"
-                  className="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                  className="px-4 py-2 text-sm font-semibold text-white rounded-md bg-sky-600 hover:bg-sky-700"
                   onClick={downloadFinanceCsv}
                 >
                   Скачать CSV
@@ -1462,10 +1480,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'locations' && (
           <>
-            <div className="mb-6 flex justify-end">
+            <div className="flex justify-end mb-6">
               <button
                 type="button"
-                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
                 onClick={() => {
                   setLocationDraft(EMPTY_LOCATION)
                   setActiveModal('location')
@@ -1488,10 +1506,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'staff' && (
           <>
-            <div className="mb-6 flex justify-end">
+            <div className="flex justify-end mb-6">
               <button
                 type="button"
-                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
                 onClick={() => {
                   setStaffDraft(EMPTY_STAFF)
                   setActiveModal('staff')
@@ -1518,10 +1536,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'services' && (
           <>
-            <div className="mb-6 flex justify-end">
+            <div className="flex justify-end mb-6">
               <button
                 type="button"
-                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
                 onClick={() => {
                   setServiceDraft(EMPTY_PARTY_SERVICE)
                   setActiveModal('service')
@@ -1705,6 +1723,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           serviceDraft={serviceDraft}
           setServiceDraft={setServiceDraft}
           saving={serviceSaving}
+          activeCompanyId={activeCompanyId}
           onClose={() => {
             setActiveModal('')
             setEditingServiceId('')

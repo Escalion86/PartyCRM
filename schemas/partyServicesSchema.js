@@ -37,6 +37,11 @@ const partyServicesSchema = {
     default: 0,
     min: 0,
   },
+  groupId: {
+    type: Schema.Types.ObjectId,
+    ref: 'ServiceGroup',
+    default: null,
+  },
   status: {
     type: String,
     enum: ['active', 'archived'],

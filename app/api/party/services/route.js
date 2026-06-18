@@ -14,6 +14,7 @@ const normalizeServicePayload = (body) => ({
   specialization:
     typeof body.specialization === 'string' ? body.specialization : 'other',
   price: Number(body.price || 0),
+  groupId: body.groupId || null,
   status: body.status === 'archived' ? 'archived' : 'active',
 })
 

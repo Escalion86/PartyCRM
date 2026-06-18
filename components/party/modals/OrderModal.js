@@ -818,6 +818,7 @@ export default function OrderModal({
         onClose={() => setServiceModal(false)}
         onSubmit={handleServiceCreate}
         saving={serviceSaving}
+        activeCompanyId={activeCompanyId}
       />
 
       <LocationModal

@@ -19,6 +19,7 @@ const pickServicePatch = (body) => {
     patch.specialization = body.specialization
   }
   if (body.price !== undefined) patch.price = Number(body.price || 0)
+  if (body.groupId !== undefined) patch.groupId = body.groupId || null
   if (body.status === 'active' || body.status === 'archived') {
     patch.status = body.status
   }
