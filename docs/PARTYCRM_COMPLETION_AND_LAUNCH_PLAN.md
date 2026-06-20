@@ -64,7 +64,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [x] Обновить local/deploy/env документацию и описать fallback standalone runtime.
 - [x] Добавить startup check: итоговая пара URI+DB ArtistCRM и PartyCRM не совпадает в shared runtime.
 - [x] Исправить определение standalone/shared runtime: проверка изоляции включается флагом `PARTYCRM_SHARED_RUNTIME=true` или двумя явными product-specific наборами.
-- [ ] Проверить `/api/party/health`, `/api/party/memberships`, `/api/party/me` с валидным и чужим `x-partycrm-company-id`.
+- [x] Проверить `/api/party/health`, `/api/party/memberships`, `/api/party/me` с валидным и чужим `x-partycrm-company-id`: добавлены `server/partyApiCore.test.mjs` и `server/partyApiRoutes.test.mjs`; неактивный membership теперь возвращает `403 partycrm_membership_inactive`.
 - [x] Подготовить backup/restore отдельно для PartyCRM DB: `docs/PARTYCRM_BACKUP_RESTORE_RUNBOOK.md`.
 
 ### 3. Довести финансы заказов

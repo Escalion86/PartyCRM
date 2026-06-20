@@ -84,6 +84,26 @@ export const resolvePartyRequestContext = ({
     }
   }
 
+  const membershipStatus = membership.status || membership.staff?.status || 'active'
+  if (membershipStatus !== 'active') {
+    return {
+      context: {
+        ...membershipContext,
+        staff: membership.staff ?? null,
+        company: membership.company ?? null,
+        tenantId: membership.tenantId ?? null,
+        role: membership.role ?? null,
+        activeMembership: membership,
+      },
+      error: partyContextError(
+        403,
+        'partycrm_membership_inactive',
+        'Доступ к выбранной компании не активен',
+        'permission'
+      ),
+    }
+  }
+
   const context = {
     ...membershipContext,
     staff: membership.staff,
