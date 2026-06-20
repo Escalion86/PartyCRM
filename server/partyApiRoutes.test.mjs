@@ -30,3 +30,14 @@ test('party me route resolves active company through request context', async () 
   assert.match(source, /staff/)
   assert.match(source, /company/)
 })
+
+test('party additionalEvents reminder cron route sends deduped PartyCRM push', async () => {
+  const source = await route('app/api/party/reminders/additional-events/route.js')
+
+  assert.match(source, /PARTYCRM_CRON_SECRET/)
+  assert.match(source, /runPartyAdditionalEventReminderBatch/)
+  assert.match(source, /PushReminderLogs\.create/)
+  assert.match(source, /getPartyOrderModel/)
+  assert.match(source, /sendPushToTenant/)
+  assert.match(source, /product:\s*'partycrm'/)
+})

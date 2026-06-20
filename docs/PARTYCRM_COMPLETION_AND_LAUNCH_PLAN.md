@@ -8,7 +8,7 @@
 
 PartyCRM уже вышел за рамки идеи и имеет рабочий technical preview: отдельная авторизация PartyCRM, отдельные пользователи, multi-company memberships, компании, точки, клиенты, услуги, сотрудники/подрядчики, заказы, проверки конфликтов, кабинет исполнителя, базовые финансы и отдельные настройки компании.
 
-До полноценного анонса еще рано. Самые важные пробелы: push-напоминания и performer-уведомления не завершены, VK/Avito/Novofon настройки не дают полного PartyCRM lead-flow, персональный календарь исполнителя не реализован, а публичный лендинг обещает часть функций, которые еще не готовы.
+До полноценного анонса еще рано. Самые важные пробелы: performer-уведомления не завершены, VK/Avito/Novofon настройки не дают полного PartyCRM lead-flow, персональный календарь исполнителя не реализован, а публичный лендинг обещает часть функций, которые еще не готовы.
 
 Рекомендация: позиционировать PartyCRM как закрытый pilot/preview, а официальный запуск делать после закрытия P0/P1 ниже.
 
@@ -36,10 +36,10 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 | Финансы            | Отдельные Transactions, категории, статистика                  | В `partyOrdersSchema` есть nested transactions, в `OrderModal` UI-заглушка | Сделать полноценный UI/API транзакций, выплаты, расходы, статусы оплат                      |
 | Документы          | Договор/акт, DOCX, реквизиты клиента/артиста                   | Company-реквизиты, пользовательские DOCX и встроенные PartyCRM-шаблоны     | Проверить шаблоны на данных пилотной компании                                                |
 | Google Calendar    | Подключение, import/export/sync, reminders                     | Company OAuth и односторонний export заказов готовы; performer export отсутствует | Отдельный безопасный календарь исполнителя без финансов компании                            |
-| Public leads/Tilda | `/api/public/lead`, `/api/public/lead/tilda`, API keys         | Нет Party endpoint'ов                                                      | `/api/party/public/lead`, Tilda adapter, маршрутизация по точке/услуге/источнику            |
+| Public leads/Tilda | `/api/public/lead`, `/api/public/lead/tilda`, API keys         | `/api/party/public/lead`, `/api/party/public/lead/tilda`, company API keys, маршрутизация и push по новым заявкам | Проверить сценарий на pilot-данных                                                          |
 | VK/Avito           | Tenant-aware webhooks, conversations, messages, lead creation  | Поля настроек есть, webhook URL указывает на общие `/api/integrations/*`   | Party-specific webhooks, создание PartyOrder/PartyClient, переписки в Party DB              |
 | Телефония/AI       | Calls, Novofon, transcription, AI draft                        | Настройки Novofon/AI есть, но нет Party call/order flow                    | Party calls, AI draft order, связь звонка с клиентом и заказом                              |
-| Push/offline       | Push subscribe/test/reminders, public lead push, offline queue | В настройках только флаг push                                              | Party push subscriptions, admin/performer notifications, reminders                          |
+| Push/offline       | Push subscribe/test/reminders, public lead push, offline queue | Party push subscriptions, push по новым leads, ежедневные reminders и cron с дедупликацией готовы | Performer push и offline queue                                                               |
 | Тарифы/биллинг     | Пользовательские тарифы и платежи                              | Party tariffs/payments есть, billing привязан к PartyCompany               | Feature flags и реальные E2E-платежи                                                        |
 | Настройки          | Профиль, услуги, интеграции, документы, списки, уведомления    | Есть shell и часть полей                                                   | Расширить company profile, roles, requisites, integrations diagnostics                      |
 | SEO/landing        | Несколько посадочных, sitemap, OG, monitoring                  | Один лендинг с обещаниями                                                  | Привести обещания к факту или ускорить реализацию обещанных функций                         |
@@ -136,9 +136,9 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [x] Создать Party push subscription model или расширить существующую модель с product/company context.
 - [x] Добавить `/api/party/push/public-key`, `/subscribe`, `/unsubscribe`, `/test`.
 - [x] Отправлять push по новым Party leads.
-- [ ] Отправлять ежедневные reminders по `PartyOrder.additionalEvents`.
+- [x] Отправлять ежедневные reminders по `PartyOrder.additionalEvents`.
 - [ ] Отправлять performer push: новое назначение, изменение даты/адреса, запрос привязки.
-- [ ] Сделать cron endpoint с company timezone и дедупликацией отправок.
+- [x] Сделать cron endpoint с company timezone и дедупликацией отправок.
 
 ### 4. Google Calendar для PartyCRM
 
@@ -221,10 +221,10 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 ### Sprint 3: Leads, Tilda и уведомления
 
-- [ ] Добавить Party public lead API.
-- [ ] Добавить Tilda adapter.
-- [ ] Добавить API keys источников.
-- [ ] Подключить push по новым заявкам и reminders по задачам.
+- [x] Добавить Party public lead API.
+- [x] Добавить Tilda adapter.
+- [x] Добавить API keys источников.
+- [x] Подключить reminders по задачам.
 
 ### Sprint 4: Интеграции
 

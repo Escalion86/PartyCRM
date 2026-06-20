@@ -272,10 +272,10 @@ PartyStaff
 
 ### P1: Leads And Integrations
 
-- [ ] PC-LI1 Адаптировать public lead API под PartyCRM: точка, услуга, дата/время, источник.
-- [ ] PC-LI2 Добавить Tilda/form adapter для заявок в PartyCRM.
+- [x] PC-LI1 Адаптировать public lead API под PartyCRM: точка, услуга, дата/время, источник.
+- [x] PC-LI2 Добавить Tilda/form adapter для заявок в PartyCRM.
 - [x] PC-LI3 Добавить маршрутизацию входящих заявок по источнику/точке.
-- [ ] PC-LI4 Добавить уведомления администраторам о новых заявках.
+- [x] PC-LI4 Добавить уведомления администраторам о новых заявках.
 
 ### P2: Advanced Operations
 
@@ -416,3 +416,5 @@ PartyStaff
 - 2026-06-15: публичные юридические страницы приведены к PartyCRM и дополнены раскрытием Google Calendar и Яндекс Метрики; регистрация требует три отдельных согласия без дублирования `createdAt` отдельными consent-полями. В privacy policy ArtistCRM также добавлено актуальное раскрытие данных Google Calendar.
 - 2026-06-20: завершен PC-LI3 — входящие PartyCRM заявки теперь маршрутизируются по явным `locationId`/`serviceId`, source-rules в настройках компании и fallback title-matching по активным точкам/услугам; результат сохраняется в `PartyOrder.locationId`, `servicesIds`, `serviceTitle` и `leadMeta.routing`.
 - 2026-06-21: завершен PC-F7 — добавлен `docs/PARTYCRM_BACKUP_RESTORE_RUNBOOK.md` с отдельными правилами backup/restore PartyCRM DB, restore drill, production restore, миграций и seed-данных без смешивания с ArtistCRM DB.
+- 2026-06-21: синхронизирован roadmap по входящим заявкам — PC-LI1, PC-LI2 и PC-LI4 отмечены выполненными на основании реализованных `/api/party/public/lead`, `/api/party/public/lead/tilda`, company API keys, создания `PartyClient`/`PartyOrder` и push-уведомлений администраторам.
+- 2026-06-21: добавлен PartyCRM cron `/api/party/reminders/additional-events` для ежедневных push-reminders по `PartyOrder.additionalEvents` с учетом `settings.timeZone`, `additionalEventsPushTime` и дедупликацией через `PushReminderLogs`.
