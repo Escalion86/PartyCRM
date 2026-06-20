@@ -6,6 +6,7 @@ import ContentHeader from '@components/ContentHeader'
 import AddIconButton from '@components/AddIconButton'
 import EmptyState from '@components/EmptyState'
 import HeaderActions from '@components/HeaderActions'
+import TransactionDateRangeFilter from '@components/TransactionDateRangeFilter'
 import TransactionTypeToggleButtons from '@components/IconToggleButtons/TransactionTypeToggleButtons'
 import MutedText from '@components/MutedText'
 import SectionCard from '@components/SectionCard'
@@ -17,6 +18,10 @@ import loadingAtom from '@state/atoms/loadingAtom'
 import errorAtom from '@state/atoms/errorAtom'
 import { setAtomValue } from '@state/storeHelpers'
 import useUiDensity from '@helpers/useUiDensity'
+import {
+  isTransactionInDateRange,
+  toDateInputValue,
+} from '@helpers/transactionDateRange'
 import {
   useDeleteTransactionMutation,
   useTransactionsQuery,
@@ -38,6 +43,10 @@ const TransactionsContent = () => {
   const [typeFilter, setTypeFilter] = useState({
     income: true,
     expense: true,
+  })
+  const [dateRange, setDateRange] = useState({
+    from: '',
+    to: '',
   })
   const itemHeight = isCompact ? 106 : 120
 
@@ -78,7 +87,7 @@ const TransactionsContent = () => {
     [transactions]
   )
 
-  const filteredTransactions = useMemo(() => {
+  const transactionsAfterTypeFilter = useMemo(() => {
     if (typeFilter.income && typeFilter.expense) return sortedTransactions
     if (typeFilter.income)
       return sortedTransactions.filter((item) => item.type === 'income')
@@ -86,6 +95,23 @@ const TransactionsContent = () => {
       return sortedTransactions.filter((item) => item.type === 'expense')
     return sortedTransactions
   }, [sortedTransactions, typeFilter])
+
+  const activeTransactionDateKeys = useMemo(() => {
+    const keys = new Set()
+    transactionsAfterTypeFilter.forEach((transaction) => {
+      const key = toDateInputValue(transaction?.date)
+      if (key) keys.add(key)
+    })
+    return keys
+  }, [transactionsAfterTypeFilter])
+
+  const filteredTransactions = useMemo(
+    () =>
+      transactionsAfterTypeFilter.filter((transaction) =>
+        isTransactionInDateRange(transaction, dateRange)
+      ),
+    [dateRange, transactionsAfterTypeFilter]
+  )
 
   const handleDelete = useCallback(
     (transactionId) => {
@@ -144,10 +170,17 @@ const TransactionsContent = () => {
       <ContentHeader>
         <HeaderActions
           left={
-            <TransactionTypeToggleButtons
-              value={typeFilter}
-              onChange={setTypeFilter}
-            />
+            <div className="flex flex-wrap items-end gap-2">
+              <TransactionTypeToggleButtons
+                value={typeFilter}
+                onChange={setTypeFilter}
+              />
+              <TransactionDateRangeFilter
+                value={dateRange}
+                onChange={setDateRange}
+                activeDateKeys={activeTransactionDateKeys}
+              />
+            </div>
           }
           leftClassName="flex-wrap"
           right={
@@ -173,7 +206,7 @@ const TransactionsContent = () => {
             rowHeight={itemHeight}
             rowComponent={RowComponent}
             rowProps={{}}
-                                    style={{ height: '100%', width: '100%' }}
+            style={{ height: '100%', width: '100%' }}
           />
         ) : (
           <EmptyState text="Транзакций пока нет" />

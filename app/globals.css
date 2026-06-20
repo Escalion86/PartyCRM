@@ -253,6 +253,7 @@ body.theme-dark .action-icon-button:hover {
 
 @layer components {
   .action-icon-button {
+    --action-icon-button-size: 2.5rem;
     --aib-border: #d1d5db;
     --aib-bg: #ffffff;
     --aib-text: #374151;
@@ -262,12 +263,38 @@ body.theme-dark .action-icon-button:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    inline-size: var(--action-icon-button-size) !important;
+    block-size: var(--action-icon-button-size) !important;
+    min-inline-size: var(--action-icon-button-size) !important;
+    max-inline-size: var(--action-icon-button-size) !important;
+    aspect-ratio: 1 / 1;
+    padding-inline: 0 !important;
     cursor: pointer;
     border: 1px solid var(--aib-border);
     background-color: var(--aib-bg);
     color: var(--aib-text);
     box-shadow: 0 2px 10px rgba(17, 24, 39, 0.08);
     transition: all 160ms ease;
+  }
+
+  .action-icon-button.h-8,
+  .action-icon-button.w-8 {
+    --action-icon-button-size: 2rem;
+  }
+
+  .action-icon-button.h-9,
+  .action-icon-button.w-9 {
+    --action-icon-button-size: 2.25rem;
+  }
+
+  .action-icon-button.h-10,
+  .action-icon-button.w-10 {
+    --action-icon-button-size: 2.5rem;
+  }
+
+  .action-icon-button.h-12,
+  .action-icon-button.w-12 {
+    --action-icon-button-size: 3rem;
   }
 
   .action-icon-button:hover {
