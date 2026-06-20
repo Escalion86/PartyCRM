@@ -65,7 +65,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [x] Добавить startup check: итоговая пара URI+DB ArtistCRM и PartyCRM не совпадает в shared runtime.
 - [x] Исправить определение standalone/shared runtime: проверка изоляции включается флагом `PARTYCRM_SHARED_RUNTIME=true` или двумя явными product-specific наборами.
 - [ ] Проверить `/api/party/health`, `/api/party/memberships`, `/api/party/me` с валидным и чужим `x-partycrm-company-id`.
-- [ ] Подготовить backup/restore отдельно для PartyCRM DB.
+- [x] Подготовить backup/restore отдельно для PartyCRM DB: `docs/PARTYCRM_BACKUP_RESTORE_RUNBOOK.md`.
 
 ### 3. Довести финансы заказов
 
@@ -129,7 +129,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [x] Создавать `PartyOrder` в статусе `draft` с источником, точкой, услугой, датой/временем и комментарием.
 - [x] Добавить маршрутизацию по точке/услуге/источнику.
 - [x] Добавить push/in-app уведомление администраторам компании о новой заявке.
-- [ ] Подготовить пользовательскую инструкцию по API и Tilda.
+- [x] Подготовить пользовательскую инструкцию по API и Tilda: `docs/PARTYCRM_PUBLIC_LEADS_API.md`.
 
 ### 3. Push и напоминания
 

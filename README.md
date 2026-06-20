@@ -27,6 +27,8 @@ npm run dev
 - `AGENTS.md` — руководство для ИИ-агентов и разработчиков (архитектура, правила, roadmap).
 - `docs/PARTYCRM_ROADMAP.md` — план развития продукта.
 - `docs/PARTYCRM_PILOT_CHECKLIST.md` — ручной smoke-test закрытого pilot.
+- `docs/PARTYCRM_PUBLIC_LEADS_API.md` — подключение заявок с сайта, Tilda и внешних форм.
+- `docs/PARTYCRM_BACKUP_RESTORE_RUNBOOK.md` — backup/restore и правила миграций PartyCRM DB.
 
 ## Переменные окружения
 

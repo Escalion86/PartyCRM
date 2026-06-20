@@ -133,6 +133,8 @@ Deploy/docs:
 - `docs/PARTYCRM_LOCAL_DEV.md`
 - `docs/PARTYCRM_NGINX.conf`
 - `docs/PRODUCTION_ENV_CHECKLIST.md`
+- `docs/PARTYCRM_PUBLIC_LEADS_API.md` — пользовательская инструкция по входящим заявкам, Tilda, API keys и маршрутизации.
+- `docs/PARTYCRM_BACKUP_RESTORE_RUNBOOK.md` — backup/restore, restore drill, migration и seed-правила для отдельной PartyCRM DB.
 
 ## Активная компания
 

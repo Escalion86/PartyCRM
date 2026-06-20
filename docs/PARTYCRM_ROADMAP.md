@@ -157,7 +157,7 @@ PartyStaff
 - [ ] PC-F4 Спроектировать схему тарифов: solo ArtistCRM отдельно, company PartyCRM отдельно.
 - [ ] PC-F5 Проверить юридические требования: персональные данные, доступ исполнителей к клиентским данным, договоры.
 - [x] PC-F6 Спроектировать product-aware MongoDB подключение с отдельной БД PartyCRM.
-- [-] PC-F7 Описать правила миграций, backup/restore и seed-данных отдельно для PartyCRM.
+- [x] PC-F7 Описать правила миграций, backup/restore и seed-данных отдельно для PartyCRM.
 - [x] PC-F8 Изолировать auth/users PartyCRM от ArtistCRM: отдельные `PartyUsers`, отдельный вход/регистрация и отдельная session cookie.
 
 ### P0: Company Workspace
@@ -415,3 +415,4 @@ PartyStaff
 - 2026-06-14: завершена company-level интеграция Google Calendar — OAuth и выбор календаря доступны `owner/admin`, заказы и дополнительные события синхронизируются из PartyCRM в Google Calendar, изменения финансов и CRUD обновляют события, добавлены гибкие настройки и подтверждаемая первичная синхронизация будущих заказов. Персональный календарь исполнителя остаётся отдельным контуром.
 - 2026-06-15: публичные юридические страницы приведены к PartyCRM и дополнены раскрытием Google Calendar и Яндекс Метрики; регистрация требует три отдельных согласия без дублирования `createdAt` отдельными consent-полями. В privacy policy ArtistCRM также добавлено актуальное раскрытие данных Google Calendar.
 - 2026-06-20: завершен PC-LI3 — входящие PartyCRM заявки теперь маршрутизируются по явным `locationId`/`serviceId`, source-rules в настройках компании и fallback title-matching по активным точкам/услугам; результат сохраняется в `PartyOrder.locationId`, `servicesIds`, `serviceTitle` и `leadMeta.routing`.
+- 2026-06-21: завершен PC-F7 — добавлен `docs/PARTYCRM_BACKUP_RESTORE_RUNBOOK.md` с отдельными правилами backup/restore PartyCRM DB, restore drill, production restore, миграций и seed-данных без смешивания с ArtistCRM DB.
