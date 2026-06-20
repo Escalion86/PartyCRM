@@ -274,7 +274,7 @@ PartyStaff
 
 - [ ] PC-LI1 Адаптировать public lead API под PartyCRM: точка, услуга, дата/время, источник.
 - [ ] PC-LI2 Добавить Tilda/form adapter для заявок в PartyCRM.
-- [ ] PC-LI3 Добавить маршрутизацию входящих заявок по источнику/точке.
+- [x] PC-LI3 Добавить маршрутизацию входящих заявок по источнику/точке.
 - [ ] PC-LI4 Добавить уведомления администраторам о новых заявках.
 
 ### P2: Advanced Operations
@@ -414,3 +414,4 @@ PartyStaff
 - 2026-06-13: исправлен production login regression — standalone PartyCRM больше не определяется как shared runtime только из-за одинаковых generic/product DB env. Login API возвращает структурированную ошибку инфраструктуры, а устаревший Workbox заменён на отслеживаемый `public/party-sw.js` без precache Next build manifest.
 - 2026-06-14: завершена company-level интеграция Google Calendar — OAuth и выбор календаря доступны `owner/admin`, заказы и дополнительные события синхронизируются из PartyCRM в Google Calendar, изменения финансов и CRUD обновляют события, добавлены гибкие настройки и подтверждаемая первичная синхронизация будущих заказов. Персональный календарь исполнителя остаётся отдельным контуром.
 - 2026-06-15: публичные юридические страницы приведены к PartyCRM и дополнены раскрытием Google Calendar и Яндекс Метрики; регистрация требует три отдельных согласия без дублирования `createdAt` отдельными consent-полями. В privacy policy ArtistCRM также добавлено актуальное раскрытие данных Google Calendar.
+- 2026-06-20: завершен PC-LI3 — входящие PartyCRM заявки теперь маршрутизируются по явным `locationId`/`serviceId`, source-rules в настройках компании и fallback title-matching по активным точкам/услугам; результат сохраняется в `PartyOrder.locationId`, `servicesIds`, `serviceTitle` и `leadMeta.routing`.

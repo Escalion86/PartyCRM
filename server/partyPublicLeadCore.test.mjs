@@ -7,6 +7,7 @@ import {
   normalizePartyPublicLeadApiKeys,
   normalizePartyPublicLeadPayload,
   normalizePartyTildaLeadPayload,
+  resolvePartyPublicLeadRouting,
 } from './partyPublicLeadCore.js'
 
 test('normalizePartyPublicLeadApiKeys keeps enabled named keys', () => {
@@ -44,6 +45,9 @@ test('normalizePartyPublicLeadPayload normalizes client and order fields', () =>
     eventDate: '2026-07-01T12:00:00+07:00',
     source: 'Tilda',
     serviceTitle: 'Аниматор',
+    serviceId: ' service-1 ',
+    location: ' location-1 ',
+    locationTitle: ' Центральный зал ',
     contractAmount: '15000',
     town: 'Красноярск',
     address: 'ул. Мира, 1',
@@ -56,6 +60,9 @@ test('normalizePartyPublicLeadPayload normalizes client and order fields', () =>
   assert.equal(payload.eventDate.toISOString(), '2026-07-01T05:00:00.000Z')
   assert.equal(payload.contractAmount, 15000)
   assert.equal(payload.source, 'Tilda')
+  assert.equal(payload.serviceId, 'service-1')
+  assert.equal(payload.locationId, 'location-1')
+  assert.equal(payload.locationTitle, 'Центральный зал')
 })
 
 test('normalizePartyTildaLeadPayload maps common Tilda fields', () => {
@@ -99,4 +106,141 @@ test('buildPartyPublicLeadOrderPayload creates draft client-address order', () =
   assert.equal(order.leadSource, 'Tilda')
   assert.equal(order.leadMeta.apiKeyName, 'Tilda form')
   assert.deepEqual(order.leadMeta.raw, { a: 1 })
+})
+
+test('resolvePartyPublicLeadRouting uses explicit active location and service ids first', () => {
+  const normalized = normalizePartyPublicLeadPayload({
+    source: 'Site',
+    locationId: 'location-2',
+    serviceId: 'service-2',
+    serviceTitle: 'Авторская услуга',
+  })
+
+  const routing = resolvePartyPublicLeadRouting({
+    normalized,
+    settings: {
+      publicLeadRoutingRules: [
+        {
+          source: 'Site',
+          locationId: 'location-1',
+          serviceId: 'service-1',
+        },
+      ],
+    },
+    locations: [
+      { _id: 'location-1', title: 'Зал 1', status: 'active' },
+      { _id: 'location-2', title: 'Зал 2', status: 'active' },
+    ],
+    services: [
+      { _id: 'service-1', title: 'Шоу', status: 'active' },
+      { _id: 'service-2', title: 'Квест', status: 'active' },
+    ],
+  })
+
+  assert.equal(routing.locationId, 'location-2')
+  assert.deepEqual(routing.servicesIds, ['service-2'])
+  assert.equal(routing.serviceTitle, 'Квест')
+  assert.equal(routing.placeType, 'company_location')
+  assert.equal(routing.routing.matchedBy, 'explicit')
+})
+
+test('resolvePartyPublicLeadRouting matches source rule to active location and service', () => {
+  const normalized = normalizePartyPublicLeadPayload({
+    source: ' tilda ',
+    serviceTitle: 'День рождения',
+    locationTitle: 'Центр',
+  })
+
+  const routing = resolvePartyPublicLeadRouting({
+    normalized,
+    settings: {
+      publicLeadRoutingRules: [
+        {
+          id: 'tilda-center',
+          source: 'Tilda',
+          matchLocationTitle: 'Центр',
+          matchServiceTitle: 'День рождения',
+          locationId: 'location-1',
+          serviceId: 'service-1',
+          enabled: true,
+        },
+      ],
+    },
+    locations: [
+      { _id: 'location-1', title: 'Центр', status: 'active' },
+      { _id: 'location-2', title: 'Выезд', status: 'active' },
+    ],
+    services: [
+      { _id: 'service-1', title: 'День рождения', status: 'active' },
+      { _id: 'service-2', title: 'Выпускной', status: 'active' },
+    ],
+  })
+
+  assert.equal(routing.locationId, 'location-1')
+  assert.deepEqual(routing.servicesIds, ['service-1'])
+  assert.equal(routing.serviceTitle, 'День рождения')
+  assert.equal(routing.routing.ruleId, 'tilda-center')
+  assert.equal(routing.routing.matchedBy, 'rule')
+})
+
+test('resolvePartyPublicLeadRouting falls back safely when route targets are unknown', () => {
+  const normalized = normalizePartyPublicLeadPayload({
+    source: 'Site',
+    locationTitle: 'Несуществующий зал',
+    serviceTitle: 'Несуществующая услуга',
+  })
+
+  const routing = resolvePartyPublicLeadRouting({
+    normalized,
+    settings: {
+      publicLeadRoutingRules: [
+        {
+          source: 'Site',
+          locationId: 'missing-location',
+          serviceId: 'missing-service',
+        },
+      ],
+    },
+    locations: [{ _id: 'location-1', title: 'Центр', status: 'active' }],
+    services: [{ _id: 'service-1', title: 'Шоу', status: 'active' }],
+  })
+
+  assert.equal(routing.locationId, null)
+  assert.deepEqual(routing.servicesIds, [])
+  assert.equal(routing.serviceTitle, 'Несуществующая услуга')
+  assert.equal(routing.placeType, 'company_location')
+  assert.equal(routing.routing.matchedBy, 'fallback')
+})
+
+test('buildPartyPublicLeadOrderPayload applies resolved lead routing metadata', () => {
+  const normalized = normalizePartyPublicLeadPayload({
+    name: 'Иван',
+    phone: '+79991112233',
+    serviceTitle: 'День рождения',
+    source: 'Tilda',
+  })
+  const routing = {
+    locationId: 'location-1',
+    servicesIds: ['service-1'],
+    serviceTitle: 'День рождения',
+    placeType: 'company_location',
+    routing: {
+      matchedBy: 'rule',
+      ruleId: 'tilda-center',
+      locationId: 'location-1',
+      serviceId: 'service-1',
+    },
+  }
+
+  const order = buildPartyPublicLeadOrderPayload({
+    clientId: 'client-1',
+    normalized,
+    routing,
+  })
+
+  assert.equal(order.placeType, 'company_location')
+  assert.equal(order.locationId, 'location-1')
+  assert.deepEqual(order.servicesIds, ['service-1'])
+  assert.equal(order.serviceTitle, 'День рождения')
+  assert.deepEqual(order.leadMeta.routing, routing.routing)
 })

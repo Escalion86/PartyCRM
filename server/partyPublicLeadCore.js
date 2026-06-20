@@ -79,6 +79,9 @@ export const normalizePartyPublicLeadPayload = (body = {}) => ({
   comment: cleanText(body.comment || body.message || body.description, 2000),
   source: cleanText(body.source || body.utm_source || 'public_api', 120),
   serviceTitle: cleanText(body.serviceTitle || body.service || body.product, 180),
+  serviceId: cleanText(body.serviceId, 80),
+  locationId: cleanText(body.locationId || body.location, 80),
+  locationTitle: cleanText(body.locationTitle || body.placeTitle, 180),
   contractAmount: parseMoney(
     body.contractAmount || body.amount || body.price || body.payment
   ),
@@ -97,17 +100,169 @@ export const normalizePartyTildaLeadPayload = (body = {}) =>
     source: 'Tilda',
   })
 
+const normalizeComparable = (value) => cleanText(value, 240).toLowerCase()
+
+const readId = (item) => cleanText(item?._id?.toString?.() ?? item?._id, 80)
+
+const isActiveRouteTarget = (item) =>
+  !item?.status || String(item.status) === 'active'
+
+const buildLookup = (items = []) => {
+  const byId = new Map()
+  const byTitle = new Map()
+
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!isActiveRouteTarget(item)) continue
+    const id = readId(item)
+    if (id) byId.set(id, item)
+    const title = normalizeComparable(item?.title)
+    if (title && !byTitle.has(title)) byTitle.set(title, item)
+  }
+
+  return { byId, byTitle }
+}
+
+const normalizeRoutingRule = (item = {}) => ({
+  id: cleanText(item.id, 80),
+  source: cleanText(item.source, 120),
+  matchLocationTitle: cleanText(item.matchLocationTitle, 180),
+  matchServiceTitle: cleanText(item.matchServiceTitle, 180),
+  locationId: cleanText(item.locationId, 80),
+  serviceId: cleanText(item.serviceId, 80),
+  enabled: item.enabled !== false,
+})
+
+const getRoutingRules = (settings = {}) =>
+  Array.isArray(settings.publicLeadRoutingRules)
+    ? settings.publicLeadRoutingRules
+        .map(normalizeRoutingRule)
+        .filter(
+          (rule) =>
+            rule.enabled &&
+            (rule.locationId ||
+              rule.serviceId ||
+              rule.source ||
+              rule.matchLocationTitle ||
+              rule.matchServiceTitle)
+        )
+    : []
+
+const matchesRuleValue = (expected, actual) =>
+  !expected || normalizeComparable(expected) === normalizeComparable(actual)
+
+const findExplicitIdRouting = ({ normalized, locationsLookup, servicesLookup }) => {
+  const location = locationsLookup.byId.get(normalized.locationId) || null
+  const service = servicesLookup.byId.get(normalized.serviceId) || null
+
+  if (!location && !service) return null
+
+  return {
+    location,
+    service,
+    matchedBy: 'explicit',
+    ruleId: '',
+  }
+}
+
+const findTitleRouting = ({ normalized, locationsLookup, servicesLookup }) => {
+  const location =
+    locationsLookup.byTitle.get(normalizeComparable(normalized.locationTitle)) ||
+    null
+  const service =
+    servicesLookup.byTitle.get(normalizeComparable(normalized.serviceTitle)) ||
+    null
+
+  if (!location && !service) return null
+
+  return {
+    location,
+    service,
+    matchedBy: 'title',
+    ruleId: '',
+  }
+}
+
+const findRuleRouting = ({
+  normalized,
+  settings,
+  locationsLookup,
+  servicesLookup,
+}) => {
+  for (const rule of getRoutingRules(settings)) {
+    if (!matchesRuleValue(rule.source, normalized.source)) continue
+    if (
+      !matchesRuleValue(rule.matchLocationTitle, normalized.locationTitle)
+    ) {
+      continue
+    }
+    if (!matchesRuleValue(rule.matchServiceTitle, normalized.serviceTitle)) {
+      continue
+    }
+
+    const location = locationsLookup.byId.get(rule.locationId) || null
+    const service = servicesLookup.byId.get(rule.serviceId) || null
+    if (!location && !service) continue
+
+    return {
+      location,
+      service,
+      matchedBy: 'rule',
+      ruleId: rule.id,
+    }
+  }
+
+  return null
+}
+
+export const resolvePartyPublicLeadRouting = ({
+  normalized = {},
+  settings = {},
+  locations = [],
+  services = [],
+} = {}) => {
+  const locationsLookup = buildLookup(locations)
+  const servicesLookup = buildLookup(services)
+  const matched =
+    findExplicitIdRouting({ normalized, locationsLookup, servicesLookup }) ||
+    findRuleRouting({ normalized, settings, locationsLookup, servicesLookup }) ||
+    findTitleRouting({ normalized, locationsLookup, servicesLookup })
+
+  const locationId = matched?.location ? readId(matched.location) : null
+  const serviceId = matched?.service ? readId(matched.service) : ''
+  const hasAddress = Boolean(normalized?.town || normalized?.address)
+  const serviceTitle = matched?.service?.title || normalized.serviceTitle
+
+  return {
+    locationId,
+    servicesIds: serviceId ? [serviceId] : [],
+    serviceTitle,
+    placeType: locationId || !hasAddress ? 'company_location' : 'client_address',
+    routing: {
+      matchedBy: matched?.matchedBy || 'fallback',
+      ruleId: matched?.ruleId || '',
+      locationId: locationId || '',
+      serviceId,
+    },
+  }
+}
+
 export const buildPartyPublicLeadOrderPayload = ({
   clientId,
   normalized,
   apiKeyData = null,
   rawPayload = {},
+  routing = null,
 } = {}) => {
   const hasAddress = Boolean(normalized?.town || normalized?.address)
   const sourceLabel = cleanText(apiKeyData?.name, 120) || normalized.source
+  const resolvedRouting =
+    routing ||
+    resolvePartyPublicLeadRouting({
+      normalized,
+    })
 
   return {
-    title: normalized.serviceTitle || 'Новая заявка',
+    title: resolvedRouting.serviceTitle || 'Новая заявка',
     status: 'draft',
     clientId,
     client: {
@@ -117,8 +272,10 @@ export const buildPartyPublicLeadOrderPayload = ({
     },
     eventDate: normalized.eventDate,
     dateEnd: normalized.dateEnd,
-    placeType: hasAddress ? 'client_address' : 'company_location',
-    locationId: null,
+    placeType:
+      resolvedRouting.placeType ||
+      (hasAddress ? 'client_address' : 'company_location'),
+    locationId: resolvedRouting.locationId,
     customAddress: normalized.address,
     clientAddress: {
       town: normalized.town,
@@ -127,8 +284,8 @@ export const buildPartyPublicLeadOrderPayload = ({
       room: '',
       comment: normalized.address,
     },
-    servicesIds: [],
-    serviceTitle: normalized.serviceTitle,
+    servicesIds: resolvedRouting.servicesIds,
+    serviceTitle: resolvedRouting.serviceTitle,
     contractAmount: normalized.contractAmount,
     transactions: [],
     additionalEvents: [],
@@ -145,6 +302,7 @@ export const buildPartyPublicLeadOrderPayload = ({
       createdViaApi: true,
       apiKeyId: cleanText(apiKeyData?.id, 80),
       apiKeyName: cleanText(apiKeyData?.name, 120),
+      routing: resolvedRouting.routing,
       raw: rawPayload,
     },
   }

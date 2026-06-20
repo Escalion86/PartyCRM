@@ -132,3 +132,52 @@ test('normalizeCompanySettings normalizes public lead api keys', () => {
     { id: 'one', name: 'Site', key: 'secret', enabled: true },
   ])
 })
+
+test('normalizeCompanySettings normalizes public lead routing rules', () => {
+  const settings = normalizeCompanySettings({
+    publicLeadRoutingRules: [
+      {
+        id: ' tilda-center ',
+        source: ' Tilda ',
+        matchLocationTitle: ' Центр ',
+        matchServiceTitle: ' День рождения ',
+        locationId: ' location-1 ',
+        serviceId: ' service-1 ',
+        enabled: true,
+      },
+      {
+        id: 'disabled',
+        source: 'Site',
+        locationId: 'location-2',
+        enabled: false,
+      },
+      {
+        id: 'empty',
+        source: '',
+        locationId: '',
+        serviceId: '',
+      },
+    ],
+  })
+
+  assert.deepEqual(settings.publicLeadRoutingRules, [
+    {
+      id: 'tilda-center',
+      source: 'Tilda',
+      matchLocationTitle: 'Центр',
+      matchServiceTitle: 'День рождения',
+      locationId: 'location-1',
+      serviceId: 'service-1',
+      enabled: true,
+    },
+    {
+      id: 'disabled',
+      source: 'Site',
+      matchLocationTitle: '',
+      matchServiceTitle: '',
+      locationId: 'location-2',
+      serviceId: '',
+      enabled: false,
+    },
+  ])
+})

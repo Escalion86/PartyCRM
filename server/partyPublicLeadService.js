@@ -1,13 +1,16 @@
 import {
   getPartyClientModel,
   getPartyCompanyModel,
+  getPartyLocationModel,
   getPartyOrderModel,
+  getPartyServiceModel,
 } from '@server/partyModels'
 import { sendPushToTenant } from '@server/pushNotifications'
 import {
   buildPartyPublicLeadOrderPayload,
   normalizePartyPublicLeadApiKeys,
   normalizePartyPhone,
+  resolvePartyPublicLeadRouting,
 } from './partyPublicLeadCore'
 
 const buildPublicLeadPushPayload = ({ companyId, order, normalized }) => ({
@@ -116,12 +119,31 @@ export const createPartyPublicLeadOrder = async ({
 }) => {
   const tenantId = company._id
   const client = await upsertPartyPublicLeadClient({ tenantId, normalized })
-  const PartyOrders = await getPartyOrderModel()
+  const [PartyOrders, PartyLocations, PartyServices] = await Promise.all([
+    getPartyOrderModel(),
+    getPartyLocationModel(),
+    getPartyServiceModel(),
+  ])
+  const [locations, services] = await Promise.all([
+    PartyLocations.find({ tenantId, status: 'active' })
+      .select({ _id: 1, title: 1, status: 1 })
+      .lean(),
+    PartyServices.find({ tenantId, status: 'active' })
+      .select({ _id: 1, title: 1, status: 1 })
+      .lean(),
+  ])
+  const routing = resolvePartyPublicLeadRouting({
+    normalized,
+    settings: company?.settings ?? {},
+    locations,
+    services,
+  })
   const orderPayload = buildPartyPublicLeadOrderPayload({
     clientId: String(client._id),
     normalized,
     rawPayload,
     apiKeyData,
+    routing,
   })
   const order = await PartyOrders.create({
     ...orderPayload,

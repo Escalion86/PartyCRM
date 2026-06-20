@@ -34,6 +34,7 @@ export const DEFAULT_COMPANY_SETTINGS = Object.freeze({
   expenseCategories: [],
   publicLeadEnabled: false,
   publicLeadApiKeys: [],
+  publicLeadRoutingRules: [],
   notifications: {},
   documents: {},
   integrations: {},
@@ -128,6 +129,32 @@ export const normalizeCompanyPublicLeadApiKeys = (items = []) =>
         .filter((item) => item.key)
     : []
 
+export const normalizeCompanyPublicLeadRoutingRules = (items = []) =>
+  Array.isArray(items)
+    ? items
+        .map((item) => ({
+          id: normalizeAddressPoolString(item?.id).slice(0, 80),
+          source: normalizeAddressPoolString(item?.source).slice(0, 120),
+          matchLocationTitle: normalizeAddressPoolString(
+            item?.matchLocationTitle
+          ).slice(0, 180),
+          matchServiceTitle: normalizeAddressPoolString(
+            item?.matchServiceTitle
+          ).slice(0, 180),
+          locationId: normalizeAddressPoolString(item?.locationId).slice(0, 80),
+          serviceId: normalizeAddressPoolString(item?.serviceId).slice(0, 80),
+          enabled: item?.enabled !== false,
+        }))
+        .filter(
+          (item) =>
+            item.source ||
+            item.matchLocationTitle ||
+            item.matchServiceTitle ||
+            item.locationId ||
+            item.serviceId
+        )
+    : []
+
 const normalizeDuration = (value) => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return DEFAULT_COMPANY_SETTINGS.defaultOrderDurationMinutes
@@ -159,6 +186,9 @@ export const normalizeCompanySettings = (value = {}) => ({
   publicLeadEnabled: value?.publicLeadEnabled === true,
   publicLeadApiKeys: normalizeCompanyPublicLeadApiKeys(
     value?.publicLeadApiKeys ?? []
+  ),
+  publicLeadRoutingRules: normalizeCompanyPublicLeadRoutingRules(
+    value?.publicLeadRoutingRules ?? []
   ),
   notifications: normalizeObjectField(value?.notifications),
   documents: normalizeCompanyDocuments(value?.documents),
