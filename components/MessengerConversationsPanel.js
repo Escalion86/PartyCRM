@@ -7,12 +7,15 @@ import formatDateTime from '@helpers/formatDateTime'
 import useSnackbar from '@helpers/useSnackbar'
 import AudioPlayer from '@components/AudioPlayer'
 
-const buildQuery = ({ clientId, eventId }) => {
+const buildQuery = ({ clientId, eventId, orderId }) => {
   const params = new URLSearchParams()
   if (clientId) params.set('clientId', clientId)
   if (eventId) params.set('eventId', eventId)
+  if (orderId) params.set('orderId', orderId)
   return params.toString()
 }
+
+const EMPTY_HEADERS = {}
 
 const getAudioAttachments = (message) => {
   const attachments = Array.isArray(message?.attachments)
@@ -194,7 +197,11 @@ const MessageBubble = ({ message }) => {
 const MessengerConversationsPanel = ({
   clientId = '',
   eventId = '',
+  orderId = '',
   provider,
+  apiBasePath = '/api/integrations',
+  requestHeaders = EMPTY_HEADERS,
+  canReply = true,
   title,
   emptyText,
   loadingText,
@@ -213,7 +220,10 @@ const MessengerConversationsPanel = ({
   const [sending, setSending] = useState(false)
   const [text, setText] = useState('')
 
-  const query = useMemo(() => buildQuery({ clientId, eventId }), [clientId, eventId])
+  const query = useMemo(
+    () => buildQuery({ clientId, eventId, orderId }),
+    [clientId, eventId, orderId]
+  )
   const selectedConversation = useMemo(
     () => conversations.find((item) => item._id === selectedId) ?? null,
     [conversations, selectedId]
@@ -228,7 +238,8 @@ const MessengerConversationsPanel = ({
       setMessagesLoading(true)
       try {
         const response = await fetch(
-          `/api/integrations/${provider}/conversations/${selectedId}/messages`
+          `${apiBasePath}/${provider}/conversations/${selectedId}/messages`,
+          { headers: requestHeaders }
         )
         const result = await response.json().catch(() => ({}))
         const nextMessages = Array.isArray(result?.data?.messages)
@@ -251,7 +262,7 @@ const MessengerConversationsPanel = ({
         setMessagesLoading(false)
       }
     },
-    [provider, selectedId, snackbar, title]
+    [apiBasePath, provider, requestHeaders, selectedId, snackbar, title]
   )
 
   useEffect(() => {
@@ -260,7 +271,10 @@ const MessengerConversationsPanel = ({
       if (!query) return
       setLoading(true)
       try {
-        const response = await fetch(`/api/integrations/${provider}/conversations?${query}`)
+        const response = await fetch(
+          `${apiBasePath}/${provider}/conversations?${query}`,
+          { headers: requestHeaders }
+        )
         const result = await response.json().catch(() => ({}))
         if (!active) return
         const items = Array.isArray(result?.data) ? result.data : []
@@ -276,7 +290,7 @@ const MessengerConversationsPanel = ({
     return () => {
       active = false
     }
-  }, [provider, query, snackbar, title])
+  }, [apiBasePath, provider, query, requestHeaders, snackbar, title])
 
   useEffect(() => {
     loadMessages()
@@ -288,10 +302,10 @@ const MessengerConversationsPanel = ({
     setSending(true)
     try {
       const response = await fetch(
-        `/api/integrations/${provider}/conversations/${selectedId}/messages`,
+        `${apiBasePath}/${provider}/conversations/${selectedId}/messages`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...requestHeaders },
           body: JSON.stringify({ text: nextText }),
         }
       )
@@ -389,6 +403,7 @@ const MessengerConversationsPanel = ({
         )}
       </div>
 
+      {canReply ? (
       <div className="flex flex-col gap-2">
         <textarea
           className="min-h-20 w-full resize-y rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-general"
@@ -406,6 +421,7 @@ const MessengerConversationsPanel = ({
           {sending ? 'Отправка...' : sendButtonText}
         </button>
       </div>
+      ) : null}
     </div>
   )
 }

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext, parseJsonBody } from '@server/partyApi'
+import { buildPartyVkWebhookUrl } from '@helpers/partyIntegrationWebhooks'
 import {
-  buildVkWebhookUrl,
   checkVkGroupAccess,
   createVkWebhookToken,
   createVkWebhookSecret,
@@ -35,7 +35,7 @@ export async function POST(req) {
     integrations.vkGroupWebhookToken || createVkWebhookToken()
   const webhookSecret =
     integrations.vkGroupWebhookSecret || createVkWebhookSecret()
-  const webhookUrl = buildVkWebhookUrl({ req, token: webhookToken })
+  const webhookUrl = buildPartyVkWebhookUrl({ req, token: webhookToken })
 
   try {
     await checkVkGroupAccess({ accessToken, groupId })

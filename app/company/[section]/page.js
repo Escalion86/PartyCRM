@@ -6,6 +6,7 @@ import { getPartyEntryState } from '@server/partyEntry'
 const sectionTitles = {
   orders: 'Заказы',
   'orders-past': 'Прошедшие заказы',
+  calls: 'Звонки',
   clients: 'Клиенты',
   finance: 'Финансы',
   services: 'Услуги',

@@ -9,27 +9,28 @@ export const isFreePartyTariff = (tariff) => {
   return Number.isFinite(price) && price <= 0
 }
 
-export const getPartyTariffCheckoutRequest = ({ tariff, provider }) => {
+export const getPartyTariffCheckoutRequest = ({ tariff }) => {
   if (!tariff?._id) return null
-  if (isFreePartyTariff(tariff)) {
-    return {
-      endpoint: '/api/party/billing/tariff/select',
-      body: {
-        tariffId: String(tariff._id),
-      },
-      requiresPayment: false,
-    }
-  }
 
+  return {
+    endpoint: '/api/party/billing/tariff/select',
+    body: {
+      tariffId: String(tariff._id),
+    },
+    requiresPayment: false,
+  }
+}
+
+export const getPartyBalanceTopUpRequest = ({ provider, amount }) => {
   const endpoint = PARTY_BILLING_PROVIDER_ENDPOINTS[provider]
-  if (!endpoint) return null
+  const value = Number(amount ?? 0)
+  if (!endpoint || !Number.isFinite(value) || value <= 0) return null
 
   return {
     endpoint,
     body: {
-      tariffId: String(tariff._id),
-      purpose: 'tariff',
-      amount: Number(tariff.price ?? 0),
+      purpose: 'balance',
+      amount: Math.floor(value),
     },
     requiresPayment: true,
   }

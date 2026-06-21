@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext, parseJsonBody } from '@server/partyApi'
 import { normalizeNovofonSettings } from '@server/novofon'
+import { buildPartyNovofonWebhookUrl } from '@helpers/partyIntegrationWebhooks'
 
 export async function POST(req) {
   const { context, error } = await getPartyRequestContext({
@@ -46,13 +47,8 @@ export async function POST(req) {
     }
   )
 
-  const origin =
-    req.headers.get('origin') ||
-    req.headers.get('host') ||
-    ''
-
   const webhookUrl = webhookSecret
-    ? `${origin}/api/telephony/novofon/webhook?tenantId=${context.tenantId}&secret=${webhookSecret}`
+    ? buildPartyNovofonWebhookUrl({ req, token: webhookSecret })
     : ''
 
   return NextResponse.json({

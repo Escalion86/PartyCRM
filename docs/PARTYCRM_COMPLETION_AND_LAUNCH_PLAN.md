@@ -8,7 +8,7 @@
 
 PartyCRM уже вышел за рамки идеи и имеет рабочий technical preview: отдельная авторизация PartyCRM, отдельные пользователи, multi-company memberships, компании, точки, клиенты, услуги, сотрудники/подрядчики, заказы, проверки конфликтов, кабинет исполнителя, базовые финансы и отдельные настройки компании.
 
-До полноценного анонса еще рано. Самые важные пробелы: performer-уведомления не завершены, VK/Avito/Novofon настройки не дают полного PartyCRM lead-flow, персональный календарь исполнителя не реализован, а публичный лендинг обещает часть функций, которые еще не готовы.
+До полноценного анонса еще рано. Самые важные пробелы: Novofon/AI flow уже имеет Party-specific webhook, `PartyCall`, AI draft и UI подтверждения заказа, VK/Avito получили входящий слой переписок, исходящие ответы и UI в заказе/клиенте, но персональный календарь исполнителя не реализован, E2E-платежи YooKassa/Tochka еще нужно проверить на реальных тестовых платежах, а публичный лендинг обещает часть функций, которые еще не готовы.
 
 Рекомендация: позиционировать PartyCRM как закрытый pilot/preview, а официальный запуск делать после закрытия P0/P1 ниже.
 
@@ -16,14 +16,14 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 - Отдельная PartyCRM auth-модель: `/party/login`, `/api/party/auth/*`, `PartyUsers`, cookie `partycrm_session`.
 - Multi-company слой: `getPartyMembershipContext()`, `/api/party/memberships`, `x-partycrm-company-id`, переключение активной компании.
-- Company workspace: `/company`, `/company/orders`, `/company/orders-past`, `/company/clients`, `/company/finance`, `/company/services`, `/company/locations`, `/company/staff`.
+- Company workspace: `/company`, `/company/orders`, `/company/orders-past`, `/company/calls`, `/company/clients`, `/company/finance`, `/company/services`, `/company/locations`, `/company/staff`.
 - Performer workspace: `/performer`, назначения из нескольких компаний, фильтр по компании и статусу участия.
 - Базовые доменные модели: `partyCompaniesSchema`, `partyUsersSchema`, `partyStaffSchema`, `partyLocationsSchema`, `partyClientsSchema`, `partyServicesSchema`, `partyOrdersSchema`, `partyTariffsSchema`, `partyPaymentsSchema`.
 - Заказы: клиент, точка или выездной адрес, услуги, исполнители, выплаты, сумма клиента, статусы, доп. события.
 - Проверка конфликтов: по точке и исполнителям через `server/partyOrderConflicts.js`.
 - Ручная привязка подрядчика к аккаунту: link request от компании и подтверждение исполнителем.
 - Настройки компании: вкладки `Общие`, `Интеграции`, `Списки`, `Уведомления`, `Документы`, `Тарифы`.
-- Биллинг PartyCRM: тарифы, YooKassa endpoints, Tochka endpoints, платежная модель и базовый tariff purchase flow.
+- Биллинг PartyCRM: тарифы, баланс компании, пополнение баланса через YooKassa/Tochka из env сервиса и списание тарифа с баланса компании.
 - Публичный лендинг PartyCRM с тарифами, SEO metadata, FAQ и CTA.
 
 ## Сравнение с ArtistCRM
@@ -37,10 +37,10 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 | Документы          | Договор/акт, DOCX, реквизиты клиента/артиста                   | Company-реквизиты, пользовательские DOCX и встроенные PartyCRM-шаблоны     | Проверить шаблоны на данных пилотной компании                                                |
 | Google Calendar    | Подключение, import/export/sync, reminders                     | Company OAuth и односторонний export заказов готовы; performer export отсутствует | Отдельный безопасный календарь исполнителя без финансов компании                            |
 | Public leads/Tilda | `/api/public/lead`, `/api/public/lead/tilda`, API keys         | `/api/party/public/lead`, `/api/party/public/lead/tilda`, company API keys, маршрутизация и push по новым заявкам | Проверить сценарий на pilot-данных                                                          |
-| VK/Avito           | Tenant-aware webhooks, conversations, messages, lead creation  | Поля настроек есть, webhook URL указывает на общие `/api/integrations/*`   | Party-specific webhooks, создание PartyOrder/PartyClient, переписки в Party DB              |
-| Телефония/AI       | Calls, Novofon, transcription, AI draft                        | Настройки Novofon/AI есть, но нет Party call/order flow                    | Party calls, AI draft order, связь звонка с клиентом и заказом                              |
+| VK/Avito           | Tenant-aware webhooks, conversations, messages, lead creation  | Party-specific webhooks создают `PartyClient`/`PartyOrder`, входящие переписки сохраняются в Party DB, видны в заказе/клиенте и поддерживают исходящие ответы owner/admin | Проверить реальные provider-send сценарии на pilot-данных                                    |
+| Телефония/AI       | Calls, Novofon, transcription, AI draft                        | Party-specific Novofon webhook сохраняет `PartyCall`, связывает/создает `PartyClient`, хранит `orderDraft`; `/company/calls` позволяет owner/admin явно создать `PartyOrder` из AI draft | Проверить реальный Novofon/transcription/AI сценарий на pilot-данных                         |
 | Push/offline       | Push subscribe/test/reminders, public lead push, offline queue | Party push subscriptions, push по новым leads, ежедневные reminders и cron с дедупликацией готовы | Performer push и offline queue                                                               |
-| Тарифы/биллинг     | Пользовательские тарифы и платежи                              | Party tariffs/payments есть, billing привязан к PartyCompany               | Feature flags и реальные E2E-платежи                                                        |
+| Тарифы/биллинг     | Пользовательские тарифы и платежи                              | Party tariffs/payments привязаны к PartyCompany: YooKassa/Tochka пополняют баланс сервиса, тариф списывается с баланса | Feature flags и реальные E2E-платежи                                                        |
 | Настройки          | Профиль, услуги, интеграции, документы, списки, уведомления    | Есть shell и часть полей                                                   | Расширить company profile, roles, requisites, integrations diagnostics                      |
 | SEO/landing        | Несколько посадочных, sitemap, OG, monitoring                  | Один лендинг с обещаниями                                                  | Привести обещания к факту или ускорить реализацию обещанных функций                         |
 | Тесты              | Несколько helper unit tests                                    | Точечные tests для настроек и логина                                       | Добавить API/unit/E2E по core flows                                                         |
@@ -154,17 +154,17 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 Сейчас settings в PartyCRM частично используют helpers ArtistCRM, а webhook URL строятся как `/api/integrations/*`, то есть не являются полноценными Party endpoints.
 
-- [ ] Сделать Party-specific webhooks: `/api/party/integrations/vk/webhook/[token]`, `/api/party/integrations/avito/webhook/[token]`.
-- [ ] Хранить и искать настройки в `PartyCompany.settings.integrations`, а не в `SiteSettings`.
-- [ ] Создавать `PartyClient` и `PartyOrder`, а не ArtistCRM `Client/Event`.
-- [ ] Добавить Party conversation/message models для VK/Avito или product-aware переиспользование существующих моделей.
-- [ ] Добавить UI переписки в карточку Party заказа/клиента.
-- [ ] Для Novofon создать Party calls flow: звонок -> клиент -> AI draft order.
-- [ ] Для AI сделать company-level keys/providers и подтверждаемый черновик заказа.
+- [x] Сделать Party-specific webhooks: `/api/party/integrations/vk/webhook/[token]`, `/api/party/integrations/avito/webhook/[token]`.
+- [x] Хранить и искать настройки в `PartyCompany.settings.integrations`, а не в `SiteSettings`.
+- [x] Создавать `PartyClient` и `PartyOrder`, а не ArtistCRM `Client/Event`.
+- [x] Добавить Party conversation/message models для VK/Avito или product-aware переиспользование существующих моделей.
+- [x] Добавить UI переписки в карточку Party заказа/клиента: переписки и исходящие ответы owner/admin добавлены в модалку заказа и модалку редактирования клиента.
+- [x] Для Novofon создать Party calls flow: звонок -> клиент -> AI draft order -> подтвержденный PartyOrder через `/company/calls`.
+- [-] Для AI сделать company-level keys/providers и подтверждаемый черновик заказа: подтверждаемый draft готов в Novofon flow, отдельная проверка provider/key UX и pilot-настроек остается.
 
 ### 6. Биллинг и тарифы
 
-Текущее ядро Party billing привязано к компании. Пользователь только инициирует платеж как owner/admin выбранной компании.
+Текущее ядро Party billing привязано к компании. Пользователь только инициирует платеж как owner/admin выбранной компании. YooKassa/Tochka являются провайдерами оплаты самого сервиса PartyCRM из env, а не интеграциями компаний для приема клиентских оплат. Компания пополняет баланс PartyCRM, после чего выбор или продление тарифа списывает стоимость тарифа с баланса компании.
 
 - [x] Зафиксировать модель: тариф на компанию, плательщик owner/admin, история платежей у компании.
 - [x] Убрать привязку тарифа к PartyUser в billing-сценариях.
@@ -178,6 +178,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [ ] Доделать welcome-сценарии после оплаты/активации: события аналитики, письма/push/in-app уведомления.
 - [x] Привязать company Google Calendar к `allowCalendarSync` с API-enforcement во всех календарных endpoints.
 - [x] Закрыть billing code risks PartyCRM: тарифные платежи используют цену тарифа, YooKassa successful sync/webhook получает атомарный pending-lock, добавлен контур Tochka create/webhook/sync.
+- [x] Зафиксировать balance-first UX/API: provider endpoints YooKassa/Tochka принимают только пополнение баланса компании, а тариф выбирается через `/api/party/billing/tariff/select` и списывается с баланса.
 - [ ] Проверить YooKassa create/webhook/sync/renew на реальном тестовом платеже.
 - [ ] Проверить Tochka create/JWT webhook/sync на реальном тестовом платеже.
 - [x] Добавить страницу истории платежей и текущего тарифа в `/company/settings/tariffs`.
@@ -228,10 +229,10 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 
 ### Sprint 4: Интеграции
 
-- [ ] Party VK webhook и lead/order flow.
-- [ ] Party Avito webhook и lead/order flow.
-- [ ] Party Novofon calls.
-- [ ] AI draft order.
+- [x] Party VK webhook и lead/order flow.
+- [x] Party Avito webhook и lead/order flow.
+- [x] Party Novofon calls.
+- [x] AI draft order.
 - [x] Company Google Calendar sync.
 
 ### Sprint 5: Биллинг и тарифные ограничения
@@ -239,7 +240,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [x] Решить company-vs-user billing: тариф хранится на PartyCompany.
 - [ ] Проверить YooKassa E2E.
 - [ ] Добавить trial и лимиты тарифов.
-- [ ] Обновить `/company/settings/tariffs`.
+- [x] Обновить `/company/settings/tariffs`.
 
 ### Sprint 6: Аналитика и pilot operations
 

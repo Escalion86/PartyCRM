@@ -13,6 +13,11 @@ import partyUsersSchema from '@schemas/partyUsersSchema'
 import partyTariffsSchema from '@schemas/partyTariffsSchema'
 import partyPaymentsSchema from '@schemas/partyPaymentsSchema'
 import partyTransactionsSchema from '@schemas/partyTransactionsSchema'
+import partyCallsSchema from '@schemas/partyCallsSchema'
+import partyAvitoConversationsSchema from '@schemas/partyAvitoConversationsSchema'
+import partyAvitoMessagesSchema from '@schemas/partyAvitoMessagesSchema'
+import partyVkConversationsSchema from '@schemas/partyVkConversationsSchema'
+import partyVkMessagesSchema from '@schemas/partyVkMessagesSchema'
 
 export const PARTY_STAFF_ROLES = Object.freeze({
   OWNER: 'owner',
@@ -210,5 +215,78 @@ export const getPartyServiceGroupModel = () =>
     configureSchema: (schema) => {
       schema.index({ tenantId: 1, order: 1 })
       schema.index({ tenantId: 1, title: 1 })
+    },
+  })
+
+export const getPartyCallModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'PartyCall',
+    collectionName: 'calls',
+    schemaDefinition: partyCallsSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, provider: 1, providerCallId: 1 })
+      schema.index({ tenantId: 1, startedAt: -1 })
+      schema.index({ tenantId: 1, linkedClientId: 1, startedAt: -1 })
+      schema.index({ tenantId: 1, status: 1, startedAt: -1 })
+    },
+  })
+
+export const getPartyAvitoConversationModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'PartyAvitoConversation',
+    collectionName: 'avitoConversations',
+    schemaDefinition: partyAvitoConversationsSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, avitoChatId: 1 }, { unique: true })
+      schema.index({ tenantId: 1, clientId: 1, lastMessageAt: -1 })
+      schema.index({ tenantId: 1, orderId: 1, lastMessageAt: -1 })
+    },
+  })
+
+export const getPartyAvitoMessageModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'PartyAvitoMessage',
+    collectionName: 'avitoMessages',
+    schemaDefinition: partyAvitoMessagesSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, conversationId: 1, sentAt: 1 })
+      schema.index({ tenantId: 1, avitoChatId: 1, avitoMessageId: 1 })
+      schema.index({ tenantId: 1, clientId: 1, sentAt: -1 })
+      schema.index({ tenantId: 1, orderId: 1, sentAt: -1 })
+    },
+  })
+
+export const getPartyVkConversationModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'PartyVkConversation',
+    collectionName: 'vkConversations',
+    schemaDefinition: partyVkConversationsSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, vkPeerId: 1 }, { unique: true })
+      schema.index({ tenantId: 1, clientId: 1, lastMessageAt: -1 })
+      schema.index({ tenantId: 1, orderId: 1, lastMessageAt: -1 })
+    },
+  })
+
+export const getPartyVkMessageModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'PartyVkMessage',
+    collectionName: 'vkMessages',
+    schemaDefinition: partyVkMessagesSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, conversationId: 1, sentAt: 1 })
+      schema.index({ tenantId: 1, vkPeerId: 1, vkMessageId: 1 })
+      schema.index({ tenantId: 1, clientId: 1, sentAt: -1 })
+      schema.index({ tenantId: 1, orderId: 1, sentAt: -1 })
     },
   })

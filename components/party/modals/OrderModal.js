@@ -20,6 +20,8 @@ import ServiceMultiSelect from '@components/ServiceMultiSelect'
 import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPicker'
 import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTransactionsSection'
 import PartyOrderDocumentsSection from '@components/party/orders/PartyOrderDocumentsSection'
+import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
+import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
 import partyServicesAtom from '@state/atoms/partyServicesAtom'
 import AddIconButton from '@components/AddIconButton'
 import TabContext from '@components/Tabs/TabContext'
@@ -70,6 +72,7 @@ export default function OrderModal({
   services,
   companySettings,
   activeCompanyId,
+  canManage = false,
   saving,
   onClose,
   onSubmit,
@@ -691,6 +694,34 @@ export default function OrderModal({
                 companySettings={companySettings}
                 activeCompanyId={activeCompanyId}
               />
+            </div>
+
+            <hr className="border-t border-gray-200" />
+
+            <div className="mt-2 grid gap-4">
+              <div className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+                Переписки
+              </div>
+              {orderDraft._id ? (
+                <>
+                  <PartyVkConversationsPanel
+                    clientId={orderDraft.clientId || ''}
+                    orderId={orderDraft._id || ''}
+                    companyId={activeCompanyId}
+                    canReply={canManage}
+                  />
+                  <PartyAvitoConversationsPanel
+                    clientId={orderDraft.clientId || ''}
+                    orderId={orderDraft._id || ''}
+                    companyId={activeCompanyId}
+                    canReply={canManage}
+                  />
+                </>
+              ) : (
+                <p className="text-sm text-gray-500">
+                  Переписки появятся после сохранения заказа.
+                </p>
+              )}
             </div>
           </div>
         </TabPanel>

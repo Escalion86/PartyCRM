@@ -48,7 +48,7 @@ const parseOptionalDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date
 }
 
-const getMonthRange = (value) => {
+export const getMonthRange = (value) => {
   const date = value instanceof Date && !Number.isNaN(value.getTime())
     ? value
     : new Date()

@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import { formatMoney } from '@helpers/formatMoney'
-import { getPartyTariffCheckoutRequest } from '@helpers/partyBillingCheckout'
+import {
+  getPartyBalanceTopUpRequest,
+  getPartyTariffCheckoutRequest,
+} from '@helpers/partyBillingCheckout'
 import {
   getPartyBillingProviderOptions,
   getPartyPaymentStatusLabel,
@@ -51,8 +54,10 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
   const [payments, setPayments] = useState([])
   const [billingConfig, setBillingConfig] = useState(null)
   const [selectedProvider, setSelectedProvider] = useState('')
+  const [topUpAmount, setTopUpAmount] = useState('3000')
   const [loading, setLoading] = useState(true)
   const [payingTariffId, setPayingTariffId] = useState('')
+  const [topUpLoading, setTopUpLoading] = useState(false)
   const [error, setError] = useState('')
 
   const buildRequestOptions = useCallback(
@@ -142,10 +147,9 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
     async (tariff) => {
       const request = getPartyTariffCheckoutRequest({
         tariff,
-        provider: selectedProvider,
       })
       if (!request) {
-        setError('Выберите способ оплаты для платного тарифа')
+        setError('Не удалось выбрать тариф')
         return
       }
       setPayingTariffId(String(tariff._id))
@@ -173,8 +177,40 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
         setPayingTariffId('')
       }
     },
-    [buildRequestOptions, loadData, selectedProvider]
+    [buildRequestOptions, loadData]
   )
+
+  const handleTopUpBalance = useCallback(async () => {
+    const request = getPartyBalanceTopUpRequest({
+      provider: selectedProvider,
+      amount: topUpAmount,
+    })
+    if (!request) {
+      setError('Выберите способ оплаты и укажите сумму пополнения')
+      return
+    }
+
+    setTopUpLoading(true)
+    setError('')
+    try {
+      const res = await apiJson(request.endpoint, {
+        ...buildRequestOptions({
+          method: 'POST',
+          body: JSON.stringify(request.body),
+        }),
+      })
+      if (res.data?.confirmationUrl) {
+        window.open(res.data.confirmationUrl, '_blank')
+        await loadData()
+        return
+      }
+      setError('Не удалось создать платёж на пополнение баланса')
+    } catch (err) {
+      setError(err?.message || 'Не удалось пополнить баланс')
+    } finally {
+      setTopUpLoading(false)
+    }
+  }, [buildRequestOptions, loadData, selectedProvider, topUpAmount])
 
   if (loading) {
     return (
@@ -197,7 +233,8 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
           <div>
             <div className="text-base font-semibold">Текущий тариф</div>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Тариф, баланс и история платежей относятся к выбранной компании.
+              Баланс пополняется через платежные провайдеры PartyCRM. Тариф
+              компании оплачивается списанием с этого баланса.
             </p>
             <div className="mt-4 grid gap-2 text-sm text-slate-600">
               <div>
@@ -229,8 +266,8 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
                   ))}
                 </select>
                 <span className="text-xs text-slate-400">
-                  Бесплатный тариф подключается сразу, платный открывает оплату
-                  выбранным способом.
+                  Бесплатный тариф подключается сразу, платный списывает
+                  стоимость с баланса компании.
                 </span>
               </label>
               {userData?.tariffActiveUntil && (
@@ -306,31 +343,60 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
       </section>
 
       <section className="rounded-2xl border border-sky-100 bg-white p-5">
-        <div className="text-base font-semibold">Способ оплаты</div>
+        <div className="text-base font-semibold">Пополнение баланса</div>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          YooKassa и Точка здесь используются только для оплаты сервиса
+          PartyCRM. Это не настройки приема оплат от клиентов вашей компании.
+        </p>
         {providerOptions.length > 0 ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {providerOptions.map((provider) => (
-              <button
-                key={provider.value}
-                type="button"
-                className={`rounded-xl border px-4 py-3 text-left text-sm transition ${
-                  selectedProvider === provider.value
-                    ? 'border-sky-500 bg-sky-50 text-sky-900'
-                    : 'border-slate-200 hover:border-sky-300'
-                }`}
-                onClick={() => setSelectedProvider(provider.value)}
-              >
-                <span className="block font-semibold">{provider.label}</span>
-                <span className="mt-1 block text-xs text-slate-500">
-                  {provider.description}
+          <div className="mt-3 grid gap-3">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {providerOptions.map((provider) => (
+                <button
+                  key={provider.value}
+                  type="button"
+                  className={`rounded-xl border px-4 py-3 text-left text-sm transition ${
+                    selectedProvider === provider.value
+                      ? 'border-sky-500 bg-sky-50 text-sky-900'
+                      : 'border-slate-200 hover:border-sky-300'
+                  }`}
+                  onClick={() => setSelectedProvider(provider.value)}
+                >
+                  <span className="block font-semibold">{provider.label}</span>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    {provider.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <label className="grid gap-1.5 sm:w-56">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Сумма пополнения
                 </span>
+                <input
+                  type="number"
+                  min="100"
+                  step="100"
+                  value={topUpAmount}
+                  onChange={(event) => setTopUpAmount(event.target.value)}
+                  className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={handleTopUpBalance}
+                disabled={topUpLoading || !selectedProvider}
+                className="h-11 rounded-lg bg-sky-600 px-4 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {topUpLoading ? 'Создаём платёж...' : 'Пополнить баланс'}
               </button>
-            ))}
+            </div>
           </div>
         ) : (
           <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
             На сервере не настроены YooKassa или Точка. Бесплатный тариф можно
-            выбрать без провайдера.
+            выбрать без пополнения баланса.
           </p>
         )}
       </section>

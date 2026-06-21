@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server"
 import crypto from "crypto"
 import { getPartyRequestContext } from "@server/partyApi"
-import {
-  getPartyPaymentModel,
-  getPartyTariffModel,
-} from "@server/partyModels"
+import { getPartyPaymentModel } from "@server/partyModels"
+import { buildPartyBalanceTopUpPaymentDraft } from "@server/partyBillingProviderCheckoutCore"
 import {
   createTochkaPayment,
   getTochkaOperationId,
@@ -12,9 +10,6 @@ import {
   isTochkaConfigured,
   normalizeAmount,
 } from "@server/tochka"
-
-const MIN_TOPUP_AMOUNT = 100
-const MAX_TOPUP_AMOUNT = 300000
 
 const resolveReturnUrl = () => {
   const domain = process.env.DOMAIN || "partycrm.ru"
@@ -42,43 +37,20 @@ export const POST = async (req) => {
   const company = context.company
   const user = context.sessionUser
 
-  const purpose = body?.purpose === "tariff" ? "tariff" : "balance"
-  let tariff = null
-  let amount = Number(body?.amount ?? 0)
-  let description = "Пополнение баланса PartyCRM"
-
-  if (purpose === "tariff") {
-    const PartyTariffs = await getPartyTariffModel()
-    tariff = await PartyTariffs.findById(body?.tariffId).lean()
-    if (!tariff || tariff.hidden) {
-      return NextResponse.json(
-        { success: false, error: "Тариф не найден" },
-        { status: 404 }
-      )
-    }
-    amount = Number(tariff.price ?? 0)
-    description = `Оплата тарифа ${tariff.title}`
-  }
-
-  if (
-    !Number.isFinite(amount) ||
-    amount < MIN_TOPUP_AMOUNT ||
-    amount > MAX_TOPUP_AMOUNT
-  ) {
+  const draft = buildPartyBalanceTopUpPaymentDraft(body)
+  if (!draft.ok) {
     return NextResponse.json(
-      {
-        success: false,
-        error: `Сумма должна быть от ${MIN_TOPUP_AMOUNT} до ${MAX_TOPUP_AMOUNT} руб.`,
-      },
-      { status: 400 }
+      { success: false, error: draft.error },
+      { status: draft.status }
     )
   }
+  const { amount, description, purpose } = draft
 
   const idempotenceKey = crypto.randomUUID()
   const payment = await PartyPayments.create({
     userId: user._id,
     tenantId: company._id,
-    tariffId: tariff?._id ?? null,
+    tariffId: null,
     amount,
     type: "topup",
     source: "tochka",
@@ -102,7 +74,7 @@ export const POST = async (req) => {
         tenantId: String(company._id),
         companyId: String(company._id),
         purpose,
-        tariffId: tariff?._id ? String(tariff._id) : "",
+        tariffId: "",
         partycrm: "true",
       },
     })

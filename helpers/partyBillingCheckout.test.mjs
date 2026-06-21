@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  getPartyBalanceTopUpRequest,
   getPartyTariffCheckoutRequest,
   isFreePartyTariff,
 } from './partyBillingCheckout.js'
@@ -28,19 +29,44 @@ test('getPartyTariffCheckoutRequest uses direct select for free tariff', () => {
   })
 })
 
-test('getPartyTariffCheckoutRequest uses selected provider for paid tariff', () => {
+test('getPartyTariffCheckoutRequest uses company balance for paid tariff', () => {
   const request = getPartyTariffCheckoutRequest({
     tariff: { _id: 'paid', price: 990 },
-    provider: 'tochka',
+    provider: '',
   })
 
   assert.deepEqual(request, {
-    endpoint: '/api/party/billing/tochka/create',
+    endpoint: '/api/party/billing/tariff/select',
     body: {
       tariffId: 'paid',
-      purpose: 'tariff',
-      amount: 990,
+    },
+    requiresPayment: false,
+  })
+})
+
+test('getPartyBalanceTopUpRequest uses selected provider to top up company balance', () => {
+  const request = getPartyBalanceTopUpRequest({
+    provider: 'yookassa',
+    amount: '2500',
+  })
+
+  assert.deepEqual(request, {
+    endpoint: '/api/party/billing/yookassa/create',
+    body: {
+      purpose: 'balance',
+      amount: 2500,
     },
     requiresPayment: true,
   })
+})
+
+test('getPartyBalanceTopUpRequest rejects unknown provider and invalid amount', () => {
+  assert.equal(
+    getPartyBalanceTopUpRequest({ provider: 'unknown', amount: 2500 }),
+    null
+  )
+  assert.equal(
+    getPartyBalanceTopUpRequest({ provider: 'yookassa', amount: 0 }),
+    null
+  )
 })

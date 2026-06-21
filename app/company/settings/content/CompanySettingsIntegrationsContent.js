@@ -4,6 +4,11 @@ import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import {
+  buildPartyAvitoWebhookUrl,
+  buildPartyNovofonWebhookUrl,
+  buildPartyVkWebhookUrl,
+} from '@helpers/partyIntegrationWebhooks'
 import PartyGoogleCalendarSettings from '@components/party/settings/PartyGoogleCalendarSettings'
 import { isGoogleCalendarLocked } from '@components/party/settings/PartyGoogleCalendarSettingsState'
 import useCompanySettings from '../useCompanySettings'
@@ -375,20 +380,18 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
 
   const avitoWebhookUrl = useMemo(() => {
     const token = integrations.avitoWebhookToken || ''
-    return token ? `${origin}/api/integrations/avito/webhook/${token}` : ''
+    return token ? buildPartyAvitoWebhookUrl({ origin, token }) : ''
   }, [integrations.avitoWebhookToken, origin])
 
   const vkWebhookUrl = useMemo(() => {
     const token = integrations.vkGroupWebhookToken || ''
-    return token ? `${origin}/api/integrations/vk/webhook/${token}` : ''
+    return token ? buildPartyVkWebhookUrl({ origin, token }) : ''
   }, [integrations.vkGroupWebhookToken, origin])
 
   const novofonWebhookUrl = useMemo(() => {
     const secret = integrations.novofonWebhookSecret || ''
-    return secret
-      ? `${origin}/api/telephony/novofon/webhook?tenantId=${activeCompanyId}&secret=${secret}`
-      : ''
-  }, [activeCompanyId, integrations.novofonWebhookSecret, origin])
+    return secret ? buildPartyNovofonWebhookUrl({ origin, token: secret }) : ''
+  }, [integrations.novofonWebhookSecret, origin])
 
   const patchIntegrations = (patch) =>
     savePatch({

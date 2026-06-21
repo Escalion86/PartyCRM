@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext, parseJsonBody } from '@server/partyApi'
+import { buildPartyAvitoWebhookUrl } from '@helpers/partyIntegrationWebhooks'
 import {
   requestAvitoAccessToken,
   registerAvitoWebhook,
-  buildAvitoWebhookUrl,
   createWebhookToken,
 } from '@server/avito'
 
@@ -33,7 +33,7 @@ export async function POST(req) {
   const integrations = company?.settings?.integrations ?? {}
   const webhookToken =
     integrations.avitoWebhookToken || createWebhookToken()
-  const webhookUrl = buildAvitoWebhookUrl({ req, token: webhookToken })
+  const webhookUrl = buildPartyAvitoWebhookUrl({ req, token: webhookToken })
 
   try {
     const tokenResponse = await requestAvitoAccessToken({

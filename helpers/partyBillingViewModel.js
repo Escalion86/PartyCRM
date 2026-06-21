@@ -69,7 +69,6 @@ export const getPartyTariffAccessRows = (access = {}) => [
 export const getPartyTariffActionState = ({
   tariff,
   activeTariffId,
-  selectedProvider,
   loading = false,
 }) => {
   const isActive =
@@ -80,7 +79,7 @@ export const getPartyTariffActionState = ({
   return {
     isActive,
     isFree,
-    disabled: Boolean(loading || isActive || (!isFree && !selectedProvider)),
-    buttonLabel: isFree ? 'Выбрать' : `Купить за ${formatMoney(price)}`,
+    disabled: Boolean(loading || isActive),
+    buttonLabel: isFree ? 'Выбрать' : `Оплатить с баланса ${formatMoney(price)}`,
   }
 }

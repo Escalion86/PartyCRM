@@ -263,12 +263,8 @@ body.theme-dark .action-icon-button:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    inline-size: var(--action-icon-button-size) !important;
     block-size: var(--action-icon-button-size) !important;
     min-inline-size: var(--action-icon-button-size) !important;
-    max-inline-size: var(--action-icon-button-size) !important;
-    aspect-ratio: 1 / 1;
-    padding-inline: 0 !important;
     cursor: pointer;
     border: 1px solid var(--aib-border);
     background-color: var(--aib-bg);
@@ -278,23 +274,33 @@ body.theme-dark .action-icon-button:hover {
   }
 
   .action-icon-button.h-8,
-  .action-icon-button.w-8 {
+  .action-icon-button.min-w-8 {
     --action-icon-button-size: 2rem;
   }
 
   .action-icon-button.h-9,
-  .action-icon-button.w-9 {
+  .action-icon-button.min-w-9 {
     --action-icon-button-size: 2.25rem;
   }
 
   .action-icon-button.h-10,
-  .action-icon-button.w-10 {
+  .action-icon-button.min-w-10 {
     --action-icon-button-size: 2.5rem;
   }
 
+  .action-icon-button.h-11,
+  .action-icon-button.min-w-11 {
+    --action-icon-button-size: 2.75rem;
+  }
+
   .action-icon-button.h-12,
-  .action-icon-button.w-12 {
+  .action-icon-button.min-w-12 {
     --action-icon-button-size: 3rem;
+  }
+
+  .action-icon-button.h-14,
+  .action-icon-button.min-w-14 {
+    --action-icon-button-size: 3.5rem;
   }
 
   .action-icon-button:hover {

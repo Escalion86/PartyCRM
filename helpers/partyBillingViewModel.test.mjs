@@ -40,7 +40,7 @@ test('getPartyTariffActionState keeps free tariff selectable without provider', 
   )
 })
 
-test('getPartyTariffActionState disables paid tariff without provider', () => {
+test('getPartyTariffActionState keeps paid tariff selectable without provider', () => {
   assert.deepEqual(
     getPartyTariffActionState({
       tariff: { _id: 'paid', price: 990 },
@@ -50,8 +50,8 @@ test('getPartyTariffActionState disables paid tariff without provider', () => {
     {
       isActive: false,
       isFree: false,
-      disabled: true,
-      buttonLabel: 'Купить за 990 ₽',
+      disabled: false,
+      buttonLabel: 'Оплатить с баланса 990 ₽',
     }
   )
 })

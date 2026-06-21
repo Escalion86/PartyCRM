@@ -10,6 +10,8 @@ import Select from '@components/Select'
 import Textarea from '@components/Textarea'
 import Modal from '@components/Modal'
 import PartyAddressBlock from '@components/party/inputs/PartyAddressBlock'
+import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
+import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
 
 export function ClientSelectModal({
   open,
@@ -109,6 +111,8 @@ export function ClientFormModal({
   onClose,
   onSubmit,
   saving,
+  activeCompanyId = '',
+  canManage = false,
 }) {
   const preferredChannelOptions = [
     { value: '', label: 'Не выбран' },
@@ -157,190 +161,210 @@ export function ClientFormModal({
       size="full"
       footer={footerContent}
     >
-      <form
-        id="client-form"
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-2"
-      >
-        <Input
-          label="Имя"
-          value={clientDraft.firstName}
-          onChange={handleChange('firstName')}
-          fullWidth
-          tone="party"
-        />
-        <Input
-          label="Фамилия"
-          value={clientDraft.secondName}
-          onChange={handleChange('secondName')}
-          fullWidth
-          tone="party"
-        />
-        <Input
-          label="Отчество"
-          value={clientDraft.thirdName}
-          onChange={handleChange('thirdName')}
-          fullWidth
-          tone="party"
-        />
-        <PhoneInput
-          value={clientDraft.phone}
-          onChange={(value) =>
-            setClientDraft((prev) => ({ ...prev, phone: value }))
-          }
-          tone="party"
-        />
-        <PhoneInput
-          label="WhatsApp"
-          value={clientDraft.whatsapp}
-          onChange={(value) =>
-            setClientDraft((prev) => ({ ...prev, whatsapp: value }))
-          }
-          tone="party"
-        />
-        <PhoneInput
-          label="Viber"
-          value={clientDraft.viber}
-          onChange={(value) =>
-            setClientDraft((prev) => ({ ...prev, viber: value }))
-          }
-          tone="party"
-        />
-        <Input
-          label="Telegram"
-          value={clientDraft.telegram}
-          onChange={handleChange('telegram')}
-          fullWidth
-          tone="party"
-        />
-        <Input
-          label="Instagram"
-          value={clientDraft.instagram}
-          onChange={handleChange('instagram')}
-          fullWidth
-          tone="party"
-        />
-        <Input
-          label="VK"
-          value={clientDraft.vk}
-          onChange={handleChange('vk')}
-          fullWidth
-          tone="party"
-        />
-        <Select
-          label="Предпочтительный канал связи"
-          value={clientDraft.preferredContactChannel || ''}
-          onChange={handleChange('preferredContactChannel')}
-          options={preferredChannelOptions}
-          fullWidth
-          tone="party"
-        />
-        {clientDraft.preferredContactChannel === 'other' && (
+      <div className="flex flex-col gap-4">
+        <form
+          id="client-form"
+          onSubmit={handleSubmit}
+          className="flex flex-col gap-2"
+        >
           <Input
-            label="Свой канал связи"
-            value={clientDraft.preferredContactChannelOther || ''}
-            onChange={handleChange('preferredContactChannelOther')}
-            fullWidth
-            tone="party"
-          />
-        )}
-        <Input
-          label="Email"
-          value={clientDraft.email}
-          onChange={handleChange('email')}
-          fullWidth
-          tone="party"
-        />
-        <PartyAddressBlock
-          value={{
-            town: clientDraft.town || '',
-            street: clientDraft.legalAddress || '',
-          }}
-          onChange={(field, nextValue) => {
-            if (field === 'town') handleChange('town')(nextValue)
-            if (field === 'street') handleChange('legalAddress')(nextValue)
-          }}
-          title="Адрес"
-          tone="party"
-          styleVariant="plain"
-          labels={{ street: 'Юридический адрес' }}
-          visibleFields={{
-            town: true,
-            street: true,
-            house: false,
-            room: false,
-            comment: false,
-          }}
-        />
-        <Input
-          label="Юр. название"
-          value={clientDraft.legalName || ''}
-          onChange={handleChange('legalName')}
-          fullWidth
-          tone="party"
-        />
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-          <Input
-            label="ИНН"
-            value={clientDraft.inn || ''}
-            onChange={handleChange('inn')}
+            label="Имя"
+            value={clientDraft.firstName}
+            onChange={handleChange('firstName')}
             fullWidth
             tone="party"
           />
           <Input
-            label="КПП"
-            value={clientDraft.kpp || ''}
-            onChange={handleChange('kpp')}
+            label="Фамилия"
+            value={clientDraft.secondName}
+            onChange={handleChange('secondName')}
             fullWidth
             tone="party"
           />
           <Input
-            label="ОГРН"
-            value={clientDraft.ogrn || ''}
-            onChange={handleChange('ogrn')}
+            label="Отчество"
+            value={clientDraft.thirdName}
+            onChange={handleChange('thirdName')}
             fullWidth
             tone="party"
           />
-        </div>
-        <Input
-          label="Банк"
-          value={clientDraft.bankName || ''}
-          onChange={handleChange('bankName')}
-          fullWidth
-          tone="party"
-        />
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+          <PhoneInput
+            value={clientDraft.phone}
+            onChange={(value) =>
+              setClientDraft((prev) => ({ ...prev, phone: value }))
+            }
+            tone="party"
+          />
+          <PhoneInput
+            label="WhatsApp"
+            value={clientDraft.whatsapp}
+            onChange={(value) =>
+              setClientDraft((prev) => ({ ...prev, whatsapp: value }))
+            }
+            tone="party"
+          />
+          <PhoneInput
+            label="Viber"
+            value={clientDraft.viber}
+            onChange={(value) =>
+              setClientDraft((prev) => ({ ...prev, viber: value }))
+            }
+            tone="party"
+          />
           <Input
-            label="БИК"
-            value={clientDraft.bik || ''}
-            onChange={handleChange('bik')}
+            label="Telegram"
+            value={clientDraft.telegram}
+            onChange={handleChange('telegram')}
             fullWidth
             tone="party"
           />
           <Input
-            label="Р/с"
-            value={clientDraft.checkingAccount || ''}
-            onChange={handleChange('checkingAccount')}
+            label="Instagram"
+            value={clientDraft.instagram}
+            onChange={handleChange('instagram')}
             fullWidth
             tone="party"
           />
           <Input
-            label="К/с"
-            value={clientDraft.correspondentAccount || ''}
-            onChange={handleChange('correspondentAccount')}
+            label="VK"
+            value={clientDraft.vk}
+            onChange={handleChange('vk')}
             fullWidth
             tone="party"
           />
-        </div>
-        <Textarea
-          label="Комментарий"
-          value={clientDraft.comment}
-          onChange={handleChange('comment')}
-          fullWidth
-          tone="party"
-          rows={3}
-        />
-      </form>
+          <Select
+            label="Предпочтительный канал связи"
+            value={clientDraft.preferredContactChannel || ''}
+            onChange={handleChange('preferredContactChannel')}
+            options={preferredChannelOptions}
+            fullWidth
+            tone="party"
+          />
+          {clientDraft.preferredContactChannel === 'other' && (
+            <Input
+              label="Свой канал связи"
+              value={clientDraft.preferredContactChannelOther || ''}
+              onChange={handleChange('preferredContactChannelOther')}
+              fullWidth
+              tone="party"
+            />
+          )}
+          <Input
+            label="Email"
+            value={clientDraft.email}
+            onChange={handleChange('email')}
+            fullWidth
+            tone="party"
+          />
+          <PartyAddressBlock
+            value={{
+              town: clientDraft.town || '',
+              street: clientDraft.legalAddress || '',
+            }}
+            onChange={(field, nextValue) => {
+              if (field === 'town') handleChange('town')(nextValue)
+              if (field === 'street') handleChange('legalAddress')(nextValue)
+            }}
+            title="Адрес"
+            tone="party"
+            styleVariant="plain"
+            labels={{ street: 'Юридический адрес' }}
+            visibleFields={{
+              town: true,
+              street: true,
+              house: false,
+              room: false,
+              comment: false,
+            }}
+          />
+          <Input
+            label="Юр. название"
+            value={clientDraft.legalName || ''}
+            onChange={handleChange('legalName')}
+            fullWidth
+            tone="party"
+          />
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <Input
+              label="ИНН"
+              value={clientDraft.inn || ''}
+              onChange={handleChange('inn')}
+              fullWidth
+              tone="party"
+            />
+            <Input
+              label="КПП"
+              value={clientDraft.kpp || ''}
+              onChange={handleChange('kpp')}
+              fullWidth
+              tone="party"
+            />
+            <Input
+              label="ОГРН"
+              value={clientDraft.ogrn || ''}
+              onChange={handleChange('ogrn')}
+              fullWidth
+              tone="party"
+            />
+          </div>
+          <Input
+            label="Банк"
+            value={clientDraft.bankName || ''}
+            onChange={handleChange('bankName')}
+            fullWidth
+            tone="party"
+          />
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+            <Input
+              label="БИК"
+              value={clientDraft.bik || ''}
+              onChange={handleChange('bik')}
+              fullWidth
+              tone="party"
+            />
+            <Input
+              label="Р/с"
+              value={clientDraft.checkingAccount || ''}
+              onChange={handleChange('checkingAccount')}
+              fullWidth
+              tone="party"
+            />
+            <Input
+              label="К/с"
+              value={clientDraft.correspondentAccount || ''}
+              onChange={handleChange('correspondentAccount')}
+              fullWidth
+              tone="party"
+            />
+          </div>
+          <Textarea
+            label="Комментарий"
+            value={clientDraft.comment}
+            onChange={handleChange('comment')}
+            fullWidth
+            tone="party"
+            rows={3}
+          />
+        </form>
+
+        {clientDraft._id && activeCompanyId ? (
+          <div className="grid gap-4 border-t border-gray-200 pt-4">
+            <div className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+              Переписки
+            </div>
+            <PartyVkConversationsPanel
+              clientId={clientDraft._id || ''}
+              companyId={activeCompanyId}
+              canReply={canManage}
+            />
+            <PartyAvitoConversationsPanel
+              clientId={clientDraft._id || ''}
+              companyId={activeCompanyId}
+              canReply={canManage}
+            />
+          </div>
+        ) : null}
+      </div>
     </Modal>
   )
 }

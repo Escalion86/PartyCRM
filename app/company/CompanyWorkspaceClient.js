@@ -6,6 +6,7 @@ import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import OrdersList from '@components/party/lists/OrdersList'
+import CallsList from '@components/party/lists/CallsList'
 import PartyUpcomingEventsModal, {
   getOrderEndDate,
 } from '@components/party/modals/PartyUpcomingEventsModal'
@@ -198,6 +199,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [staff, setStaff] = useState([])
   const [services, setServices] = useState([])
   const [orders, setOrders] = useState([])
+  const [calls, setCalls] = useState([])
   const [companySettings, setCompanySettings] = useState({})
   const [companyAccess, setCompanyAccess] = useState(null)
   const [orderDraft, setOrderDraft] = useState(() => createEmptyOrderDraft())
@@ -221,6 +223,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [clientSearch, setClientSearch] = useState('')
   const [financeExportFrom, setFinanceExportFrom] = useState('')
   const [financeExportTo, setFinanceExportTo] = useState('')
+  const [creatingCallOrderId, setCreatingCallOrderId] = useState('')
 
   const hasAccess = Boolean(context?.tenantId && context?.staff)
   const canManage = ['owner', 'admin'].includes(context?.role)
@@ -246,6 +249,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         setServices([])
         setServiceGroups([])
         setOrders([])
+        setCalls([])
         setCompanySettings({})
         setCompanyAccess(null)
         setActiveCompanyId('')
@@ -288,6 +292,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         staffResponse,
         servicesResponse,
         ordersResponse,
+        callsResponse,
         companySettingsResponse,
         serviceGroupsResponse,
       ] = await Promise.all([
@@ -316,6 +321,13 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
         ),
         apiJson(
+          '/api/party/calls',
+          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+        ).catch((callsError) => {
+          if (callsError.status === 403) return { data: [] }
+          throw callsError
+        }),
+        apiJson(
           '/api/party/company-settings',
           buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
         ),
@@ -330,6 +342,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       setStaff(staffResponse.data ?? [])
       setServices(servicesResponse.data ?? [])
       setOrders(ordersResponse.data ?? [])
+      setCalls(callsResponse.data ?? [])
       setServiceGroups(serviceGroupsResponse.data ?? [])
       setCompanySettings(
         companySettingsResponse.data?.settings ??
@@ -351,7 +364,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [setServiceGroups])
 
   useEffect(() => {
     loadWorkspace()
@@ -785,6 +798,38 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       setSaving(false)
     }
   }, [activeCompanyId])
+
+  const createOrderFromCall = useCallback(
+    async (callId) => {
+      if (!callId || !activeCompanyId) return
+
+      setCreatingCallOrderId(String(callId))
+      setError('')
+      try {
+        const response = await apiJson(
+          `/api/party/calls/${callId}/create-order`,
+          buildCompanyRequestOptions(activeCompanyId, { method: 'POST' })
+        )
+        const createdOrder = response.data?.order
+        const updatedCall = response.data?.call
+        if (createdOrder) {
+          setOrders((prev) => [createdOrder, ...prev])
+        }
+        if (updatedCall) {
+          setCalls((prev) =>
+            prev.map((call) =>
+              String(call._id) === String(callId) ? updatedCall : call
+            )
+          )
+        }
+      } catch (createError) {
+        setError(createError?.message || 'Не удалось создать заказ из звонка')
+      } finally {
+        setCreatingCallOrderId('')
+      }
+    },
+    [activeCompanyId]
+  )
 
   const downloadFinanceCsv = useCallback(async () => {
     if (!activeCompanyId) return
@@ -1365,6 +1410,34 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           </>
         )}
 
+        {section === 'calls' && (
+          <>
+            <div className="flex flex-col gap-2 mb-6 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 className="text-xl font-semibold">Звонки Novofon</h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Проверяйте AI-черновики заказов перед созданием событий.
+                </p>
+              </div>
+              <span className="text-sm text-black/55">{calls.length}</span>
+            </div>
+            {companyAccess?.allowTelephony === false ? (
+              <div className="p-6 text-sm leading-6 border rounded-2xl border-amber-200 bg-amber-50 text-amber-900">
+                Телефония недоступна на текущем тарифе компании. Подключите
+                тариф с опцией телефонии во вкладке `Тарифы`.
+              </div>
+            ) : (
+              <CallsList
+                calls={calls}
+                clientsById={clientsById}
+                canManage={canManage}
+                creatingCallId={creatingCallOrderId}
+                onCreateOrder={createOrderFromCall}
+              />
+            )}
+          </>
+        )}
+
         {section === 'clients' && (
           <>
             <div className="flex justify-end mb-6">
@@ -1709,6 +1782,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             setEditingClientId('')
           }}
           onSubmit={activeModal === 'client-edit' ? editClient : addClient}
+          activeCompanyId={activeCompanyId}
+          canManage={canManage}
         />
       )}
 

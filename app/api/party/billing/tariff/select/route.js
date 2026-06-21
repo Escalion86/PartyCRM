@@ -20,17 +20,6 @@ export const POST = async (req) => {
     )
   }
 
-  const price = Number(tariff.price ?? 0)
-  if (!Number.isFinite(price) || price > 0) {
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Платный тариф нужно оплатить через платёжного провайдера",
-      },
-      { status: 400 }
-    )
-  }
-
   const result = await applyPartyCompanyTariffPurchase({
     companyId: context.tenantId,
     initiatedByUserId: context.sessionUser._id,

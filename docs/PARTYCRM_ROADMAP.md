@@ -276,6 +276,10 @@ PartyStaff
 - [x] PC-LI2 Добавить Tilda/form adapter для заявок в PartyCRM.
 - [x] PC-LI3 Добавить маршрутизацию входящих заявок по источнику/точке.
 - [x] PC-LI4 Добавить уведомления администраторам о новых заявках.
+- [x] PC-LI5 Добавить Party-specific VK/Avito webhooks, которые создают `PartyClient` и `PartyOrder` без записи в ArtistCRM модели.
+- [x] PC-LI6 Добавить Party conversation/message models и read-only UI переписок VK/Avito в заказе.
+- [x] PC-LI7 Добавить исходящие ответы и расширенный UI переписок VK/Avito в заказе/клиенте.
+- [x] PC-LI8 Добавить Party Novofon call flow: Party-specific webhook, `PartyCall`, связь звонка с клиентом и подтверждаемый AI draft order.
 
 ### P2: Advanced Operations
 
@@ -419,3 +423,10 @@ PartyStaff
 - 2026-06-21: синхронизирован roadmap по входящим заявкам — PC-LI1, PC-LI2 и PC-LI4 отмечены выполненными на основании реализованных `/api/party/public/lead`, `/api/party/public/lead/tilda`, company API keys, создания `PartyClient`/`PartyOrder` и push-уведомлений администраторам.
 - 2026-06-21: добавлен PartyCRM cron `/api/party/reminders/additional-events` для ежедневных push-reminders по `PartyOrder.additionalEvents` с учетом `settings.timeZone`, `additionalEventsPushTime` и дедупликацией через `PushReminderLogs`.
 - 2026-06-21: завершен performer push для PartyCRM — исполнители получают адресные push-уведомления о новом назначении, изменении видимых деталей заказа и запросе привязки карточки без раскрытия клиентской суммы и внутренних финансов.
+- 2026-06-21: завершен PC-LI5 — добавлены Party-specific VK/Avito webhook endpoints `/api/party/integrations/vk/webhook/[token]` и `/api/party/integrations/avito/webhook/[token]`; настройки ищутся в `PartyCompany.settings.integrations`, входящие сообщения создают `PartyClient` и черновик `PartyOrder`, а UI и connect-routes больше не выдают общие `/api/integrations/*` URL.
+- 2026-06-21: уточнена и закреплена billing-модель PartyCRM — YooKassa/Tochka остаются провайдерами самого сервиса из env и пополняют баланс выбранной компании, а платный тариф подключается через списание с баланса компании во вкладке `/company/settings/tariffs`.
+- 2026-06-21: завершен PC-LI6 — добавлены отдельные PartyCRM коллекции `vkConversations`, `vkMessages`, `avitoConversations`, `avitoMessages`; входящие VK/Avito webhook-сообщения сохраняют переписку с `tenantId`, `clientId` и `orderId`, а модалка заказа показывает read-only историю переписки через Party-specific API.
+- 2026-06-21: начат PC-LI7 — добавлены исходящие ответы VK/Avito из модалки заказа для owner/admin через Party-specific message routes; ответы отправляются credentials выбранной компании и сохраняются в PartyCRM conversation/message коллекциях со статусом `sent` или `failed`.
+- 2026-06-21: завершен PC-LI7 — переписки VK/Avito подключены к модалке редактирования клиента, поэтому owner/admin может видеть и отвечать на сообщения как из заказа, так и из карточки клиента.
+- 2026-06-21: начат PC-LI8 — Novofon для PartyCRM переведен на Party-specific webhook `/api/party/integrations/novofon/webhook/[token]`; входящий звонок сохраняется в Party DB как `PartyCall`, связывается или создает `PartyClient`, а transcript превращается в подтверждаемый `orderDraft` внутри звонка без автосоздания заказа.
+- 2026-06-21: завершен PC-LI8 — добавлены `/api/party/calls`, `/api/party/calls/[id]/create-order` и раздел `/company/calls`; owner/admin видит PartyCall, AI summary/orderDraft и явно создает реальный PartyOrder из звонка с tenant-check, тарифными ограничениями, conflict-check и календарной синхронизацией.
