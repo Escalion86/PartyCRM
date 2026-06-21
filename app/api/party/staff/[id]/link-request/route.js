@@ -6,6 +6,7 @@ import {
   partyError,
 } from '@server/partyApi'
 import { normalizePartyPhone } from '@server/partyAuth'
+import { sendPartyPerformerLinkRequestPush } from '@server/partyPerformerPush'
 
 const getId = async (params) => {
   const resolved = await params
@@ -87,6 +88,13 @@ export async function POST(req, { params }) {
     },
     { returnDocument: 'after' }
   ).lean()
+
+  await sendPartyPerformerLinkRequestPush({
+    tenantId: context.tenantId,
+    company: context.company,
+    staff: updatedStaff,
+    targetUserId: String(candidate._id),
+  })
 
   return NextResponse.json({
     success: true,

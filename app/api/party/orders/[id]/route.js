@@ -22,6 +22,7 @@ import {
   deletePartyOrderCalendarEventsAfterCrud,
   syncPartyOrderCalendarAfterCrud,
 } from '@server/partyOrderCalendarHooks'
+import { sendPartyPerformerAssignmentPushes } from '@server/partyPerformerPush'
 
 const getId = async (params) => {
   const resolved = await params
@@ -218,6 +219,14 @@ export async function PATCH(req, { params }) {
     previousOrder: currentOrder,
   })
 
+  await sendPartyPerformerAssignmentPushes({
+    tenantId: context.tenantId,
+    company: context.company,
+    previousOrder: currentOrder,
+    nextOrder: order,
+    source: 'party-order-updated',
+  })
+
   return NextResponse.json({ success: true, data: order })
 }
 
@@ -279,6 +288,14 @@ export async function DELETE(req, { params }) {
     tenantId: context.tenantId,
     orderId: id,
     previousOrder: currentOrder,
+  })
+
+  await sendPartyPerformerAssignmentPushes({
+    tenantId: context.tenantId,
+    company: context.company,
+    previousOrder: currentOrder,
+    nextOrder: order,
+    source: 'party-order-canceled',
   })
 
   return NextResponse.json({ success: true, data: order })

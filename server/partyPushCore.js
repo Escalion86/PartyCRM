@@ -54,3 +54,56 @@ export const buildPartyInviteAcceptedPushPayload = ({
     url: '/company/staff',
   },
 })
+
+export const buildPartyPerformerAssignmentPushPayload = ({
+  companyId = '',
+  companyTitle = '',
+  orderId = '',
+  orderTitle = '',
+  staffId = '',
+  eventDate = '',
+  changeType = 'new',
+} = {}) => {
+  const normalizedChangeType = changeType === 'changed' ? 'changed' : 'new'
+  const orderLabel = cleanText(orderTitle, 160) || 'Заказ'
+  const eventDateLabel = cleanText(eventDate, 80)
+  const bodyPrefix =
+    normalizedChangeType === 'changed'
+      ? 'Назначение изменено'
+      : 'Новое назначение'
+  const bodyDetails = [bodyPrefix, orderLabel, eventDateLabel].filter(Boolean)
+
+  return {
+    title: cleanText(companyTitle, 160) || 'PartyCRM',
+    body: bodyDetails.join(': '),
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: `party-performer-assignment-${normalizedChangeType}-${cleanText(orderId, 80) || 'order'}-${cleanText(staffId, 80) || 'staff'}`,
+    data: {
+      type: `party_performer_assignment_${normalizedChangeType === 'changed' ? 'changed' : 'new'}`,
+      companyId: cleanText(companyId, 80),
+      orderId: cleanText(orderId, 80),
+      staffId: cleanText(staffId, 80),
+      url: '/performer',
+    },
+  }
+}
+
+export const buildPartyPerformerLinkRequestPushPayload = ({
+  companyId = '',
+  companyTitle = '',
+  staffId = '',
+  staffName = '',
+} = {}) => ({
+  title: cleanText(companyTitle, 160) || 'PartyCRM',
+  body: `${cleanText(staffName, 160) || 'Сотрудник'}, подтвердите привязку карточки исполнителя`,
+  icon: '/icons/icon-192.png',
+  badge: '/icons/icon-192.png',
+  tag: `party-performer-link-request-${cleanText(staffId, 80) || 'staff'}`,
+  data: {
+    type: 'party_performer_link_request',
+    companyId: cleanText(companyId, 80),
+    staffId: cleanText(staffId, 80),
+    url: '/performer',
+  },
+})

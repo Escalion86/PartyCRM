@@ -23,6 +23,7 @@ import {
   canCreatePartyOrderByTariff,
   filterPartyOrderPayloadByTariffAccess,
 } from '@helpers/partyTariffAccess'
+import { sendPartyPerformerAssignmentPushes } from '@server/partyPerformerPush'
 
 const parseDate = (value) => {
   if (!value) return null
@@ -477,6 +478,13 @@ export async function POST(req) {
   await syncPartyOrderCalendarAfterCrud({
     tenantId: context.tenantId,
     orderId: String(order._id),
+  })
+
+  await sendPartyPerformerAssignmentPushes({
+    tenantId: context.tenantId,
+    company: context.company,
+    nextOrder: order,
+    source: 'party-order-created',
   })
 
   return NextResponse.json({ success: true, data: order }, { status: 201 })

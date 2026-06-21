@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import { isPushSupported, syncPushSubscription } from '@helpers/pushClient'
 
 const formatDateTime = (value) => {
   if (!value) return 'Дата не указана'
@@ -63,6 +64,10 @@ export default function PerformerWorkspaceClient() {
   const [error, setError] = useState('')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [pushAvailable, setPushAvailable] = useState(false)
+  const [pushPermission, setPushPermission] = useState('default')
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushMessage, setPushMessage] = useState('')
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -88,6 +93,40 @@ export default function PerformerWorkspaceClient() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  useEffect(() => {
+    const available = isPushSupported()
+    setPushAvailable(available)
+    setPushPermission(available ? Notification.permission : 'unsupported')
+  }, [])
+
+  const enablePush = async () => {
+    setPushBusy(true)
+    setPushMessage('')
+    setError('')
+    try {
+      if (!isPushSupported()) {
+        throw new Error('Push-уведомления не поддерживаются на этом устройстве')
+      }
+      const permission = await Notification.requestPermission()
+      setPushPermission(permission)
+      if (permission !== 'granted') {
+        throw new Error('Разрешение на push-уведомления не выдано')
+      }
+      const result = await syncPushSubscription({
+        ensureLocalSubscription: true,
+        apiBasePath: '/api/party/push',
+      })
+      if (!result?.ok) {
+        throw new Error('Не удалось создать push-подписку')
+      }
+      setPushMessage('Push-уведомления по назначениям подключены')
+    } catch (pushError) {
+      setError(pushError.message || 'Не удалось подключить push-уведомления')
+    } finally {
+      setPushBusy(false)
+    }
+  }
 
   const companyOptions = useMemo(() => {
     const companies = new Map()
@@ -219,6 +258,33 @@ export default function PerformerWorkspaceClient() {
       {error && (
         <div className="p-3 mt-5 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
           {error}
+        </div>
+      )}
+
+      {pushAvailable && pushPermission !== 'granted' && (
+        <div className="flex flex-col gap-3 p-4 mt-6 bg-white border rounded-lg border-sky-100 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">
+              Уведомления о назначениях
+            </p>
+            <p className="mt-1 text-sm text-black/60">
+              Включите push, чтобы получать новые назначения и изменения заказа.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={pushBusy}
+            onClick={enablePush}
+            className={primaryButtonClass}
+          >
+            {pushBusy ? 'Подключаем...' : 'Включить push'}
+          </button>
+        </div>
+      )}
+
+      {pushMessage && (
+        <div className="p-3 mt-5 text-sm text-emerald-700 border rounded-md border-emerald-200 bg-emerald-50">
+          {pushMessage}
         </div>
       )}
 

@@ -137,7 +137,7 @@ PartyCRM уже вышел за рамки идеи и имеет рабочий
 - [x] Добавить `/api/party/push/public-key`, `/subscribe`, `/unsubscribe`, `/test`.
 - [x] Отправлять push по новым Party leads.
 - [x] Отправлять ежедневные reminders по `PartyOrder.additionalEvents`.
-- [ ] Отправлять performer push: новое назначение, изменение даты/адреса, запрос привязки.
+- [x] Отправлять performer push: новое назначение, изменение даты/адреса, запрос привязки.
 - [x] Сделать cron endpoint с company timezone и дедупликацией отправок.
 
 ### 4. Google Calendar для PartyCRM

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 
 import {
   buildPartyInviteAcceptedPushPayload,
+  buildPartyPerformerAssignmentPushPayload,
+  buildPartyPerformerLinkRequestPushPayload,
   buildPartyTestPushPayload,
   normalizePartyPushSubscriptionPayload,
 } from './partyPushCore.js'
@@ -64,4 +66,63 @@ test('buildPartyTestPushPayload returns company-scoped notification payload', ()
   assert.equal(payload.data.companyId, 'company-1')
   assert.equal(payload.data.url, '/company/settings/notifications')
   assert.match(payload.body, /Праздник 24/)
+})
+
+test('buildPartyPerformerAssignmentPushPayload returns safe new assignment payload', () => {
+  const payload = buildPartyPerformerAssignmentPushPayload({
+    companyId: 'company-1',
+    companyTitle: 'Праздник 24',
+    orderId: 'order-1',
+    orderTitle: 'День рождения',
+    staffId: 'staff-1',
+    eventDate: '2026-06-22T09:00:00.000Z',
+    changeType: 'new',
+    contractAmount: 30000,
+    clientPayment: { totalAmount: 30000 },
+    transactions: [{ amount: 30000 }],
+  })
+
+  assert.equal(payload.title, 'Праздник 24')
+  assert.equal(payload.data.type, 'party_performer_assignment_new')
+  assert.equal(payload.data.companyId, 'company-1')
+  assert.equal(payload.data.orderId, 'order-1')
+  assert.equal(payload.data.staffId, 'staff-1')
+  assert.equal(payload.data.url, '/performer')
+  assert.match(payload.body, /Новое назначение/)
+  assert.match(payload.body, /День рождения/)
+  assert.equal(Object.hasOwn(payload.data, 'contractAmount'), false)
+  assert.equal(Object.hasOwn(payload.data, 'clientPayment'), false)
+  assert.equal(Object.hasOwn(payload.data, 'transactions'), false)
+})
+
+test('buildPartyPerformerAssignmentPushPayload returns changed assignment payload', () => {
+  const payload = buildPartyPerformerAssignmentPushPayload({
+    companyId: 'company-1',
+    companyTitle: 'Праздник 24',
+    orderId: 'order-1',
+    orderTitle: 'День рождения',
+    staffId: 'staff-1',
+    changeType: 'changed',
+  })
+
+  assert.equal(payload.data.type, 'party_performer_assignment_changed')
+  assert.match(payload.body, /Назначение изменено/)
+  assert.equal(payload.tag, 'party-performer-assignment-changed-order-1-staff-1')
+})
+
+test('buildPartyPerformerLinkRequestPushPayload points performer to link requests', () => {
+  const payload = buildPartyPerformerLinkRequestPushPayload({
+    companyId: 'company-1',
+    companyTitle: 'Праздник 24',
+    staffId: 'staff-1',
+    staffName: 'Иван Петров',
+  })
+
+  assert.equal(payload.title, 'Праздник 24')
+  assert.equal(payload.data.type, 'party_performer_link_request')
+  assert.equal(payload.data.companyId, 'company-1')
+  assert.equal(payload.data.staffId, 'staff-1')
+  assert.equal(payload.data.url, '/performer')
+  assert.match(payload.body, /Иван Петров/)
+  assert.match(payload.body, /привязку/)
 })

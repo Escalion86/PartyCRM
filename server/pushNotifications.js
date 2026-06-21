@@ -2,6 +2,7 @@ import webpush from 'web-push'
 import crypto from 'crypto'
 import PushDeliveryLogs from '@models/PushDeliveryLogs'
 import PushSubscriptions from '@models/PushSubscriptions'
+import { buildPushSubscriptionFindFilter } from './pushNotificationFilters'
 
 let isConfigured = false
 
@@ -192,6 +193,8 @@ const sendPushToTenant = async ({
   product = 'artistcrm',
   companyId = null,
   userId = null,
+  targetUserId = null,
+  allowCrossTenantUserTarget = false,
 }) => {
   if (!tenantId || !payload || typeof payload !== 'object') {
     return { ok: false, sent: 0, failed: 0, deactivated: 0 }
@@ -212,10 +215,14 @@ const sendPushToTenant = async ({
     return { ok: false, sent: 0, failed: 0, deactivated: 0, reason: 'no_vapid' }
   }
 
-  const docs = await PushSubscriptions.find({
-    tenantId,
-    isActive: true,
-  })
+  const docs = await PushSubscriptions.find(
+    buildPushSubscriptionFindFilter({
+      tenantId,
+      product,
+      targetUserId,
+      allowCrossTenantUserTarget,
+    })
+  )
     .select('endpoint keys')
     .lean()
 
