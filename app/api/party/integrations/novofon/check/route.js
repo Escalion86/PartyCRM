@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext } from '@server/partyApi'
-import { checkVkGroupAccess, normalizeVkSettings } from '@server/vkGroup'
+import { normalizeNovofonSettings } from '@server/novofon'
 
 export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
@@ -16,37 +16,24 @@ export async function GET(req) {
     .lean()
 
   const integrations = company?.settings?.integrations ?? {}
-  const vk = normalizeVkSettings(integrations)
-
+  const novofon = normalizeNovofonSettings(integrations)
   const checkedAt = new Date().toISOString()
-  let status = 'connected'
-  let lastError = ''
+  const missing = []
 
-  if (!vk.enabled) {
-    status = 'disabled'
-    lastError = 'vk_group_disabled'
-  } else if (!vk.groupId || !vk.accessToken) {
-    status = 'error'
-    lastError = 'vk_group_credentials_required'
-  } else {
-    try {
-      await checkVkGroupAccess({
-        accessToken: vk.accessToken,
-        groupId: vk.groupId,
-      })
-    } catch (err) {
-      status = 'error'
-      lastError = err instanceof Error ? err.message : 'vk_group_check_failed'
-    }
-  }
+  if (!novofon.enabled) missing.push('novofon_disabled')
+  if (!novofon.apiKey) missing.push('novofon_api_key_required')
+  if (!novofon.webhookSecret) missing.push('novofon_webhook_secret_required')
+
+  const status = missing.length === 0 ? 'connected' : 'error'
+  const lastError = missing.join(', ')
 
   await PartyCompanies.updateOne(
     { _id: context.tenantId },
     {
       $set: {
-        'settings.integrations.vkGroupLastCheckedAt': checkedAt,
-        'settings.integrations.vkGroupStatus': status,
-        'settings.integrations.vkGroupLastError': lastError,
+        'settings.integrations.novofonLastCheckedAt': checkedAt,
+        'settings.integrations.novofonStatus': status,
+        'settings.integrations.novofonLastError': lastError,
       },
     }
   )
@@ -54,7 +41,7 @@ export async function GET(req) {
   return NextResponse.json({
     success: true,
     data: {
-      ...vk,
+      ...novofon,
       status,
       lastCheckedAt: checkedAt,
       lastError,

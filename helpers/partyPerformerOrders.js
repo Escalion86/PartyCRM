@@ -44,7 +44,6 @@ export const sanitizePartyOrderForPerformer = ({
         '',
       phone: client?.phone || order.client?.phone || '',
     },
-    adminComment: order.adminComment || '',
     assignment: assignment
       ? {
           role: assignment.role,

@@ -16,6 +16,7 @@ import PartyCard, {
 } from '@components/party/PartyCard'
 import { formatMoney } from '@helpers/formatMoney'
 import getPersonFullName from '@helpers/getPersonFullName'
+import { getOrderPaymentState } from '@helpers/partyOrderTransactions'
 
 const ORDER_STATUSES = [
   { value: 'draft', label: 'Заявка', color: 'gray', icon: faClock },
@@ -124,11 +125,6 @@ const getOrderPayoutTotal = (order) =>
 const getOrderContractAmount = (order) =>
   Number(order.contractAmount ?? order.clientPayment?.totalAmount ?? 0)
 
-const getOrderTransactionTotal = (order, type) =>
-  (order.transactions ?? [])
-    .filter((transaction) => transaction.type === type)
-    .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0)
-
 const formatDateTime = (value) => {
   if (!value) return 'Дата не указана'
   const date = new Date(value)
@@ -192,8 +188,14 @@ const OrderCard = ({
   const [statusModalOpen, setStatusModalOpen] = useState(false)
   const location = locations.find((item) => item._id === order.locationId)
   const orderClient = getOrderClientLabel(order, clientsById)
+  const contractAmount = getOrderContractAmount(order)
+  const transactions = Array.isArray(order.transactions) ? order.transactions : []
+  const paymentState = getOrderPaymentState({
+    contractAmount,
+    transactions,
+  })
   const payoutTotal = getOrderPayoutTotal(order)
-  const incomeTotal = getOrderTransactionTotal(order, 'income')
+  const grossMargin = paymentState.margin - payoutTotal
   const additionalEventsBadges = getAdditionalEventsBadges(order)
   const statusConfig = ORDER_STATUSES.find((s) => s.value === order.status)
 
@@ -261,10 +263,14 @@ const OrderCard = ({
             <p className="mt-1 truncate text-sm text-black/60">
               Клиент: {orderClient.name} · {orderClient.phone}
             </p>
-            <p className="mt-1 text-sm text-black/60">
-              Договор: {formatMoney(getOrderContractAmount(order))} · получено:{' '}
-              {formatMoney(incomeTotal)} · выплаты: {formatMoney(payoutTotal)}
-            </p>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-black/60 sm:grid-cols-3">
+              <span>Договор: {formatMoney(contractAmount)}</span>
+              <span>Получено: {formatMoney(paymentState.incomeTotal)}</span>
+              <span>Остаток: {formatMoney(paymentState.balanceDue)}</span>
+              <span>Расходы: {formatMoney(paymentState.expenseTotal)}</span>
+              <span>Выплаты: {formatMoney(payoutTotal)}</span>
+              <span>Маржа: {formatMoney(grossMargin)}</span>
+            </div>
           </div>
           {canManage && (
             <PartyCardActions>

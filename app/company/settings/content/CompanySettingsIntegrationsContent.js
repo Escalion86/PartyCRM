@@ -815,6 +815,13 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
               },
             })
           }
+          onCheck={() =>
+            runIntegrationAction({
+              provider: 'novofon',
+              action: 'check',
+              method: 'GET',
+            })
+          }
           onDisconnect={() =>
             runIntegrationAction({
               provider: 'novofon',
@@ -871,6 +878,18 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
           />
         </div>
         <IntegrationDiagnostics state={status?.ai} />
+        <IntegrationActions
+          provider="AI"
+          disabled={access && !access.allowAi}
+          loading={actionLoading.startsWith('ai:')}
+          onCheck={() =>
+            runIntegrationAction({
+              provider: 'ai',
+              action: 'check',
+              method: 'GET',
+            })
+          }
+        />
       </CompanyIntegrationCard>
 
       {saving ? (

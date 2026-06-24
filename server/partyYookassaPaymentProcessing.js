@@ -1,5 +1,4 @@
 import { getPartyCompanyModel, getPartyPaymentModel } from "./partyModels"
-import { applyPartyCompanyTariffPurchase } from "./partyBilling"
 import {
   SBP_BONUS_RATE,
   getSbpBonusAmount,
@@ -129,21 +128,6 @@ const processSucceededPartyYookassaPayment = async ({
       paymentMethodType: methodInfo.type,
       paymentMethodTitle: methodInfo.title,
     })
-  }
-
-  if (payment.purpose === "tariff" && payment.tariffId) {
-    const result = await applyPartyCompanyTariffPurchase({
-      companyId: payment.tenantId,
-      initiatedByUserId: payment.userId,
-      tariffId: payment.tariffId,
-    })
-    if (!result.ok) {
-      payment.comment = `${
-        payment.comment || "Платеж"
-      }: баланс пополнен, но тариф не активирован (${result.error})`
-      await payment.save()
-      return { ok: false, error: result.error }
-    }
   }
 
   return { ok: true, bonusAmount }

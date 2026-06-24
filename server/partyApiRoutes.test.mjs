@@ -66,6 +66,30 @@ test('party provider create routes top up balance instead of buying tariffs dire
   }
 })
 
+test('party provider success processing only credits company balance', async () => {
+  for (const path of [
+    'server/partyYookassaPaymentProcessing.js',
+    'server/partyTochkaPaymentProcessing.js',
+  ]) {
+    const source = await route(path)
+
+    assert.doesNotMatch(source, /applyPartyCompanyTariffPurchase/)
+    assert.doesNotMatch(source, /payment\.purpose\s*===\s*"tariff"/)
+    assert.match(source, /company\.balance\s*=/)
+    assert.match(source, /payment\.purpose\s*===\s*"balance"/)
+  }
+})
+
+test('party billing diagnostics route exposes safe preflight status for company managers', async () => {
+  const source = await route('app/api/party/billing/diagnostics/route.js')
+
+  assert.match(source, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
+  assert.match(source, /buildPartyBillingDiagnostics/)
+  assert.match(source, /NextResponse\.json/)
+  assert.doesNotMatch(source, /YOOKASSA_SECRET_KEY/)
+  assert.doesNotMatch(source, /TOCHKA_API_TOKEN/)
+})
+
 test('party messenger conversation routes use PartyCRM models and request context', async () => {
   for (const path of [
     'app/api/party/integrations/avito/conversations/route.js',
@@ -133,6 +157,57 @@ test('party novofon routes use PartyCRM webhook and product-aware call flow', as
   assert.doesNotMatch(webhookSource, /@models\/Calls/)
 })
 
+test('party AI save route enforces company tariff access and stores settings on PartyCompany', async () => {
+  const source = await route('app/api/party/integrations/ai/save/route.js')
+
+  assert.match(source, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
+  assert.match(source, /getPartyCompanyModel/)
+  assert.match(source, /getPartyCompanyTariffAccessState/)
+  assert.match(source, /allowAi/)
+  assert.match(source, /settings\.integrations/)
+  assert.match(source, /normalizeAiSettings/)
+  assert.doesNotMatch(source, /SiteSettings/)
+  assert.doesNotMatch(source, /@models\/Site/)
+})
+
+test('party AI check route validates company AI settings and records diagnostics', async () => {
+  const source = await route('app/api/party/integrations/ai/check/route.js')
+
+  assert.match(source, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
+  assert.match(source, /getPartyCompanyModel/)
+  assert.match(source, /getPartyCompanyTariffAccessState/)
+  assert.match(source, /allowAi/)
+  assert.match(source, /normalizeAiSettings/)
+  assert.match(source, /aiLastCheckedAt/)
+  assert.match(source, /aiLastError/)
+  assert.match(source, /settings\.integrations/)
+  assert.doesNotMatch(source, /SiteSettings/)
+  assert.doesNotMatch(source, /@models\/Site/)
+})
+
+test('party integration check routes record company-level diagnostics', async () => {
+  const vkSource = await route('app/api/party/integrations/vk/check/route.js')
+  const avitoSource = await route('app/api/party/integrations/avito/check/route.js')
+  const novofonSource = await route(
+    'app/api/party/integrations/novofon/check/route.js'
+  )
+
+  for (const source of [vkSource, avitoSource, novofonSource]) {
+    assert.match(source, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
+    assert.match(source, /getPartyCompanyModel/)
+    assert.match(source, /LastCheckedAt/)
+    assert.match(source, /LastError/)
+    assert.match(source, /Status/)
+    assert.match(source, /settings\.integrations/)
+    assert.doesNotMatch(source, /SiteSettings/)
+    assert.doesNotMatch(source, /@models\/Site/)
+  }
+
+  assert.match(novofonSource, /normalizeNovofonSettings/)
+  assert.match(novofonSource, /novofon_api_key_required/)
+  assert.match(novofonSource, /novofon_webhook_secret_required/)
+})
+
 test('party calls routes expose Novofon calls and create orders from call drafts', async () => {
   const listSource = await route('app/api/party/calls/route.js')
   const createOrderSource = await route(
@@ -157,4 +232,47 @@ test('party calls routes expose Novofon calls and create orders from call drafts
   assert.match(createOrderSource, /syncPartyOrderCalendarAfterCrud/)
   assert.match(createOrderSource, /context\.tenantId/)
   assert.match(createOrderSource, /allowTelephony/)
+})
+
+test('party close-past route returns close financial summaries for owner review', async () => {
+  const source = await route('app/api/party/orders/close-past/route.js')
+
+  assert.match(source, /closed:\s*closed/)
+  assert.match(source, /summary:\s*readiness\.summary/)
+  assert.match(source, /closedIds:\s*closed\.map/)
+  assert.match(source, /skipped\.push\(\{\s*orderId,\s*blockers:\s*readiness\.blockers,\s*summary:\s*readiness\.summary/)
+})
+
+test('party performer calendar route exports only sanitized performer assignments', async () => {
+  const source = await route('app/api/party/performer/calendar/route.js')
+
+  assert.match(source, /getPartyMembershipContext/)
+  assert.match(source, /sanitizePartyOrderForPerformer/)
+  assert.match(source, /buildPartyPerformerCalendarIcs/)
+  assert.match(source, /text\/calendar/)
+  assert.match(source, /Content-Disposition/)
+  assert.doesNotMatch(source, /getPartyRequestContext\(\{\s*req,\s*managementOnly/)
+  assert.doesNotMatch(source, /contractAmount/)
+  assert.doesNotMatch(source, /clientPayment/)
+  assert.doesNotMatch(source, /transactions/)
+})
+
+test('party performer routes expose assignments and allow confirming and completing own work', async () => {
+  const listSource = await route('app/api/party/performer/orders/route.js')
+  const statusSource = await route(
+    'app/api/party/performer/orders/[id]/status/route.js'
+  )
+  const workspaceSource = await route('app/performer/PerformerWorkspaceClient.js')
+
+  assert.match(listSource, /getPartyMembershipContext/)
+  assert.match(listSource, /sanitizePartyOrderForPerformer/)
+  assert.match(listSource, /'assignedStaff\.staffId':\s*String\(membership\.staffId\)/)
+  assert.match(statusSource, /ALLOWED_STATUSES\s*=\s*new Set\(\['confirmed', 'declined', 'done'\]\)/)
+  assert.match(statusSource, /getPartyMembershipContext/)
+  assert.match(statusSource, /partycrm_performer_staff_access_denied/)
+  assert.match(statusSource, /'assignedStaff\.\$\.confirmationStatus':\s*confirmationStatus/)
+  assert.match(workspaceSource, /Подтвердить участие/)
+  assert.match(workspaceSource, /Отметить выполненным/)
+  assert.match(workspaceSource, /confirmationStatus:\s*'confirmed'/)
+  assert.match(workspaceSource, /confirmationStatus:\s*'done'/)
 })

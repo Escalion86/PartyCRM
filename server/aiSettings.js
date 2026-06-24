@@ -16,6 +16,7 @@ const normalizeStringList = (items) =>
 export const normalizeAiSettings = (custom) => {
   const aitunnelKey = String(getCustomValue(custom, 'aitunnelKey') || '').trim()
   const defaultProvider = aitunnelKey ? 'aitunnel' : ''
+  const lastError = String(getCustomValue(custom, 'aiLastError') || '').trim()
   return {
     aitunnelKey,
     aiAnalysisProvider: String(
@@ -29,6 +30,9 @@ export const normalizeAiSettings = (custom) => {
       getCustomValue(custom, 'aiTranscriptionModel') || ''
     ).trim(),
     eventTypes: normalizeStringList(getCustomValue(custom, 'eventTypes')),
+    status: aitunnelKey ? (lastError ? 'warning' : 'connected') : 'not_configured',
+    lastCheckedAt: String(getCustomValue(custom, 'aiLastCheckedAt') || '').trim(),
+    lastError,
   }
 }
 

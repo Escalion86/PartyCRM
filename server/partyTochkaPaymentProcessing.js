@@ -1,5 +1,4 @@
 import crypto from "crypto"
-import { applyPartyCompanyTariffPurchase } from "./partyBilling"
 import { getPartyCompanyModel, getPartyPaymentModel } from "./partyModels"
 import {
   SBP_BONUS_RATE,
@@ -159,21 +158,6 @@ const processSucceededPartyTochkaPayment = async ({
       paymentMethodType: methodInfo.type,
       paymentMethodTitle: methodInfo.title,
     })
-  }
-
-  if (payment.purpose === "tariff" && payment.tariffId) {
-    const result = await applyPartyCompanyTariffPurchase({
-      companyId: payment.tenantId,
-      initiatedByUserId: payment.userId,
-      tariffId: payment.tariffId,
-    })
-    if (!result.ok) {
-      payment.comment = `${
-        payment.comment || "Платеж"
-      }: баланс пополнен, но тариф не активирован (${result.error})`
-      await payment.save()
-      return { ok: false, error: result.error }
-    }
   }
 
   return { ok: true, bonusAmount }

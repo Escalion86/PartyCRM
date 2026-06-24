@@ -160,6 +160,84 @@ const buildFinanceSummary = (orders) =>
     }
   )
 
+const formatClosePayoutStatus = (summary = {}) => {
+  if (summary.payoutStatus === 'none') return 'выплат нет'
+  if (summary.unpaidPayoutCount > 0) {
+    return `не выплачено ${formatMoney(summary.unpaidPayoutTotal)} (${summary.unpaidPayoutCount})`
+  }
+  if (summary.payoutStatus === 'paid') return 'выплачено'
+  return 'требует проверки'
+}
+
+const buildClosedOrdersSummary = (closed = []) => {
+  const summary = closed.reduce(
+    (result, item) => {
+      const itemSummary = item?.summary ?? {}
+      return {
+        contractAmount:
+          result.contractAmount + Number(itemSummary.contractAmount || 0),
+        incomeTotal: result.incomeTotal + Number(itemSummary.incomeTotal || 0),
+        expenseTotal:
+          result.expenseTotal + Number(itemSummary.expenseTotal || 0),
+        balanceDue: result.balanceDue + Number(itemSummary.balanceDue || 0),
+        payoutTotal: result.payoutTotal + Number(itemSummary.payoutTotal || 0),
+        paidPayoutTotal:
+          result.paidPayoutTotal + Number(itemSummary.paidPayoutTotal || 0),
+        unpaidPayoutTotal:
+          result.unpaidPayoutTotal +
+          Number(itemSummary.unpaidPayoutTotal || 0),
+        unpaidPayoutCount:
+          result.unpaidPayoutCount +
+          Number(itemSummary.unpaidPayoutCount || 0),
+        grossMargin: result.grossMargin + Number(itemSummary.grossMargin || 0),
+      }
+    },
+    {
+      contractAmount: 0,
+      incomeTotal: 0,
+      expenseTotal: 0,
+      balanceDue: 0,
+      payoutTotal: 0,
+      paidPayoutTotal: 0,
+      unpaidPayoutTotal: 0,
+      unpaidPayoutCount: 0,
+      grossMargin: 0,
+    }
+  )
+
+  return {
+    ...summary,
+    payoutStatus:
+      summary.payoutTotal <= 0
+        ? 'none'
+        : summary.unpaidPayoutCount <= 0
+          ? 'paid'
+          : summary.paidPayoutTotal > 0
+            ? 'partial'
+            : 'unpaid',
+  }
+}
+
+const buildClosePastOrdersAlert = ({ closed = [], skipped = [] } = {}) => {
+  const lines = []
+  if (closed.length > 0) {
+    const summary = buildClosedOrdersSummary(closed)
+    lines.push(`Закрыто заказов: ${closed.length}`)
+    lines.push('Финансовый результат закрытых заказов:')
+    lines.push(`Выручка: ${formatMoney(summary.incomeTotal)}`)
+    lines.push(`Расходы: ${formatMoney(summary.expenseTotal)}`)
+    lines.push(`Выплаты: ${formatMoney(summary.payoutTotal)}`)
+    lines.push(`Маржа: ${formatMoney(summary.grossMargin)}`)
+    lines.push(`Статус выплат: ${formatClosePayoutStatus(summary)}`)
+  }
+  if (skipped.length > 0) {
+    lines.push(
+      `Не закрыто заказов: ${skipped.length}. Проверьте оплату, выплаты и открытые задачи.`
+    )
+  }
+  return lines.join('\n')
+}
+
 const buildCompanyRequestOptions = (companyId, options = {}) => ({
   ...options,
   headers: {
@@ -788,11 +866,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           )
         )
       }
+      const closed = response.data?.closed ?? []
       const skipped = response.data?.skipped ?? []
-      if (skipped.length > 0) {
-        window.alert(
-          `Не закрыто заказов: ${skipped.length}. Проверьте оплату, выплаты и открытые задачи.`
-        )
+      const message = buildClosePastOrdersAlert({ closed, skipped })
+      if (message) {
+        window.alert(message)
       }
     } finally {
       setSaving(false)

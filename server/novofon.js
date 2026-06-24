@@ -81,6 +81,13 @@ export const normalizeNovofonSettings = (custom = {}) => {
     enabled: getValue('novofonEnabled') === true,
     webhookSecret: getFirstString(getValue('novofonWebhookSecret')),
     apiKey: getFirstString(getValue('novofonApiKey')),
+    virtualPhone: getFirstString(getValue('novofonVirtualPhone')),
+    webhookUrl: getFirstString(getValue('novofonWebhookUrl')),
+    status: getFirstString(getValue('novofonStatus')),
+    lastError: getFirstString(getValue('novofonLastError')),
+    connectedAt: getFirstString(getValue('novofonConnectedAt')),
+    lastCheckedAt: getFirstString(getValue('novofonLastCheckedAt')),
+    lastWebhookAt: getFirstString(getValue('novofonLastWebhookAt')),
   }
 }
 

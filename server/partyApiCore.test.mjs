@@ -54,6 +54,11 @@ test('resolvePartyRequestContext rejects foreign company id', () => {
 
   assert.equal(result.error.status, 403)
   assert.equal(result.error.code, 'partycrm_company_access_denied')
+  assert.equal(result.context.tenantId, null)
+  assert.equal(result.context.staff, null)
+  assert.equal(result.context.company, null)
+  assert.equal(result.context.role, null)
+  assert.equal(result.context.activeMembership, null)
 })
 
 test('resolvePartyRequestContext requires selected company header', () => {

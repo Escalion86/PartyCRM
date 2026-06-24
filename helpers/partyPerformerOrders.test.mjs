@@ -18,6 +18,7 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
       clientId: 'client-1',
       client: { name: 'Снапшот', phone: '79990000000' },
       adminComment: 'Взять костюм',
+      internalNotes: 'Клиент просил скидку, не показывать',
       contractAmount: 30000,
       clientPayment: { totalAmount: 30000, status: 'paid' },
       transactions: [{ amount: 30000, type: 'income' }],
@@ -68,4 +69,6 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
   assert.equal(Object.hasOwn(result, 'transactions'), false)
   assert.equal(Object.hasOwn(result, 'balance'), false)
   assert.equal(Object.hasOwn(result, 'tariffId'), false)
+  assert.equal(Object.hasOwn(result, 'adminComment'), false)
+  assert.equal(Object.hasOwn(result, 'internalNotes'), false)
 })

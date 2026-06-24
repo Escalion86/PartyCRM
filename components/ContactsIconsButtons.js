@@ -134,7 +134,7 @@ const ContactsIconsButtons = ({
           <Btn
             icon={faTelegramPlane}
             className="text-blue-600"
-            url={`https://t.me/${user.telegram}`}
+            url={`tg://resolve?domain=${user.telegram}`}
             title={'@' + user.telegram}
           />
         ) : (
@@ -143,7 +143,7 @@ const ContactsIconsButtons = ({
             <Btn
               icon={faTelegramPlane}
               className="text-red-400"
-              url={`https://t.me/+${user.phone}`}
+              url={`tg://resolve?phone=${user.phone}`}
               title={'+' + user.phone}
             />
           )

@@ -48,11 +48,17 @@ const formatDate = (value) => {
   })
 }
 
+const PROVIDER_LABELS = {
+  yookassa: 'YooKassa',
+  tochka: 'Точка',
+}
+
 export default function CompanySettingsTariffsContent({ activeCompanyId }) {
   const [tariffs, setTariffs] = useState([])
   const [userData, setUserData] = useState(null)
   const [payments, setPayments] = useState([])
   const [billingConfig, setBillingConfig] = useState(null)
+  const [billingDiagnostics, setBillingDiagnostics] = useState(null)
   const [selectedProvider, setSelectedProvider] = useState('')
   const [topUpAmount, setTopUpAmount] = useState('3000')
   const [loading, setLoading] = useState(true)
@@ -81,7 +87,13 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
     setLoading(true)
     setError('')
     try {
-      const [tariffsRes, userRes, paymentsRes, configRes] = await Promise.all([
+      const [
+        tariffsRes,
+        userRes,
+        paymentsRes,
+        configRes,
+        diagnosticsRes,
+      ] = await Promise.all([
         apiJson('/api/party/tariffs', { cache: 'no-store' }),
         apiJson(
           '/api/party/billing/me',
@@ -92,11 +104,16 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
           buildRequestOptions({ cache: 'no-store' })
         ),
         apiJson('/api/party/billing/config', { cache: 'no-store' }),
+        apiJson(
+          '/api/party/billing/diagnostics',
+          buildRequestOptions({ cache: 'no-store' })
+        ),
       ])
       setTariffs(tariffsRes.data ?? [])
       setUserData(userRes.data ?? null)
       setPayments(paymentsRes.data ?? [])
       setBillingConfig(configRes.data ?? null)
+      setBillingDiagnostics(diagnosticsRes.data ?? null)
       setSelectedProvider((prev) => {
         const providers = configRes.data?.providers ?? {}
         if (prev && providers[prev]) return prev
@@ -348,6 +365,55 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
           YooKassa и Точка здесь используются только для оплаты сервиса
           PartyCRM. Это не настройки приема оплат от клиентов вашей компании.
         </p>
+        {billingDiagnostics && (
+          <div className="mt-4 rounded-xl bg-slate-50 p-4">
+            <div className="text-sm font-semibold text-slate-900">
+              Диагностика платежей
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {Object.entries(billingDiagnostics.providers ?? {}).map(
+                ([providerKey, provider]) => (
+                  <div
+                    key={providerKey}
+                    className="rounded-xl border border-slate-100 bg-white p-3 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-semibold text-slate-900">
+                        {PROVIDER_LABELS[providerKey] || providerKey}
+                      </span>
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                          provider.readyForTestPayment
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-amber-50 text-amber-700'
+                        }`}
+                      >
+                        {provider.readyForTestPayment
+                          ? 'Готов к тесту'
+                          : 'Нужна настройка'}
+                      </span>
+                    </div>
+                    {(provider.missing ?? []).length > 0 && (
+                      <p className="mt-2 text-xs leading-5 text-amber-700">
+                        Не хватает: {provider.missing.join(', ')}
+                      </p>
+                    )}
+                    {(provider.blockers ?? []).length > 0 && (
+                      <p className="mt-2 text-xs leading-5 text-red-700">
+                        Блокеры: {provider.blockers.join(', ')}
+                      </p>
+                    )}
+                    {provider.webhookUrl && (
+                      <p className="mt-2 break-all text-xs leading-5 text-slate-500">
+                        Webhook: {provider.webhookUrl}
+                      </p>
+                    )}
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        )}
         {providerOptions.length > 0 ? (
           <div className="mt-3 grid gap-3">
             <div className="grid gap-2 sm:grid-cols-2">

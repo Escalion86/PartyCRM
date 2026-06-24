@@ -50,7 +50,7 @@ export async function POST(req) {
     map.get(orderId).push(transaction)
     return map
   }, new Map())
-  const closedIds = []
+  const closed = []
   const skipped = []
 
   orders.forEach((order) => {
@@ -62,11 +62,16 @@ export async function POST(req) {
         orderTransactions.length > 0 ? orderTransactions : order.transactions,
     })
     if (readiness.ok) {
-      closedIds.push(orderId)
+      closed.push({ orderId, summary: readiness.summary })
       return
     }
-    skipped.push({ orderId, blockers: readiness.blockers })
+    skipped.push({
+      orderId,
+      blockers: readiness.blockers,
+      summary: readiness.summary,
+    })
   })
+  const closedIds = closed.map((item) => item.orderId)
 
   if (closedIds.length > 0) {
     await PartyOrders.updateMany(
@@ -87,8 +92,9 @@ export async function POST(req) {
   return NextResponse.json({
     success: true,
     data: {
-      closedCount: closedIds.length,
-      closedIds,
+      closedCount: closed.length,
+      closedIds: closed.map((item) => item.orderId),
+      closed: closed,
       skipped,
     },
   })

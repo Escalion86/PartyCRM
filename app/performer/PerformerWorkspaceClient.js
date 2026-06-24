@@ -254,6 +254,15 @@ export default function PerformerWorkspaceClient() {
         Видны только назначенные заказы и сумма выплаты исполнителю. Полная
         клиентская смета здесь не показывается.
       </p>
+      <div className="flex flex-wrap gap-2 mt-5">
+        <a
+          href="/api/party/performer/calendar"
+          download="partycrm-performer-calendar.ics"
+          className={secondaryButtonClass}
+        >
+          Скачать календарь
+        </a>
+      </div>
 
       {error && (
         <div className="p-3 mt-5 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
@@ -447,11 +456,6 @@ export default function PerformerWorkspaceClient() {
                     Клиент: {order.client?.name || 'не указан'} ·{' '}
                     {order.client?.phone || 'телефон не указан'}
                   </p>
-                  {order.adminComment && (
-                    <p className="mt-2 text-sm text-black/70">
-                      {order.adminComment}
-                    </p>
-                  )}
                 </div>
                 <div className="sm:text-right">
                   <p className="text-sm text-black/55">Выплата</p>

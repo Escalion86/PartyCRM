@@ -74,6 +74,7 @@ export const resolvePartyRequestContext = ({
         company: null,
         tenantId: null,
         role: null,
+        activeMembership: null,
       },
       error: partyContextError(
         403,

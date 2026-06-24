@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext } from '@server/partyApi'
-import { normalizeAvitoSettings } from '@server/avito'
+import { normalizeAvitoSettings, requestAvitoAccessToken } from '@server/avito'
 
 export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
@@ -18,17 +18,50 @@ export async function GET(req) {
   const integrations = company?.settings?.integrations ?? {}
   const avito = normalizeAvitoSettings(integrations)
 
-  let checkedAt = new Date().toISOString()
+  const checkedAt = new Date().toISOString()
+  let status = 'connected'
+  let lastError = ''
+
+  if (!avito.enabled) {
+    status = 'disabled'
+    lastError = 'avito_disabled'
+  } else if (!avito.clientId || !avito.clientSecret) {
+    status = 'error'
+    lastError = 'avito_credentials_required'
+  } else {
+    try {
+      await requestAvitoAccessToken({
+        clientId: avito.clientId,
+        clientSecret: avito.clientSecret,
+      })
+      if (!avito.webhookToken && !avito.webhookUrl) {
+        status = 'webhook_missing'
+        lastError = 'avito_webhook_required'
+      }
+    } catch (err) {
+      status = 'error'
+      lastError = err instanceof Error ? err.message : 'avito_check_failed'
+    }
+  }
 
   await PartyCompanies.updateOne(
     { _id: context.tenantId },
     {
-      $set: { 'settings.integrations.avitoLastCheckedAt': checkedAt },
+      $set: {
+        'settings.integrations.avitoLastCheckedAt': checkedAt,
+        'settings.integrations.avitoStatus': status,
+        'settings.integrations.avitoLastError': lastError,
+      },
     }
   )
 
   return NextResponse.json({
     success: true,
-    data: { ...avito, lastCheckedAt: checkedAt },
+    data: {
+      ...avito,
+      status,
+      lastCheckedAt: checkedAt,
+      lastError,
+    },
   })
 }
