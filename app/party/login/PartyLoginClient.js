@@ -56,7 +56,15 @@ const Field = ({
   readOnly = false,
   name,
   autoComplete,
+  showPasswordToggle = false,
+  passwordVisible = false,
+  onTogglePasswordVisibility,
 }) => {
+  const isPasswordField = type === 'password'
+  const canTogglePassword = isPasswordField && showPasswordToggle
+  const passwordInputType =
+    canTogglePassword && passwordVisible ? 'text' : 'password'
+
   const handleChange = (event) => {
     if (type === 'phone') {
       let inputValue = event.target.value
@@ -82,18 +90,59 @@ const Field = ({
   return (
     <label className="grid gap-1 text-sm">
       <span className="font-medium text-black/65">{label}</span>
-      <input
-        name={name}
-        type={type === 'phone' ? 'text' : type}
-        inputMode={type === 'phone' ? 'tel' : undefined}
-        autoComplete={autoComplete}
-        value={value}
-        onChange={handleChange}
-        readOnly={readOnly}
-        className={`h-10 rounded-md border border-sky-100 bg-white px-3 outline-none focus:border-sky-500 ${
-          readOnly ? 'bg-slate-50 text-slate-400' : ''
-        }`}
-      />
+      <span className="relative">
+        <input
+          name={name}
+          type={
+            type === 'phone'
+              ? 'text'
+              : isPasswordField
+                ? passwordInputType
+                : type
+          }
+          inputMode={type === 'phone' ? 'tel' : undefined}
+          autoComplete={autoComplete}
+          value={value}
+          onChange={handleChange}
+          readOnly={readOnly}
+          className={`h-10 w-full rounded-md border border-sky-100 bg-white px-3 outline-none focus:border-sky-500 ${
+            canTogglePassword ? 'pr-11' : ''
+          } ${readOnly ? 'bg-slate-50 text-slate-400' : ''}`}
+        />
+        {canTogglePassword && (
+          <button
+            type="button"
+            aria-label={
+              passwordInputType === 'password'
+                ? 'Показать пароль'
+                : 'Скрыть пароль'
+            }
+            onClick={onTogglePasswordVisibility}
+            className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-sky-50 hover:text-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+          >
+            <svg
+              aria-hidden="true"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M2.25 12s3.75-6.75 9.75-6.75S21.75 12 21.75 12 18 18.75 12 18.75 2.25 12 2.25 12z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 9.75a2.25 2.25 0 110 4.5 2.25 2.25 0 010-4.5z"
+              />
+            </svg>
+          </button>
+        )}
+      </span>
     </label>
   )
 }
@@ -122,6 +171,8 @@ export default function PartyLoginClient({
   const [phone, setPhone] = useState('')
   const [password, setPassword] = useState('')
   const [passwordRepeat, setPasswordRepeat] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const [passwordRepeatVisible, setPasswordRepeatVisible] = useState(false)
   const [firstName, setFirstName] = useState('')
   const [secondName, setSecondName] = useState('')
   const [termsAccepted, setTermsAccepted] = useState(false)
@@ -441,6 +492,11 @@ export default function PartyLoginClient({
             onChange={setPassword}
             name="password"
             autoComplete="current-password"
+            showPasswordToggle
+            passwordVisible={passwordVisible}
+            onTogglePasswordVisibility={() =>
+              setPasswordVisible((visible) => !visible)
+            }
           />
 
           <button
@@ -659,6 +715,11 @@ export default function PartyLoginClient({
             onChange={setPassword}
             name="new-password"
             autoComplete="new-password"
+            showPasswordToggle
+            passwordVisible={passwordVisible}
+            onTogglePasswordVisibility={() =>
+              setPasswordVisible((visible) => !visible)
+            }
           />
           <Field
             label="Повторите пароль"
@@ -667,6 +728,11 @@ export default function PartyLoginClient({
             onChange={setPasswordRepeat}
             name="password-repeat"
             autoComplete="new-password"
+            showPasswordToggle
+            passwordVisible={passwordRepeatVisible}
+            onTogglePasswordVisibility={() =>
+              setPasswordRepeatVisible((visible) => !visible)
+            }
           />
 
           <div className="grid gap-3 sm:grid-cols-2">
