@@ -34,9 +34,12 @@ export const hasPartyCompanyRole = (roles = []) =>
 export const getPartyEntryState = ({ user = null, memberships = [] } = {}) => {
   const roles = normalizeRoles(user?.interfaceRoles)
   const lastWorkspace = normalizePartyWorkspace(user?.lastWorkspace)
-  const canUseCompany = roles.includes(PARTY_WORKSPACE_TYPES.COMPANY)
+  const hasManagementAccess = hasPartyManagementAccess(memberships)
+  const canUseCompany =
+    roles.includes(PARTY_WORKSPACE_TYPES.COMPANY) ||
+    (user?.role === 'dev' && hasManagementAccess)
   const canUsePerformer = roles.includes(PARTY_WORKSPACE_TYPES.PERFORMER)
-  const companyReady = canUseCompany && hasPartyManagementAccess(memberships)
+  const companyReady = canUseCompany && hasManagementAccess
   const performerReady =
     canUsePerformer && Boolean(user?.performerOnboardingCompletedAt)
 
@@ -47,7 +50,7 @@ export const getPartyEntryState = ({ user = null, memberships = [] } = {}) => {
     canUsePerformer,
     companyReady,
     performerReady,
-    needsRoleSelection: roles.length === 0,
+    needsRoleSelection: roles.length === 0 && !canUseCompany,
   }
 }
 

@@ -1250,6 +1250,33 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     <section className="min-h-screen bg-white">
       {/* Main content */}
       <main className="max-w-6xl px-5 py-8 mx-auto">
+        {memberships.length > 1 && (
+          <div className="mb-6 flex flex-col gap-2 rounded-lg border border-sky-100 bg-sky-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase text-sky-700">
+                Активная компания
+              </p>
+              {context?.staff?.isDeveloperAccess ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Режим разработчика: доступ как владелец компании
+                </p>
+              ) : null}
+            </div>
+            <select
+              value={activeCompanyId}
+              onChange={(event) => switchCompany(event.target.value)}
+              className="min-h-10 w-full cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500 sm:w-80"
+            >
+              {memberships.map((membership) => (
+                <option key={membership.tenantId} value={membership.tenantId}>
+                  {membership.company?.title || 'Компания без названия'}
+                  {membership.isDeveloperAccess ? ' · dev' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {error && (
           <div className="p-3 mb-5 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
             {error}

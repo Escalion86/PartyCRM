@@ -43,3 +43,15 @@ test('getPartyEntryState allows company workspace for company owner membership',
   assert.equal(state.companyReady, true)
   assert.equal(resolvePartyEntryPath({ user, memberships }), '/company')
 })
+
+test('getPartyEntryState lets developer use company workspace through management memberships', () => {
+  const user = { _id: 'dev-user', role: 'dev', interfaceRoles: [] }
+  const memberships = [{ role: 'owner', isAdmin: true }]
+
+  const state = getPartyEntryState({ user, memberships })
+
+  assert.equal(state.canUseCompany, true)
+  assert.equal(state.companyReady, true)
+  assert.equal(state.needsRoleSelection, false)
+  assert.equal(resolvePartyEntryPath({ user, memberships }), '/company')
+})

@@ -6,6 +6,7 @@
 - `admin` — администратор компании. Может управлять операционными данными компании: заказами, клиентами, точками, услугами и сотрудниками.
 - `performer` — исполнитель с аккаунтом. Не получает доступ к company API кабинета компании; видит только свои назначения через `/api/party/performer/*`.
 - `contractor` — подрядчик без аккаунта. В БД хранится как `PartyStaff.role = performer` без `authUserId` до ручной привязки аккаунта.
+- Глобальная роль `PartyUser.role = dev` получает виртуальный доступ ко всем неархивным компаниям как `owner` без создания `PartyStaff` в БД. Такой доступ помечается `isDeveloperAccess`.
 
 ## Матрица доступа v1
 
@@ -27,7 +28,7 @@
 
 - Company API (`/api/party/orders`, `/api/party/clients`, `/api/party/locations`, `/api/party/services`, `/api/party/staff`) доступны только `owner/admin`.
 - Performer API (`/api/party/performer/*`) работает отдельно и возвращает только назначения текущего исполнителя.
-- Все company API принимают активную компанию через `x-partycrm-company-id` и проверяют membership пользователя.
+- Все company API принимают активную компанию через `x-partycrm-company-id` и проверяют membership пользователя. Для `PartyUser.role = dev` membership строится виртуально по всем неархивным компаниям.
 - Все tenant-owned запросы должны фильтровать данные по `tenantId`.
 - Публичные auth/profile endpoints (`/api/party/auth/*`, `/api/party/memberships`) не должны возвращать полные операционные данные компании.
 - Billing API (`/api/party/billing/*`) работает на выбранную компанию и доступен только `owner/admin`.
@@ -39,8 +40,8 @@
 
 ## Прямые URL и route guards
 
-- `/company/*` требует membership в выбранной компании и роль `owner/admin`.
-- `/company/settings` и `/company/settings/[tab]` требуют membership-роль `owner/admin`; глобальная роль PartyUser сама по себе доступ не даёт.
+- `/company/*` требует membership в выбранной компании и роль `owner/admin`; для глобальной роли `dev` доступ строится виртуально как `owner`.
+- `/company/settings` и `/company/settings/[tab]` требуют membership-роль `owner/admin`; глобальная роль `dev` проходит через виртуальный owner-membership выбранной компании.
 - `/party/site-settings/*` требует глобальную роль PartyUser `dev`.
 - `/performer/*` использует отдельный performer flow и не должен открывать company workspace автоматически.
 - При чужом или отсутствующем `x-partycrm-company-id` company API возвращает `403 partycrm_company_access_denied` или `400 partycrm_company_id_required`.
@@ -80,7 +81,7 @@
 ## Правила меню настроек компании
 
 - Все подразделы `Настройки компании` видимы membership-ролям `owner/admin`.
-- Глобальные роли `PartyUser.role = admin/dev` не дают доступ к компании без management membership.
+- Глобальная роль `PartyUser.role = dev` видит все неархивные компании через виртуальный owner-membership; `PartyUser.role = admin` без company membership доступа к компании не даёт.
 - `Интеграции`, `Уведомления` и `Тарифы` доступны при любом тарифе.
 - `Документы` остаются видимыми при любом тарифе, но без `allowDocuments` показывают тарифный gate и переход к тарифам.
 - Подразделы настроек компании не помечаются ролевыми звёздами.
