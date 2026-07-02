@@ -33,6 +33,10 @@ const partyVkMessagesSchema = {
     type: String,
     default: '',
   },
+  vkGroupId: {
+    type: String,
+    default: '',
+  },
   direction: {
     type: String,
     enum: ['incoming', 'outgoing'],

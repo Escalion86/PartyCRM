@@ -1,3 +1,5 @@
+import { getVkGroupReplyCredentials } from './partyVkGroups.js'
+
 const cleanText = (value, maxLength = 4000) => {
   const text = String(value ?? '').trim()
   return text ? text.slice(0, maxLength) : ''
@@ -30,6 +32,7 @@ const createOutgoingMessage = async ({
       : {
           vkPeerId: conversation.vkPeerId,
           vkUserId: conversation.vkUserId || '',
+          vkGroupId: conversation.vkGroupId || '',
         }
 
   const message = await models.Message.create({
@@ -73,18 +76,17 @@ export const sendPartyVkConversationReply = async ({
 }) => {
   const cleanMessageText = cleanText(text)
   if (!cleanMessageText) return makeError('message_text_required')
-  if (!integrations.vkGroupEnabled || !integrations.vkGroupAccessToken) {
-    return makeError('vk_integration_not_connected')
-  }
 
   const conversation = await findConversation({ models, tenantId, conversationId })
   if (!conversation?.vkPeerId) return makeError('conversation_not_found')
+  const credentials = getVkGroupReplyCredentials({ integrations, conversation })
+  if (!credentials.ok) return makeError(credentials.error)
 
   let sendResult
   try {
     sendResult = normalizeSendResult(
       await sendMessage({
-        accessToken: integrations.vkGroupAccessToken,
+        accessToken: credentials.accessToken,
         peerId: conversation.vkPeerId,
         text: cleanMessageText,
       })

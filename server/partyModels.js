@@ -270,7 +270,7 @@ export const getPartyVkConversationModel = () =>
     schemaDefinition: partyVkConversationsSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
-      schema.index({ tenantId: 1, vkPeerId: 1 }, { unique: true })
+      schema.index({ tenantId: 1, vkGroupId: 1, vkPeerId: 1 }, { unique: true })
       schema.index({ tenantId: 1, clientId: 1, lastMessageAt: -1 })
       schema.index({ tenantId: 1, orderId: 1, lastMessageAt: -1 })
     },
@@ -285,7 +285,7 @@ export const getPartyVkMessageModel = () =>
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
       schema.index({ tenantId: 1, conversationId: 1, sentAt: 1 })
-      schema.index({ tenantId: 1, vkPeerId: 1, vkMessageId: 1 })
+      schema.index({ tenantId: 1, vkGroupId: 1, vkPeerId: 1, vkMessageId: 1 })
       schema.index({ tenantId: 1, clientId: 1, sentAt: -1 })
       schema.index({ tenantId: 1, orderId: 1, sentAt: -1 })
     },

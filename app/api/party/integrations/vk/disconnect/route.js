@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
-import { getPartyRequestContext } from '@server/partyApi'
+import { getPartyRequestContext, parseJsonBody } from '@server/partyApi'
+import {
+  removeLegacyVkKeys,
+  removeVkGroupFromIntegrations,
+} from '@server/partyVkGroups'
 
 export async function POST(req) {
   const { context, error } = await getPartyRequestContext({
@@ -15,27 +19,11 @@ export async function POST(req) {
     .lean()
 
   const integrations = company?.settings?.integrations ?? {}
-
-  const VK_KEYS = [
-    'vkGroupEnabled',
-    'vkGroupId',
-    'vkGroupAccessToken',
-    'vkGroupConfirmationCode',
-    'vkGroupWebhookToken',
-    'vkGroupWebhookSecret',
-    'vkGroupWebhookUrl',
-    'vkGroupStatus',
-    'vkGroupLastError',
-    'vkGroupConnectedAt',
-    'vkGroupLastCheckedAt',
-    'vkGroupLastWebhookAt',
-    'vkGroupLastPeerId',
-  ]
-
-  const cleaned = { ...integrations }
-  for (const key of VK_KEYS) {
-    delete cleaned[key]
-  }
+  const body = await parseJsonBody(req)
+  const selector = body.id || body.webhookToken || body.groupId || ''
+  const cleaned = selector
+    ? removeVkGroupFromIntegrations(integrations, selector)
+    : { ...removeLegacyVkKeys(integrations), vkGroups: [] }
 
   await PartyCompanies.updateOne(
     { _id: context.tenantId },
@@ -44,5 +32,8 @@ export async function POST(req) {
     }
   )
 
-  return NextResponse.json({ success: true, data: { status: 'disconnected' } })
+  return NextResponse.json({
+    success: true,
+    data: { status: 'disconnected', groups: cleaned.vkGroups },
+  })
 }

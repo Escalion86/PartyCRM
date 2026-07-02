@@ -80,8 +80,9 @@ export const saveIncomingPartyVkMessage = async ({
 
   const text = requiredText(normalized.comment, 'Сообщение VK без текста')
   const sentAt = toDateOrNull(normalized.sentAt) || new Date()
+  const vkGroupId = cleanText(normalized.vkGroupId, 160)
   const conversation = await models.Conversation.findOneAndUpdate(
-    { tenantId, vkPeerId },
+    { tenantId, vkPeerId, vkGroupId },
     {
       $set: {
         tenantId,
@@ -89,7 +90,8 @@ export const saveIncomingPartyVkMessage = async ({
         orderId,
         vkPeerId,
         vkUserId: cleanText(normalized.vkUserId, 160),
-        vkGroupId: cleanText(normalized.vkGroupId, 160),
+        vkGroupId,
+        vkIntegrationName: cleanText(normalized.vkIntegrationName, 160),
         clientName: cleanText(normalized.clientName, 160),
         lastMessageText: text,
         lastMessageAt: sentAt,
@@ -109,6 +111,7 @@ export const saveIncomingPartyVkMessage = async ({
     vkPeerId,
     vkMessageId: cleanText(normalized.vkMessageId, 160),
     vkUserId: cleanText(normalized.vkUserId, 160),
+    vkGroupId,
     direction: 'incoming',
     text,
     attachments: Array.isArray(normalized.attachments) ? normalized.attachments : [],

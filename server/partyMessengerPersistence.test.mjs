@@ -79,6 +79,7 @@ test('saveIncomingPartyVkMessage stores company-scoped conversation and message'
       vkMessageId: 'msg-2',
       vkUserId: '123',
       vkGroupId: 'group-1',
+      vkIntegrationName: 'VK Дни рождения',
     },
     rawPayload: { type: 'message_new' },
   })
@@ -86,9 +87,15 @@ test('saveIncomingPartyVkMessage stores company-scoped conversation and message'
   assert.deepEqual(models.calls.conversation[0].filter, {
     tenantId: 'company-1',
     vkPeerId: '123',
+    vkGroupId: 'group-1',
   })
   assert.equal(models.calls.conversation[0].update.$set.orderId, 'order-1')
+  assert.equal(
+    models.calls.conversation[0].update.$set.vkIntegrationName,
+    'VK Дни рождения'
+  )
   assert.equal(models.calls.message[0].vkPeerId, '123')
+  assert.equal(models.calls.message[0].vkGroupId, 'group-1')
   assert.equal(models.calls.message[0].vkMessageId, 'msg-2')
   assert.equal(models.calls.message[0].status, 'received')
 })

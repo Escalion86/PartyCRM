@@ -28,6 +28,10 @@ const partyVkConversationsSchema = {
     type: String,
     default: '',
   },
+  vkIntegrationName: {
+    type: String,
+    default: '',
+  },
   clientName: {
     type: String,
     default: '',

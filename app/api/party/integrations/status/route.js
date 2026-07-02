@@ -2,9 +2,14 @@ import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext } from '@server/partyApi'
 import { normalizeAvitoSettings } from '@server/avito'
-import { normalizeVkSettings } from '@server/vkGroup'
 import { normalizeNovofonSettings } from '@server/novofon'
 import { normalizeAiSettings } from '@server/aiSettings'
+import {
+  LEGACY_VK_KEYS,
+  normalizePartyVkSettings,
+  normalizePartyVkGroups,
+  removeLegacyVkKeys,
+} from '@server/partyVkGroups'
 
 export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
@@ -19,14 +24,30 @@ export async function GET(req) {
     .lean()
 
   const integrations = company?.settings?.integrations ?? {}
+  const hasLegacyVk = LEGACY_VK_KEYS.some(
+    (key) => integrations[key] !== undefined
+  )
+  const nextIntegrations = hasLegacyVk
+    ? {
+        ...removeLegacyVkKeys(integrations),
+        vkGroups: normalizePartyVkGroups(integrations),
+      }
+    : integrations
+
+  if (hasLegacyVk) {
+    await PartyCompanies.updateOne(
+      { _id: context.tenantId },
+      { $set: { 'settings.integrations': nextIntegrations } }
+    )
+  }
 
   return NextResponse.json({
     success: true,
     data: {
-      avito: normalizeAvitoSettings(integrations),
-      vk: normalizeVkSettings(integrations),
-      novofon: normalizeNovofonSettings(integrations),
-      ai: normalizeAiSettings(integrations),
+      avito: normalizeAvitoSettings(nextIntegrations),
+      vk: normalizePartyVkSettings(nextIntegrations),
+      novofon: normalizeNovofonSettings(nextIntegrations),
+      ai: normalizeAiSettings(nextIntegrations),
     },
   })
 }

@@ -43,6 +43,86 @@ const INTEGRATION_INDICATOR_VIEW = {
   },
 }
 
+const VK_LEGACY_KEYS = [
+  'vkGroupEnabled',
+  'vkGroupName',
+  'vkGroupId',
+  'vkGroupAccessToken',
+  'vkGroupConfirmationCode',
+  'vkGroupWebhookToken',
+  'vkGroupWebhookSecret',
+  'vkGroupWebhookUrl',
+  'vkGroupStatus',
+  'vkGroupLastError',
+  'vkGroupConnectedAt',
+  'vkGroupLastCheckedAt',
+  'vkGroupLastWebhookAt',
+  'vkGroupLastPeerId',
+]
+
+const normalizeVkGroupDraft = (group = {}) => {
+  const groupId = String(group.groupId || '').trim()
+  const webhookToken = String(group.webhookToken || '').trim()
+  return {
+    id: String(group.id || webhookToken || createSecret('vk')).trim(),
+    name: String(group.name || (groupId ? `VK ${groupId}` : 'VK')).trim(),
+    enabled: group.enabled === true,
+    groupId,
+    accessToken: String(group.accessToken || ''),
+    confirmationCode: String(group.confirmationCode || ''),
+    webhookToken,
+    webhookSecret: String(group.webhookSecret || ''),
+    webhookUrl: String(group.webhookUrl || ''),
+    status: String(group.status || ''),
+    lastError: String(group.lastError || ''),
+    connectedAt: String(group.connectedAt || ''),
+    lastCheckedAt: String(group.lastCheckedAt || ''),
+    lastWebhookAt: String(group.lastWebhookAt || ''),
+    lastPeerId: String(group.lastPeerId || ''),
+  }
+}
+
+const normalizeVkGroupDrafts = (integrations = {}) => {
+  const groups = Array.isArray(integrations.vkGroups)
+    ? integrations.vkGroups.map(normalizeVkGroupDraft)
+    : []
+  if (groups.length > 0) return groups
+  if (
+    integrations.vkGroupId ||
+    integrations.vkGroupAccessToken ||
+    integrations.vkGroupWebhookToken
+  ) {
+    return [
+      normalizeVkGroupDraft({
+        id: integrations.vkGroupWebhookToken,
+        name: integrations.vkGroupName,
+        enabled: integrations.vkGroupEnabled === true,
+        groupId: integrations.vkGroupId,
+        accessToken: integrations.vkGroupAccessToken,
+        confirmationCode: integrations.vkGroupConfirmationCode,
+        webhookToken: integrations.vkGroupWebhookToken,
+        webhookSecret: integrations.vkGroupWebhookSecret,
+        webhookUrl: integrations.vkGroupWebhookUrl,
+        status: integrations.vkGroupStatus,
+        lastError: integrations.vkGroupLastError,
+        connectedAt: integrations.vkGroupConnectedAt,
+        lastCheckedAt: integrations.vkGroupLastCheckedAt,
+        lastWebhookAt: integrations.vkGroupLastWebhookAt,
+        lastPeerId: integrations.vkGroupLastPeerId,
+      }),
+    ]
+  }
+  return []
+}
+
+const stripVkLegacyKeys = (integrations = {}) => {
+  const next = { ...integrations }
+  VK_LEGACY_KEYS.forEach((key) => {
+    delete next[key]
+  })
+  return next
+}
+
 const CompanyIntegrationCard = ({
   title,
   description,
@@ -325,7 +405,10 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
     reloadGoogleCalendarStatus({ syncDraft: true })
   }, [reloadGoogleCalendarStatus])
 
-  const integrations = settings?.integrations ?? {}
+  const integrations = useMemo(
+    () => settings?.integrations ?? {},
+    [settings?.integrations]
+  )
   const origin = buildOrigin()
   const telephonyLocked = Boolean(access && !access.allowTelephony)
   const aiLocked = Boolean(access && !access.allowAi)
@@ -359,7 +442,9 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   })
   const vkIndicatorState = getCompanyIntegrationIndicatorState({
     type: 'vk',
-    enabled: status?.vk?.enabled ?? integrations.vkGroupEnabled === true,
+    enabled:
+      status?.vk?.enabled ??
+      normalizeVkGroupDrafts(integrations).some((group) => group.enabled),
     status: status?.vk?.status,
     loading: statusLoading,
   })
@@ -383,10 +468,10 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
     return token ? buildPartyAvitoWebhookUrl({ origin, token }) : ''
   }, [integrations.avitoWebhookToken, origin])
 
-  const vkWebhookUrl = useMemo(() => {
-    const token = integrations.vkGroupWebhookToken || ''
-    return token ? buildPartyVkWebhookUrl({ origin, token }) : ''
-  }, [integrations.vkGroupWebhookToken, origin])
+  const vkGroups = useMemo(
+    () => normalizeVkGroupDrafts(integrations),
+    [integrations]
+  )
 
   const novofonWebhookUrl = useMemo(() => {
     const secret = integrations.novofonWebhookSecret || ''
@@ -396,10 +481,48 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   const patchIntegrations = (patch) =>
     savePatch({
       integrations: {
-        ...integrations,
+        ...(patch.vkGroups ? stripVkLegacyKeys(integrations) : integrations),
         ...patch,
       },
     })
+
+  const patchVkGroups = (groups) => {
+    patchIntegrations({
+      vkGroups: groups.map(normalizeVkGroupDraft),
+    })
+  }
+
+  const updateVkGroup = (groupKey, patch) => {
+    patchVkGroups(
+      vkGroups.map((group) =>
+        (group.id || group.webhookToken || group.groupId) === groupKey
+          ? normalizeVkGroupDraft({ ...group, ...patch })
+          : group
+      )
+    )
+  }
+
+  const addVkGroup = () => {
+    const webhookToken = createSecret('vk')
+    patchVkGroups([
+      ...vkGroups,
+      normalizeVkGroupDraft({
+        id: webhookToken,
+        name: `VK ${vkGroups.length + 1}`,
+        enabled: true,
+        webhookToken,
+        webhookSecret: createSecret('vksec'),
+      }),
+    ])
+  }
+
+  const deleteVkGroup = (groupKey) => {
+    patchVkGroups(
+      vkGroups.filter(
+        (group) => (group.id || group.webhookToken || group.groupId) !== groupKey
+      )
+    )
+  }
 
   const patchSettings = (patch) => savePatch(patch)
 
@@ -679,57 +802,134 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
 
       <CompanyIntegrationCard
         title="VK"
-        description="Настройки группы VK и Callback API на уровне компании."
+        description="Настройки групп VK и Callback API на уровне компании."
         indicatorState={vkIndicatorState}
       >
-        <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <input
-            type="checkbox"
-            checked={integrations.vkGroupEnabled === true}
-            onChange={(event) =>
-              patchIntegrations({
-                vkGroupEnabled: event.target.checked,
-                vkGroupWebhookToken:
-                  integrations.vkGroupWebhookToken || createSecret('vk'),
-                vkGroupWebhookSecret:
-                  integrations.vkGroupWebhookSecret || createSecret('vksec'),
-              })
-            }
-          />
-          Интеграция включена
-        </label>
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Field
-            label="Group ID"
-            value={integrations.vkGroupId || ''}
-            onChange={(value) => patchIntegrations({ vkGroupId: value })}
-          />
-          <Field
-            label="Confirmation Code"
-            value={integrations.vkGroupConfirmationCode || ''}
-            onChange={(value) =>
-              patchIntegrations({ vkGroupConfirmationCode: value })
-            }
-          />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-slate-500">
+            Каждая группа VK использует свой webhook URL и secret key.
+          </span>
+          <button
+            type="button"
+            onClick={addVkGroup}
+            className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-700"
+          >
+            Добавить группу VK
+          </button>
         </div>
-        <Field
-          label="Access Token"
-          type="password"
-          value={integrations.vkGroupAccessToken || ''}
-          onChange={(value) =>
-            patchIntegrations({ vkGroupAccessToken: value })
-          }
-        />
-        <div className="grid gap-3 lg:grid-cols-2">
-          <Field label="Webhook URL" value={vkWebhookUrl} readOnly />
-          <Field
-            label="Secret Key"
-            value={integrations.vkGroupWebhookSecret || ''}
-            onChange={(value) =>
-              patchIntegrations({ vkGroupWebhookSecret: value })
-            }
-          />
-        </div>
+        {vkGroups.length === 0 ? (
+          <div className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+            Группы VK пока не добавлены.
+          </div>
+        ) : null}
+        {vkGroups.map((group) => {
+          const groupKey = group.id || group.webhookToken || group.groupId
+          const webhookUrl = group.webhookToken
+            ? buildPartyVkWebhookUrl({ origin, token: group.webhookToken })
+            : ''
+          return (
+            <div
+              key={groupKey}
+              className="grid gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={group.enabled === true}
+                    onChange={(event) =>
+                      updateVkGroup(groupKey, {
+                        enabled: event.target.checked,
+                        webhookToken:
+                          group.webhookToken || createSecret('vk'),
+                        webhookSecret:
+                          group.webhookSecret || createSecret('vksec'),
+                      })
+                    }
+                  />
+                  Группа включена
+                </label>
+                <button
+                  type="button"
+                  onClick={() => deleteVkGroup(groupKey)}
+                  className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                >
+                  Удалить
+                </button>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-2">
+                <Field
+                  label="Название интеграции"
+                  value={group.name || ''}
+                  placeholder="VK Дни рождения"
+                  onChange={(value) => updateVkGroup(groupKey, { name: value })}
+                />
+                <Field
+                  label="Group ID"
+                  value={group.groupId || ''}
+                  onChange={(value) =>
+                    updateVkGroup(groupKey, { groupId: value })
+                  }
+                />
+              </div>
+              <div className="grid gap-3 lg:grid-cols-2">
+                <Field
+                  label="Confirmation Code"
+                  value={group.confirmationCode || ''}
+                  onChange={(value) =>
+                    updateVkGroup(groupKey, { confirmationCode: value })
+                  }
+                />
+                <Field
+                  label="Secret Key"
+                  value={group.webhookSecret || ''}
+                  onChange={(value) =>
+                    updateVkGroup(groupKey, { webhookSecret: value })
+                  }
+                />
+              </div>
+              <Field
+                label="Access Token"
+                type="password"
+                value={group.accessToken || ''}
+                onChange={(value) =>
+                  updateVkGroup(groupKey, { accessToken: value })
+                }
+              />
+              <Field label="Webhook URL" value={webhookUrl} readOnly />
+              <IntegrationDiagnostics state={group} />
+              <IntegrationActions
+                provider="VK"
+                webhookUrl={webhookUrl}
+                loading={actionLoading.startsWith('vk:')}
+                onConnect={() =>
+                  runIntegrationAction({
+                    provider: 'vk',
+                    action: 'connect',
+                    body: {
+                      id: group.id,
+                      name: group.name,
+                      groupId: group.groupId,
+                      accessToken: group.accessToken,
+                      confirmationCode: group.confirmationCode,
+                    },
+                  })
+                }
+                onDisconnect={() =>
+                  runIntegrationAction({
+                    provider: 'vk',
+                    action: 'disconnect',
+                    body: {
+                      id: group.id,
+                      webhookToken: group.webhookToken,
+                      groupId: group.groupId,
+                    },
+                  })
+                }
+              />
+            </div>
+          )
+        })}
         {statusLoading ? (
           <div className="text-xs text-slate-500">Проверяем статус...</div>
         ) : (
@@ -737,28 +937,13 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
         )}
         <IntegrationActions
           provider="VK"
-          webhookUrl={vkWebhookUrl}
           loading={actionLoading.startsWith('vk:')}
-          onConnect={() =>
-            runIntegrationAction({
-              provider: 'vk',
-              action: 'connect',
-              body: {
-                groupId: integrations.vkGroupId,
-                accessToken: integrations.vkGroupAccessToken,
-                confirmationCode: integrations.vkGroupConfirmationCode,
-              },
-            })
-          }
           onCheck={() =>
             runIntegrationAction({
               provider: 'vk',
               action: 'check',
               method: 'GET',
             })
-          }
-          onDisconnect={() =>
-            runIntegrationAction({ provider: 'vk', action: 'disconnect' })
           }
         />
       </CompanyIntegrationCard>

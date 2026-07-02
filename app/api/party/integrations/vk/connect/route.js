@@ -7,6 +7,10 @@ import {
   createVkWebhookToken,
   createVkWebhookSecret,
 } from '@server/vkGroup'
+import {
+  normalizePartyVkGroups,
+  upsertVkGroupInIntegrations,
+} from '@server/partyVkGroups'
 
 export async function POST(req) {
   const { context, error } = await getPartyRequestContext({
@@ -16,7 +20,7 @@ export async function POST(req) {
   if (error) return error
 
   const body = await parseJsonBody(req)
-  const { groupId, accessToken, confirmationCode } = body
+  const { id, name, groupId, accessToken, confirmationCode } = body
 
   if (!groupId || !accessToken) {
     return NextResponse.json(
@@ -31,28 +35,33 @@ export async function POST(req) {
     .lean()
 
   const integrations = company?.settings?.integrations ?? {}
-  const webhookToken =
-    integrations.vkGroupWebhookToken || createVkWebhookToken()
-  const webhookSecret =
-    integrations.vkGroupWebhookSecret || createVkWebhookSecret()
+  const existingGroup = normalizePartyVkGroups(integrations).find(
+    (item) =>
+      (id && item.id === id) ||
+      (groupId && item.groupId === String(groupId).trim())
+  )
+  const webhookToken = existingGroup?.webhookToken || createVkWebhookToken()
+  const webhookSecret = existingGroup?.webhookSecret || createVkWebhookSecret()
   const webhookUrl = buildPartyVkWebhookUrl({ req, token: webhookToken })
 
   try {
     await checkVkGroupAccess({ accessToken, groupId })
 
-    const nextIntegrations = {
-      ...integrations,
-      vkGroupEnabled: true,
-      vkGroupId: groupId,
-      vkGroupAccessToken: accessToken,
-      vkGroupConfirmationCode: confirmationCode || '',
-      vkGroupWebhookToken: webhookToken,
-      vkGroupWebhookSecret: webhookSecret,
-      vkGroupWebhookUrl: webhookUrl,
-      vkGroupStatus: 'connected',
-      vkGroupLastError: '',
-      vkGroupConnectedAt: new Date().toISOString(),
-    }
+    const nextIntegrations = upsertVkGroupInIntegrations(integrations, {
+      ...existingGroup,
+      id: existingGroup?.id || webhookToken,
+      name: name || existingGroup?.name || `VK ${groupId}`,
+      enabled: true,
+      groupId,
+      accessToken,
+      confirmationCode: confirmationCode || '',
+      webhookToken,
+      webhookSecret,
+      webhookUrl,
+      status: 'connected',
+      lastError: '',
+      connectedAt: new Date().toISOString(),
+    })
 
     await PartyCompanies.updateOne(
       { _id: context.tenantId },
@@ -65,6 +74,9 @@ export async function POST(req) {
       success: true,
       data: {
         status: 'connected',
+        group: nextIntegrations.vkGroups.find(
+          (item) => item.webhookToken === webhookToken
+        ),
         webhookUrl,
         webhookSecret,
       },
@@ -73,17 +85,20 @@ export async function POST(req) {
     const errorMessage =
       err instanceof Error ? err.message : 'Ошибка подключения VK'
 
-    const nextIntegrations = {
-      ...integrations,
-      vkGroupId: groupId,
-      vkGroupAccessToken: accessToken,
-      vkGroupConfirmationCode: confirmationCode || '',
-      vkGroupWebhookToken: webhookToken,
-      vkGroupWebhookSecret: webhookSecret,
-      vkGroupWebhookUrl: webhookUrl,
-      vkGroupStatus: 'error',
-      vkGroupLastError: errorMessage,
-    }
+    const nextIntegrations = upsertVkGroupInIntegrations(integrations, {
+      ...existingGroup,
+      id: existingGroup?.id || webhookToken,
+      name: name || existingGroup?.name || `VK ${groupId}`,
+      enabled: true,
+      groupId,
+      accessToken,
+      confirmationCode: confirmationCode || '',
+      webhookToken,
+      webhookSecret,
+      webhookUrl,
+      status: 'error',
+      lastError: errorMessage,
+    })
 
     await PartyCompanies.updateOne(
       { _id: context.tenantId },

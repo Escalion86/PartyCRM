@@ -192,7 +192,7 @@ test('party integration check routes record company-level diagnostics', async ()
     'app/api/party/integrations/novofon/check/route.js'
   )
 
-  for (const source of [vkSource, avitoSource, novofonSource]) {
+  for (const source of [avitoSource, novofonSource]) {
     assert.match(source, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
     assert.match(source, /getPartyCompanyModel/)
     assert.match(source, /LastCheckedAt/)
@@ -202,6 +202,17 @@ test('party integration check routes record company-level diagnostics', async ()
     assert.doesNotMatch(source, /SiteSettings/)
     assert.doesNotMatch(source, /@models\/Site/)
   }
+
+  assert.match(vkSource, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
+  assert.match(vkSource, /getPartyCompanyModel/)
+  assert.match(vkSource, /normalizePartyVkGroups/)
+  assert.match(vkSource, /vkGroups/)
+  assert.match(vkSource, /lastCheckedAt/)
+  assert.match(vkSource, /lastError/)
+  assert.match(vkSource, /status/)
+  assert.match(vkSource, /settings\.integrations/)
+  assert.doesNotMatch(vkSource, /SiteSettings/)
+  assert.doesNotMatch(vkSource, /@models\/Site/)
 
   assert.match(novofonSource, /normalizeNovofonSettings/)
   assert.match(novofonSource, /novofon_api_key_required/)

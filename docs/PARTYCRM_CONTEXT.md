@@ -2,9 +2,8 @@
 
 Этот файл нужен для быстрого восстановления контекста по PartyCRM после потери истории диалога.
 
-Основной roadmap: `docs/PARTYCRM_ROADMAP.md`.
-
-Главный roadmap проекта: `docs/ROADMAP.md`.
+Основной roadmap и главный рабочий план проекта: `docs/PARTYCRM_ROADMAP.md`.
+Файла `docs/ROADMAP.md` в этом проекте нет.
 
 ## Продуктовое решение
 
@@ -204,7 +203,7 @@ P0 core:
 - Не добавлять company-функции в solo ArtistCRM UI.
 - Не делать автоматическую привязку подрядчика к аккаунту по телефону.
 - Не возвращать silent fallback на "первую компанию" в company API.
-- При закрытии roadmap-пункта обновлять `docs/PARTYCRM_ROADMAP.md`, `docs/ROADMAP.md` и bump версии в `package.json` / `package-lock.json`.
+- При закрытии roadmap-пункта обновлять `docs/PARTYCRM_ROADMAP.md` и bump версии в `package.json` / `package-lock.json`.
 - После `next build` убирать generated PWA artifacts из `public`, если они попали в diff.
 
 ## Быстрая проверка

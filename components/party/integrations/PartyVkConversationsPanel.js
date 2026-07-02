@@ -33,7 +33,11 @@ const PartyVkConversationsPanel = ({
       getConversationSubtitle={(conversation) =>
         conversation.lastMessageText || conversation.vkPeerId
       }
-      getConversationMeta={(conversation) => `Peer ID: ${conversation.vkPeerId}`}
+      getConversationMeta={(conversation) =>
+        [conversation.vkIntegrationName, `Peer ID: ${conversation.vkPeerId}`]
+          .filter(Boolean)
+          .join(' · ')
+      }
     />
   )
 }

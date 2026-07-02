@@ -11,6 +11,10 @@ import {
   isPartyVkWebhookSecretValid,
   normalizePartyVkWebhookLead,
 } from '@helpers/partyIntegrationWebhooks'
+import {
+  findVkGroupByWebhookToken,
+  updateVkGroupInIntegrations,
+} from '@server/partyVkGroups'
 
 const getToken = async (params) => String((await params)?.token || '').trim()
 
@@ -28,24 +32,22 @@ const findCompanyByWebhookToken = async (token) => {
   const PartyCompanies = await getPartyCompanyModel()
   return PartyCompanies.findOne({
     status: { $ne: 'archived' },
-    'settings.integrations.vkGroupWebhookToken': token,
+    'settings.integrations.vkGroups.webhookToken': token,
   })
     .select({ title: 1, settings: 1 })
     .lean()
 }
 
-const updateVkDiagnostics = async ({ companyId, patch }) => {
+const updateVkDiagnostics = async ({ companyId, integrations, group, patch }) => {
   const PartyCompanies = await getPartyCompanyModel()
+  const nextIntegrations = updateVkGroupInIntegrations(
+    integrations,
+    group.webhookToken || group.id || group.groupId,
+    patch
+  )
   return PartyCompanies.updateOne(
     { _id: companyId },
-    {
-      $set: Object.fromEntries(
-        Object.entries(patch).map(([key, value]) => [
-          `settings.integrations.${key}`,
-          value,
-        ])
-      ),
-    }
+    { $set: { 'settings.integrations': nextIntegrations } }
   )
 }
 
@@ -55,27 +57,31 @@ export async function POST(req, { params }) {
   if (!company) return jsonError('invalid_vk_webhook_token', 404)
 
   const integrations = company?.settings?.integrations ?? {}
+  const vkGroup = findVkGroupByWebhookToken(integrations, token)
+  if (!vkGroup) return jsonError('invalid_vk_webhook_token', 404)
   const body = await req.json().catch(() => ({}))
 
   if (body?.type === 'confirmation') {
-    return okText(integrations.vkGroupConfirmationCode || '')
+    return okText(vkGroup.confirmationCode || '')
   }
 
-  if (integrations.vkGroupEnabled !== true) {
+  if (vkGroup.enabled !== true) {
     return jsonError('vk_integration_disabled', 403)
   }
 
   if (
     !isPartyVkWebhookSecretValid({
-      expectedSecret: integrations.vkGroupWebhookSecret,
+      expectedSecret: vkGroup.webhookSecret,
       body,
     })
   ) {
     await updateVkDiagnostics({
       companyId: company._id,
+      integrations,
+      group: vkGroup,
       patch: {
-        vkGroupLastError: 'invalid_vk_webhook_secret',
-        vkGroupLastWebhookAt: new Date().toISOString(),
+        lastError: 'invalid_vk_webhook_secret',
+        lastWebhookAt: new Date().toISOString(),
       },
     })
     return jsonError('invalid_vk_webhook_secret', 403)
@@ -84,23 +90,47 @@ export async function POST(req, { params }) {
   if (body?.type && body.type !== 'message_new') {
     await updateVkDiagnostics({
       companyId: company._id,
+      integrations,
+      group: vkGroup,
       patch: {
-        vkGroupLastWebhookAt: new Date().toISOString(),
-        vkGroupLastError: '',
+        lastWebhookAt: new Date().toISOString(),
+        lastError: '',
       },
     })
     return okText()
   }
 
   const sourceLead = normalizePartyVkWebhookLead(body)
+  sourceLead.source = vkGroup.name || 'VK'
+  sourceLead.sourceLabel = vkGroup.name || 'VK'
+  sourceLead.vkIntegrationName = vkGroup.name || ''
   const normalized = normalizePartyPublicLeadPayload(sourceLead)
+
+  if (
+    sourceLead.vkGroupId &&
+    vkGroup.groupId &&
+    sourceLead.vkGroupId !== vkGroup.groupId
+  ) {
+    await updateVkDiagnostics({
+      companyId: company._id,
+      integrations,
+      group: vkGroup,
+      patch: {
+        lastError: 'invalid_vk_group_id',
+        lastWebhookAt: new Date().toISOString(),
+      },
+    })
+    return jsonError('invalid_vk_group_id', 403)
+  }
 
   if (!normalized.comment && !normalized.clientName) {
     await updateVkDiagnostics({
       companyId: company._id,
+      integrations,
+      group: vkGroup,
       patch: {
-        vkGroupLastError: 'empty_vk_message',
-        vkGroupLastWebhookAt: new Date().toISOString(),
+        lastError: 'empty_vk_message',
+        lastWebhookAt: new Date().toISOString(),
       },
     })
     return jsonError('empty_vk_message', 400)
@@ -112,8 +142,8 @@ export async function POST(req, { params }) {
       normalized,
       rawPayload: body,
       apiKeyData: {
-        id: 'vk_group',
-        name: 'VK',
+        id: vkGroup.id || vkGroup.webhookToken || 'vk_group',
+        name: vkGroup.name || 'VK',
       },
     })
     await saveIncomingPartyVkMessage({
@@ -130,11 +160,13 @@ export async function POST(req, { params }) {
 
     await updateVkDiagnostics({
       companyId: company._id,
+      integrations,
+      group: vkGroup,
       patch: {
-        vkGroupStatus: 'connected',
-        vkGroupLastError: '',
-        vkGroupLastWebhookAt: new Date().toISOString(),
-        vkGroupLastPeerId: sourceLead.leadExternalId || '',
+        status: 'connected',
+        lastError: '',
+        lastWebhookAt: new Date().toISOString(),
+        lastPeerId: sourceLead.leadExternalId || '',
       },
     })
 
@@ -148,9 +180,11 @@ export async function POST(req, { params }) {
     const message = err instanceof Error ? err.message : 'party_vk_webhook_failed'
     await updateVkDiagnostics({
       companyId: company._id,
+      integrations,
+      group: vkGroup,
       patch: {
-        vkGroupLastError: message,
-        vkGroupLastWebhookAt: new Date().toISOString(),
+        lastError: message,
+        lastWebhookAt: new Date().toISOString(),
       },
     })
     return jsonError(message, 500)

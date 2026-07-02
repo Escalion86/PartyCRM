@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext } from '@server/partyApi'
-import { checkVkGroupAccess, normalizeVkSettings } from '@server/vkGroup'
+import { checkVkGroupAccess } from '@server/vkGroup'
+import {
+  normalizePartyVkSettings,
+  normalizePartyVkGroups,
+  removeLegacyVkKeys,
+} from '@server/partyVkGroups'
 
 export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
@@ -16,48 +21,56 @@ export async function GET(req) {
     .lean()
 
   const integrations = company?.settings?.integrations ?? {}
-  const vk = normalizeVkSettings(integrations)
-
   const checkedAt = new Date().toISOString()
-  let status = 'connected'
-  let lastError = ''
+  const checkedGroups = []
 
-  if (!vk.enabled) {
-    status = 'disabled'
-    lastError = 'vk_group_disabled'
-  } else if (!vk.groupId || !vk.accessToken) {
-    status = 'error'
-    lastError = 'vk_group_credentials_required'
-  } else {
-    try {
-      await checkVkGroupAccess({
-        accessToken: vk.accessToken,
-        groupId: vk.groupId,
-      })
-    } catch (err) {
+  for (const group of normalizePartyVkGroups(integrations)) {
+    let status = 'connected'
+    let lastError = ''
+
+    if (!group.enabled) {
+      status = 'disabled'
+      lastError = 'vk_group_disabled'
+    } else if (!group.groupId || !group.accessToken) {
       status = 'error'
-      lastError = err instanceof Error ? err.message : 'vk_group_check_failed'
+      lastError = 'vk_group_credentials_required'
+    } else {
+      try {
+        await checkVkGroupAccess({
+          accessToken: group.accessToken,
+          groupId: group.groupId,
+        })
+      } catch (err) {
+        status = 'error'
+        lastError = err instanceof Error ? err.message : 'vk_group_check_failed'
+      }
     }
+
+    checkedGroups.push({
+      ...group,
+      status,
+      lastError,
+      lastCheckedAt: checkedAt,
+    })
+  }
+
+  const nextIntegrations = {
+    ...removeLegacyVkKeys(integrations),
+    vkGroups: checkedGroups,
   }
 
   await PartyCompanies.updateOne(
     { _id: context.tenantId },
     {
-      $set: {
-        'settings.integrations.vkGroupLastCheckedAt': checkedAt,
-        'settings.integrations.vkGroupStatus': status,
-        'settings.integrations.vkGroupLastError': lastError,
-      },
+      $set: { 'settings.integrations': nextIntegrations },
     }
   )
 
   return NextResponse.json({
     success: true,
     data: {
-      ...vk,
-      status,
+      ...normalizePartyVkSettings(nextIntegrations),
       lastCheckedAt: checkedAt,
-      lastError,
     },
   })
 }

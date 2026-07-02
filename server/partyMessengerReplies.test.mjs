@@ -81,6 +81,54 @@ test('sendPartyVkConversationReply sends through VK credentials and stores outgo
   assert.equal(models.calls.updateOne[0].update.$set.lastMessageText, 'Здравствуйте, свободно на 15:00')
 })
 
+test('sendPartyVkConversationReply selects VK group token by conversation group id', async () => {
+  const models = createFakeReplyModels({
+    _id: 'conversation-vk-group-2',
+    tenantId: 'company-1',
+    clientId: 'client-1',
+    orderId: 'order-1',
+    vkPeerId: '2000000002',
+    vkUserId: '234',
+    vkGroupId: '222',
+  })
+  const providerCalls = []
+
+  const result = await sendPartyVkConversationReply({
+    models,
+    tenantId: 'company-1',
+    conversationId: 'conversation-vk-group-2',
+    text: 'Ответ из второй группы',
+    integrations: {
+      vkGroups: [
+        {
+          enabled: true,
+          groupId: '111',
+          accessToken: 'token-111',
+          status: 'connected',
+        },
+        {
+          enabled: true,
+          groupId: '222',
+          accessToken: 'token-222',
+          status: 'connected',
+        },
+      ],
+    },
+    sendMessage: async (payload) => {
+      providerCalls.push(payload)
+      return { ok: true, payload: { response: 43 } }
+    },
+  })
+
+  assert.equal(result.ok, true)
+  assert.deepEqual(providerCalls[0], {
+    accessToken: 'token-222',
+    peerId: '2000000002',
+    text: 'Ответ из второй группы',
+  })
+  assert.equal(models.calls.message[0].status, 'sent')
+})
+
 test('sendPartyAvitoConversationReply requests access token, sends and stores outgoing message', async () => {
   const models = createFakeReplyModels({
     _id: 'conversation-2',
