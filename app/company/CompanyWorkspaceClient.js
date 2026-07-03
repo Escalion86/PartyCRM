@@ -15,6 +15,7 @@ import StaffList from '@components/party/lists/StaffList'
 import LocationsList from '@components/party/lists/LocationsList'
 import ServicesList from '@components/party/lists/ServicesList'
 import OrderModal from '@components/party/modals/OrderModal'
+import OrderViewModal from '@components/party/modals/OrderViewModal'
 import { ClientFormModal } from '@components/party/modals/ClientModal'
 import StaffModal from '@components/party/modals/StaffModal'
 import LocationModal from '@components/party/modals/LocationModal'
@@ -1503,6 +1504,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               locations={locations}
               hasOrderConflict={hasOrderConflict}
               canManage={canManage}
+              onView={(order) => {
+                setOrderDraft(normalizeOrderDraft(order))
+                setEditingOrderId(order._id)
+                setActiveModal('order-view')
+              }}
               onEdit={(order) => {
                 setOrderDraft(normalizeOrderDraft(order))
                 setEditingOrderId(order._id)
@@ -1750,9 +1756,26 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           onOpenOrder={(order) => {
             setOrderDraft(normalizeOrderDraft(order))
             setEditingOrderId(order._id)
-            setActiveModal('order-edit')
+            setActiveModal('order-view')
           }}
           onUpdateOrder={updateOrder}
+        />
+      )}
+
+      {activeModal === 'order-view' && (
+        <OrderViewModal
+          open={true}
+          order={orderDraft}
+          locations={locations}
+          staff={staff}
+          clientsById={clientsById}
+          services={services}
+          canManage={canManage}
+          onClose={() => {
+            setActiveModal('')
+            setEditingOrderId('')
+          }}
+          onEdit={() => setActiveModal('order-edit')}
         />
       )}
 
