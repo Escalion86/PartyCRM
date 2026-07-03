@@ -48,6 +48,21 @@ export async function PATCH(req, { params }) {
     )
   }
 
+  const { order: existingOrder, error: existingOrderError } =
+    await validatePartyTransactionOrder({
+      tenantId: context.tenantId,
+      orderId: existing.orderId,
+    })
+  if (existingOrderError) return existingOrderError
+  if (existingOrder.status === 'closed') {
+    return partyError(
+      409,
+      'partycrm_closed_order_transaction_readonly',
+      'Транзакции закрытого заказа нельзя редактировать',
+      'validation'
+    )
+  }
+
   const body = await parseJsonBody(req)
   const payload = normalizePartyTransactionPayload({
     ...existing,
@@ -69,6 +84,14 @@ export async function PATCH(req, { params }) {
     orderId: payload.orderId,
   })
   if (orderError) return orderError
+  if (order.status === 'closed') {
+    return partyError(
+      409,
+      'partycrm_closed_order_transaction_readonly',
+      'Для закрытого заказа нельзя добавлять транзакции',
+      'validation'
+    )
+  }
 
   const transaction = await PartyTransactions.findOneAndUpdate(
     { _id: id, tenantId: context.tenantId },
@@ -110,17 +133,36 @@ export async function DELETE(req, { params }) {
   }
 
   const PartyTransactions = await getPartyTransactionModel()
-  const transaction = await PartyTransactions.findOneAndDelete({
+  const existing = await PartyTransactions.findOne({
     _id: id,
     tenantId: context.tenantId,
   }).lean()
-  if (!transaction) {
+  if (!existing) {
     return partyError(
       404,
       'partycrm_transaction_not_found',
       'Транзакция не найдена'
     )
   }
+
+  const { order, error: orderError } = await validatePartyTransactionOrder({
+    tenantId: context.tenantId,
+    orderId: existing.orderId,
+  })
+  if (orderError) return orderError
+  if (order.status === 'closed') {
+    return partyError(
+      409,
+      'partycrm_closed_order_transaction_readonly',
+      'Транзакции закрытого заказа нельзя удалить',
+      'validation'
+    )
+  }
+
+  const transaction = await PartyTransactions.findOneAndDelete({
+    _id: id,
+    tenantId: context.tenantId,
+  }).lean()
 
   await syncPartyOrderCalendarAfterCrud({
     tenantId: context.tenantId,

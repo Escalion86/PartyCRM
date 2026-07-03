@@ -43,7 +43,7 @@ const normalizeDraftForSubmit = (draft) => ({
   date: draft.date ? new Date(draft.date).toISOString() : new Date().toISOString(),
 })
 
-const TransactionList = ({ title, items, onEdit, onDelete }) => (
+const TransactionList = ({ title, items, isClosed, onEdit, onDelete }) => (
   <div className="rounded-md border border-gray-200 bg-white">
     <div className="border-b border-gray-100 px-3 py-2 text-sm font-semibold text-gray-800">
       {title}
@@ -68,22 +68,24 @@ const TransactionList = ({ title, items, onEdit, onDelete }) => (
                 {item.comment ? ` · ${item.comment}` : ''}
               </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                className="rounded border border-sky-200 px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50"
-                onClick={() => onEdit(item)}
-              >
-                Изменить
-              </button>
-              <button
-                type="button"
-                className="rounded border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
-                onClick={() => onDelete(item)}
-              >
-                Удалить
-              </button>
-            </div>
+            {!isClosed ? (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="rounded border border-sky-200 px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50"
+                  onClick={() => onEdit(item)}
+                >
+                  Изменить
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-red-200 px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                  onClick={() => onDelete(item)}
+                >
+                  Удалить
+                </button>
+              </div>
+            ) : null}
           </div>
         ))}
       </div>
@@ -97,6 +99,7 @@ export default function PartyOrderTransactionsSection({
   isDraft = false,
   isClone = false,
   isFormChanged = false,
+  isClosed = false,
   onRequestAutosave,
 }) {
   const [financeError, setFinanceError] = useState('')
@@ -128,6 +131,10 @@ export default function PartyOrderTransactionsSection({
 
   const startCreate = async () => {
     setFinanceError('')
+    if (isClosed) {
+      setFinanceError('Закрытый заказ: транзакции доступны только для просмотра')
+      return
+    }
     const action = getOrderTransactionAction({
       orderId,
       isClone,
@@ -154,6 +161,11 @@ export default function PartyOrderTransactionsSection({
   }
 
   const saveDraft = async () => {
+    if (isClosed) {
+      setFinanceError('Закрытый заказ: транзакции доступны только для просмотра')
+      setDraft(null)
+      return
+    }
     if (!draft?.orderId) {
       setFinanceError('Сначала сохраните заказ')
       return
@@ -173,6 +185,10 @@ export default function PartyOrderTransactionsSection({
   }
 
   const deleteTransaction = async (item) => {
+    if (isClosed) {
+      setFinanceError('Закрытый заказ: транзакции доступны только для просмотра')
+      return
+    }
     const confirmed = window.confirm('Удалить транзакцию?')
     if (!confirmed) return
     await deleteMutation.mutateAsync(item)
@@ -218,6 +234,11 @@ export default function PartyOrderTransactionsSection({
           {financeError}
         </div>
       ) : null}
+      {isClosed && !financeError ? (
+        <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+          Закрытый заказ: транзакции доступны только для просмотра
+        </div>
+      ) : null}
 
       <div className="flex items-center justify-between gap-2">
         <div className="text-sm text-gray-500">
@@ -230,7 +251,7 @@ export default function PartyOrderTransactionsSection({
           type="button"
           className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
           onClick={startCreate}
-          disabled={busy}
+          disabled={busy || isClosed}
         >
           Добавить транзакцию
         </button>
@@ -336,6 +357,7 @@ export default function PartyOrderTransactionsSection({
         <TransactionList
           title={`Поступления · ${money(viewModel.incomeTotal)}`}
           items={viewModel.income}
+          isClosed={isClosed}
           onEdit={(item) =>
             setDraft({
               ...item,
@@ -347,6 +369,7 @@ export default function PartyOrderTransactionsSection({
         <TransactionList
           title={`Расходы · ${money(viewModel.expenseTotal)}`}
           items={viewModel.expense}
+          isClosed={isClosed}
           onEdit={(item) =>
             setDraft({
               ...item,

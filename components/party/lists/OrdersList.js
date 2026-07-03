@@ -200,6 +200,7 @@ const OrderCard = ({
   const grossMargin = paymentState.margin - payoutTotal
   const additionalEventsBadges = getAdditionalEventsBadges(order)
   const statusConfig = ORDER_STATUSES.find((s) => s.value === order.status)
+  const isClosed = order.status === 'closed'
 
   return (
     <>
@@ -279,7 +280,7 @@ const OrderCard = ({
               <span>Маржа: {formatMoney(grossMargin)}</span>
             </div>
           </div>
-          {canManage && (
+          {canManage && !isClosed && (
             <PartyCardActions>
               <CardButton
                 icon={faPen}
@@ -305,7 +306,7 @@ const OrderCard = ({
                     : 'Изменить статус'
                 }
               />
-              {order.status !== 'canceled' && order.status !== 'closed' && (
+              {order.status !== 'canceled' && (
                 <CardButton
                   icon={faTrash}
                   onClick={() => onDelete(order._id)}

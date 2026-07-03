@@ -18,6 +18,26 @@ test('party order click opens a read-only order view modal', async () => {
   assert.match(list, /<PartyCard onClick=\{\(\) => onView\?\.\(order\)\}/)
   assert.match(viewModal, /title="Просмотр заказа"/)
   assert.match(viewModal, /Редактировать/)
+  assert.match(viewModal, /\{order\?\.adminComment \? \(/)
+  assert.match(viewModal, /<InfoLine label="Комментарий">\{order\.adminComment\}<\/InfoLine>/)
   assert.match(viewModal, /Финансы/)
   assert.match(viewModal, /Доп\. события/)
+})
+
+test('closed party orders hide edit and transaction controls in UI', async () => {
+  const list = await source('components/party/lists/OrdersList.js')
+  const viewModal = await source('components/party/modals/OrderViewModal.js')
+  const orderModal = await source('components/party/modals/OrderModal.js')
+  const transactions = await source(
+    'components/party/orders/PartyOrderTransactionsSection.js'
+  )
+
+  assert.match(list, /const isClosed = order\.status === 'closed'/)
+  assert.match(list, /canManage && !isClosed/)
+  assert.match(viewModal, /const isClosed = order\?\.status === 'closed'/)
+  assert.match(viewModal, /canManage && !isClosed/)
+  assert.match(orderModal, /isClosed=\{orderDraft\.status === 'closed'\}/)
+  assert.match(transactions, /isClosed = false/)
+  assert.match(transactions, /Закрытый заказ: транзакции доступны только для просмотра/)
+  assert.match(transactions, /disabled=\{busy \|\| isClosed\}/)
 })

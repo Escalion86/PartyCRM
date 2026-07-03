@@ -69,6 +69,14 @@ export async function POST(req) {
     orderId: payload.orderId,
   })
   if (orderError) return orderError
+  if (order.status === 'closed') {
+    return partyError(
+      409,
+      'partycrm_closed_order_transaction_readonly',
+      'Для закрытого заказа нельзя добавлять транзакции',
+      'validation'
+    )
+  }
 
   const PartyTransactions = await getPartyTransactionModel()
   const transaction = await PartyTransactions.create({

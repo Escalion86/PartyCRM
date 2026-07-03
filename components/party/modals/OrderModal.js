@@ -686,6 +686,7 @@ export default function OrderModal({
                 0
               }
               isDraft={orderDraft.status === 'draft'}
+              isClosed={orderDraft.status === 'closed'}
               onRequestAutosave={handleAutosaveBeforeTransaction}
             />
 

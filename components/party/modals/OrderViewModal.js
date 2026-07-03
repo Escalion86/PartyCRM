@@ -108,6 +108,7 @@ export default function OrderViewModal({
   const paymentState = getOrderPaymentState({ contractAmount, transactions })
   const payoutTotal = getOrderPayoutTotal(order)
   const grossMargin = paymentState.margin - payoutTotal
+  const isClosed = order?.status === 'closed'
   const assignedStaff = Array.isArray(order?.assignedStaff)
     ? order.assignedStaff
     : []
@@ -124,7 +125,7 @@ export default function OrderViewModal({
       >
         Закрыть
       </button>
-      {canManage ? (
+      {canManage && !isClosed ? (
         <button
           type="button"
           className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"

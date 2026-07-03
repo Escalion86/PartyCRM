@@ -254,6 +254,23 @@ test('party close-past route returns close financial summaries for owner review'
   assert.match(source, /skipped\.push\(\{\s*orderId,\s*blockers:\s*readiness\.blockers,\s*summary:\s*readiness\.summary/)
 })
 
+test('party closed orders and their transactions are immutable through management API', async () => {
+  const orderSource = await route('app/api/party/orders/[id]/route.js')
+  const transactionsSource = await route('app/api/party/transactions/route.js')
+  const transactionSource = await route('app/api/party/transactions/[id]/route.js')
+
+  assert.match(orderSource, /partycrm_order_closed_readonly/)
+  assert.match(orderSource, /currentOrder\.status\s*===\s*'closed'/)
+  assert.match(orderSource, /if\s*\(currentOrder\.status\s*===\s*'closed'\)/)
+  assert.match(orderSource, /if\s*\(currentOrder\.status\s*===\s*'closed'\)/)
+
+  assert.match(transactionsSource, /partycrm_closed_order_transaction_readonly/)
+  assert.match(transactionsSource, /order\.status\s*===\s*'closed'/)
+  assert.match(transactionSource, /partycrm_closed_order_transaction_readonly/)
+  assert.match(transactionSource, /order\.status\s*===\s*'closed'/)
+  assert.match(transactionSource, /validatePartyTransactionOrder\(\{\s*tenantId:\s*context\.tenantId,\s*orderId:\s*existing\.orderId/)
+})
+
 test('party performer calendar route exports only sanitized performer assignments', async () => {
   const source = await route('app/api/party/performer/calendar/route.js')
 

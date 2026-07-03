@@ -109,6 +109,15 @@ export async function PATCH(req, { params }) {
     ? body.status
     : currentOrder.status
 
+  if (currentOrder.status === 'closed') {
+    return partyError(
+      409,
+      'partycrm_order_closed_readonly',
+      'Закрытый заказ нельзя редактировать',
+      'validation'
+    )
+  }
+
   if (nextStatus === 'closed' && currentOrder.status !== 'closed') {
     const PartyTransactions = await getPartyTransactionModel()
     const transactions = await PartyTransactions.find({
@@ -246,12 +255,22 @@ export async function DELETE(req, { params }) {
   const permanent = searchParams.get('permanent') === 'true'
 
   const PartyOrders = await getPartyOrderModel()
-  const currentOrder = permanent
-    ? null
-    : await PartyOrders.findOne({ _id: id, tenantId: context.tenantId }).lean()
+  const currentOrder = await PartyOrders.findOne({
+    _id: id,
+    tenantId: context.tenantId,
+  }).lean()
 
-  if (!permanent && !currentOrder) {
+  if (!currentOrder) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+  }
+
+  if (currentOrder.status === 'closed') {
+    return partyError(
+      409,
+      'partycrm_order_closed_readonly',
+      'Закрытый заказ нельзя удалить',
+      'validation'
+    )
   }
 
   if (permanent) {
