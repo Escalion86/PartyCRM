@@ -525,6 +525,14 @@ export default function OrderModal({
                 onCompanySettingsChange={onCompanySettingsChange}
               />
             )}
+            <Textarea
+              label="Комментарий"
+              value={orderDraft.adminComment || ''}
+              onChange={(val) => handleChange('adminComment', val)}
+              rows={3}
+              fullWidth
+              tone="party"
+            />
           </div>
         </TabPanel>
 

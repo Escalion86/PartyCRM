@@ -436,3 +436,4 @@ PartyStaff
 - 2026-06-24: acceptance конфликтов заказов подтвержден тестами: `server/partyOrderConflicts.test.mjs` проверяет overlap по точке и исполнителю, а `helpers/partyOrderConflictsUi.test.mjs` фиксирует фильтр/бейдж конфликтов в `/company` и API `/api/party/orders/check-conflicts`.
 - 2026-06-24: acceptance входящих заявок подтвержден тестом `helpers/partyPublicLeadAcceptance.test.mjs`: `/api/party/public/lead` и `/api/party/public/lead/tilda` используют общий service, создают `PartyOrder` со статусом `draft` и отправляют PartyCRM push администраторам компании.
 - 2026-06-24: acceptance owner core flow подтвержден тестом `helpers/partyOwnerCoreFlowAcceptance.test.mjs`: owner/admin через `/company` и tenant-aware API создает точку, услугу, клиента, сотрудника без аккаунта и заказ.
+- 2026-07-03: в `/company/orders` добавлена отдельная модалка просмотра заказа по клику на карточку; редактирование теперь открывается явной кнопкой из карточки или просмотра.

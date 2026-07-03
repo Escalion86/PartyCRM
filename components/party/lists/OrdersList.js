@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import {
   faBan,
   faClock,
+  faPen,
   faPlay,
   faLock,
   faTrash,
@@ -181,6 +182,7 @@ const OrderCard = ({
   hasConflict,
   canManage,
   onCancel,
+  onView,
   onEdit,
   onStatusChange,
   onDelete,
@@ -201,7 +203,7 @@ const OrderCard = ({
 
   return (
     <>
-      <PartyCard onClick={() => onEdit?.(order)}>
+      <PartyCard onClick={() => onView?.(order)}>
         <PartyCardHeader>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -263,6 +265,11 @@ const OrderCard = ({
             <p className="mt-1 truncate text-sm text-black/60">
               Клиент: {orderClient.name} · {orderClient.phone}
             </p>
+            {order.adminComment ? (
+              <p className="mt-1 whitespace-pre-wrap text-sm text-black/70">
+                Комментарий: {order.adminComment}
+              </p>
+            ) : null}
             <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-black/60 sm:grid-cols-3">
               <span>Договор: {formatMoney(contractAmount)}</span>
               <span>Получено: {formatMoney(paymentState.incomeTotal)}</span>
@@ -274,6 +281,12 @@ const OrderCard = ({
           </div>
           {canManage && (
             <PartyCardActions>
+              <CardButton
+                icon={faPen}
+                onClick={() => onEdit?.(order)}
+                color="blue"
+                tooltipText="Редактировать"
+              />
               <CardButton
                 icon={currentStatusIcon(order.status)}
                 onClick={() => setStatusModalOpen(true)}
@@ -325,6 +338,7 @@ export default function OrdersList({
   hasOrderConflict,
   canManage,
   onCancel,
+  onView,
   onEdit,
   onStatusChange,
   onDelete,
@@ -349,6 +363,7 @@ export default function OrdersList({
             hasConflict={hasOrderConflict(order, orders)}
             canManage={canManage}
             onCancel={onCancel}
+            onView={onView}
             onEdit={onEdit}
             onStatusChange={onStatusChange}
             onDelete={onDelete}

@@ -183,6 +183,7 @@ export const EMPTY_ORDER = {
   transactions: [],
   additionalEvents: [],
   assignedStaff: [],
+  adminComment: '',
 }
 
 export const EMPTY_COMPANY = {
