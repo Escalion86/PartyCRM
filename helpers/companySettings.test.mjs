@@ -47,6 +47,27 @@ test('mergeCompanySettingsPatch keeps previous notifications object', () => {
   assert.equal(next.notifications.pushEnabled, true)
 })
 
+test('normalizeCompanySettings clamps additional event reminder days before', () => {
+  assert.equal(
+    normalizeCompanySettings({
+      notifications: { additionalEventsReminderDaysBefore: '7' },
+    }).notifications.additionalEventsReminderDaysBefore,
+    7
+  )
+  assert.equal(
+    normalizeCompanySettings({
+      notifications: { additionalEventsReminderDaysBefore: '-2' },
+    }).notifications.additionalEventsReminderDaysBefore,
+    0
+  )
+  assert.equal(
+    normalizeCompanySettings({
+      notifications: { additionalEventsReminderDaysBefore: '45' },
+    }).notifications.additionalEventsReminderDaysBefore,
+    30
+  )
+})
+
 test('filterCompanySettingsPatchByTariffAccess removes gated settings', () => {
   assert.deepEqual(
     filterCompanySettingsPatchByTariffAccess(

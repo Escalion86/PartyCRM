@@ -60,6 +60,8 @@ export default function PerformerWorkspaceClient() {
   const [linkRequests, setLinkRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [savingOrderId, setSavingOrderId] = useState('')
+  const [savingReportKey, setSavingReportKey] = useState('')
+  const [reportDrafts, setReportDrafts] = useState({})
   const [savingLinkRequestId, setSavingLinkRequestId] = useState('')
   const [error, setError] = useState('')
   const [companyFilter, setCompanyFilter] = useState('all')
@@ -207,6 +209,72 @@ export default function PerformerWorkspaceClient() {
       setError(saveError.message || 'Не удалось обновить статус участия')
     } finally {
       setSavingOrderId('')
+    }
+  }
+
+  const updateReportDraft = (orderKey, patch) => {
+    setReportDrafts((prev) => ({
+      ...prev,
+      [orderKey]: {
+        ...(prev[orderKey] || {}),
+        ...patch,
+      },
+    }))
+  }
+
+  const getReportDraft = (order) => {
+    const orderKey = `${order._id}:${order.staffId}`
+    const report = order.assignment?.report || {}
+    return {
+      text: reportDrafts[orderKey]?.text ?? report.text ?? '',
+      fileName: reportDrafts[orderKey]?.fileName ?? '',
+      fileUrl: reportDrafts[orderKey]?.fileUrl ?? '',
+    }
+  }
+
+  const savePerformerReport = async (order) => {
+    const orderKey = `${order._id}:${order.staffId}`
+    const draft = getReportDraft(order)
+    const files =
+      draft.fileName || draft.fileUrl
+        ? [{ name: draft.fileName || 'Файл отчета', url: draft.fileUrl }]
+        : order.assignment?.report?.files || []
+    setSavingReportKey(orderKey)
+    setError('')
+    try {
+      const response = await apiJson(
+        `/api/party/performer/orders/${order._id}/report`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            staffId: order.staffId,
+            status: 'submitted',
+            text: draft.text,
+            files,
+          }),
+        }
+      )
+      setOrders((items) =>
+        items.map((item) =>
+          item._id === order._id && item.staffId === order.staffId
+            ? {
+                ...item,
+                assignment: {
+                  ...item.assignment,
+                  report: response.data.report,
+                },
+              }
+            : item
+        )
+      )
+      setReportDrafts((prev) => ({
+        ...prev,
+        [orderKey]: { text: response.data.report?.text || '', fileName: '', fileUrl: '' },
+      }))
+    } catch (saveError) {
+      setError(saveError.message || 'Не удалось отправить отчет')
+    } finally {
+      setSavingReportKey('')
     }
   }
 
@@ -435,6 +503,12 @@ export default function PerformerWorkspaceClient() {
             order.assignment?.confirmationStatus || 'pending'
           const orderKey = `${order._id}:${order.staffId}`
           const isSaving = savingOrderId === orderKey
+          const report = order.assignment?.report || {}
+          const reportDraft = getReportDraft(order)
+          const canSubmitReport =
+            confirmationStatus === 'done' ||
+            ['submitted', 'revision_requested', 'accepted'].includes(report.status)
+          const isSavingReport = savingReportKey === orderKey
           return (
             <div
               key={orderKey}
@@ -501,6 +575,84 @@ export default function PerformerWorkspaceClient() {
                   </div>
                 </div>
               </div>
+              {canSubmitReport && (
+                <div className="mt-4 grid gap-3 rounded-lg border border-sky-100 bg-sky-50/60 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-800">
+                      Отчет по заказу
+                    </p>
+                    <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+                      {report.status === 'accepted'
+                        ? 'Принят'
+                        : report.status === 'revision_requested'
+                          ? 'Нужны правки'
+                          : report.status === 'submitted'
+                            ? 'На проверке'
+                            : 'Черновик'}
+                    </span>
+                  </div>
+                  {report.reviewComment ? (
+                    <p className="rounded bg-white p-2 text-xs text-orange-700">
+                      Комментарий: {report.reviewComment}
+                    </p>
+                  ) : null}
+                  <textarea
+                    value={reportDraft.text}
+                    onChange={(event) =>
+                      updateReportDraft(orderKey, { text: event.target.value })
+                    }
+                    rows={4}
+                    className="w-full resize-y rounded-md border border-sky-100 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500"
+                    placeholder="Напишите, как прошло мероприятие, что выполнено и что важно знать менеджеру."
+                    disabled={report.status === 'accepted'}
+                  />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      value={reportDraft.fileName}
+                      onChange={(event) =>
+                        updateReportDraft(orderKey, { fileName: event.target.value })
+                      }
+                      className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
+                      placeholder="Название файла"
+                      disabled={report.status === 'accepted'}
+                    />
+                    <input
+                      value={reportDraft.fileUrl}
+                      onChange={(event) =>
+                        updateReportDraft(orderKey, { fileUrl: event.target.value })
+                      }
+                      className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
+                      placeholder="Ссылка на файл"
+                      disabled={report.status === 'accepted'}
+                    />
+                  </div>
+                  {Array.isArray(report.files) && report.files.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {report.files.map((file) => (
+                        <a
+                          key={file._id || file.url || file.name}
+                          href={file.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded border border-sky-200 bg-white px-2 py-1 text-xs font-semibold text-sky-700"
+                        >
+                          {file.name || 'Файл отчета'}
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
+                  {report.status !== 'accepted' && (
+                    <button
+                      type="button"
+                      disabled={isSavingReport}
+                      onClick={() => savePerformerReport(order)}
+                      className={primaryButtonClass}
+                    >
+                      {isSavingReport ? 'Отправляем...' : 'Отправить отчет'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )
         })}

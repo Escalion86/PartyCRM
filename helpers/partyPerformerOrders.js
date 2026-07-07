@@ -50,6 +50,7 @@ export const sanitizePartyOrderForPerformer = ({
           payoutAmount: assignment.payoutAmount || 0,
           payoutStatus: assignment.payoutStatus,
           confirmationStatus: assignment.confirmationStatus,
+          report: assignment.report || null,
         }
       : null,
   }

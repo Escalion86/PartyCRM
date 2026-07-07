@@ -72,6 +72,15 @@ const parseTimeToMinutes = (value) => {
   return hours * 60 + minutes
 }
 
+const parseReminderDaysBefore = (value) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.min(30, Math.max(0, Math.floor(parsed)))
+}
+
+const addDays = (date, days) =>
+  new Date(date.getTime() + Math.max(0, days) * 24 * 60 * 60 * 1000)
+
 const getCompanyReminderWindow = ({ company, now }) => {
   const timeZone = validTimeZone(company?.settings?.timeZone || company?.timeZone)
   const parts = zonedParts(now, timeZone)
@@ -80,12 +89,18 @@ const getCompanyReminderWindow = ({ company, now }) => {
       company?.notifications?.additionalEventsPushTime ||
       DEFAULT_REMINDER_TIME
   )
+  const reminderDaysBefore = parseReminderDaysBefore(
+    company?.settings?.notifications?.additionalEventsReminderDaysBefore ??
+      company?.notifications?.additionalEventsReminderDaysBefore
+  )
   const currentMinutes = Number(parts.hour || 0) * 60 + Number(parts.minute || 0)
+  const nextDayStart = startOfNextDayInTimeZone(now, timeZone)
 
   return {
     timeZone,
     dateKey: localDateKey(now, timeZone),
-    dateToExclusive: startOfNextDayInTimeZone(now, timeZone),
+    reminderDaysBefore,
+    dateToExclusive: addDays(nextDayStart, reminderDaysBefore),
     canSend: currentMinutes >= reminderMinutes,
   }
 }
@@ -100,7 +115,7 @@ const getReminderType = ({ taskDate, dateKey, timeZone }) => {
   const taskDateKey = localDateKey(taskDate, timeZone)
   if (taskDateKey < dateKey) return 'overdue'
   if (taskDateKey === dateKey) return 'today'
-  return null
+  return 'upcoming'
 }
 
 const collectDueAdditionalEventReminders = ({ company, orders, now }) => {

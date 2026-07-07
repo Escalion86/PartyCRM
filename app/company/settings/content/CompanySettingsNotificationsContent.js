@@ -10,6 +10,12 @@ import useCompanySettings from '../useCompanySettings'
 
 const DEFAULT_REMINDER_TIME = '10:00'
 
+const normalizeReminderDaysBefore = (value) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.min(30, Math.max(0, Math.floor(parsed)))
+}
+
 export default function CompanySettingsNotificationsContent({
   activeCompanyId,
 }) {
@@ -29,6 +35,9 @@ export default function CompanySettingsNotificationsContent({
     notifications.additionalEventsPushTime
       ? notifications.additionalEventsPushTime
       : DEFAULT_REMINDER_TIME
+  const reminderDaysBefore = normalizeReminderDaysBefore(
+    notifications.additionalEventsReminderDaysBefore
+  )
   const partyPushHeaders = activeCompanyId
     ? { 'x-partycrm-company-id': activeCompanyId }
     : {}
@@ -217,25 +226,49 @@ export default function CompanySettingsNotificationsContent({
       </div>
 
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
-        <label className="grid gap-2">
-          <span className="text-sm font-semibold">
-            Время ежедневных напоминаний
-          </span>
-          <input
-            type="time"
-            step="900"
-            value={reminderTime}
-            onChange={(event) =>
-              savePatch({
-                notifications: {
-                  ...notifications,
-                  additionalEventsPushTime: event.target.value,
-                },
-              })
-            }
-            className="h-11 max-w-52 rounded-lg border border-sky-100 px-3 text-sm"
-          />
-        </label>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="grid gap-2">
+            <span className="text-sm font-semibold">
+              Время ежедневных напоминаний
+            </span>
+            <input
+              type="time"
+              step="900"
+              value={reminderTime}
+              onChange={(event) =>
+                savePatch({
+                  notifications: {
+                    ...notifications,
+                    additionalEventsPushTime: event.target.value,
+                  },
+                })
+              }
+              className="h-11 max-w-52 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-2">
+            <span className="text-sm font-semibold">
+              За сколько дней до даты напоминать
+            </span>
+            <input
+              type="number"
+              min="0"
+              max="30"
+              step="1"
+              value={reminderDaysBefore}
+              onChange={(event) =>
+                savePatch({
+                  notifications: {
+                    ...notifications,
+                    additionalEventsReminderDaysBefore:
+                      normalizeReminderDaysBefore(event.target.value),
+                  },
+                })
+              }
+              className="h-11 max-w-52 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+        </div>
       </div>
 
       {saving ? (

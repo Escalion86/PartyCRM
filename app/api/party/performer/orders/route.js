@@ -34,7 +34,7 @@ export async function GET() {
 
   const PartyOrders = await getPartyOrderModel()
   const orders = await PartyOrders.find({
-    status: { $nin: ['canceled', 'closed'] },
+    status: { $ne: 'canceled' },
     $or: activeMemberships.map((membership) => ({
       tenantId: membership.tenantId,
       'assignedStaff.staffId': String(membership.staffId),

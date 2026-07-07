@@ -170,6 +170,22 @@ const getAdditionalEventsBadges = (order) => {
   return counts
 }
 
+const getReportBadges = (order) =>
+  (order.assignedStaff ?? []).reduce(
+    (counts, assignment) => {
+      const status = assignment.report?.status
+      if (!status || status === 'draft') {
+        if (assignment.confirmationStatus === 'done') counts.waiting += 1
+      } else if (status === 'submitted') {
+        counts.submitted += 1
+      } else if (status === 'revision_requested') {
+        counts.revision += 1
+      }
+      return counts
+    },
+    { waiting: 0, submitted: 0, revision: 0 }
+  )
+
 const currentStatusIcon = (status) => {
   const found = ORDER_STATUSES.find((s) => s.value === status)
   return found?.icon || faClock
@@ -199,6 +215,7 @@ const OrderCard = ({
   const payoutTotal = getOrderPayoutTotal(order)
   const grossMargin = paymentState.margin - payoutTotal
   const additionalEventsBadges = getAdditionalEventsBadges(order)
+  const reportBadges = getReportBadges(order)
   const statusConfig = ORDER_STATUSES.find((s) => s.value === order.status)
   const isClosed = order.status === 'closed'
 
@@ -254,6 +271,21 @@ const OrderCard = ({
               {additionalEventsBadges.open > 0 && (
                 <span className="shrink-0 rounded bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700">
                   Задачи: {additionalEventsBadges.open}
+                </span>
+              )}
+              {reportBadges.waiting > 0 && (
+                <span className="shrink-0 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">
+                  Ждет отчет: {reportBadges.waiting}
+                </span>
+              )}
+              {reportBadges.submitted > 0 && (
+                <span className="shrink-0 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">
+                  Отчет на проверке: {reportBadges.submitted}
+                </span>
+              )}
+              {reportBadges.revision > 0 && (
+                <span className="shrink-0 rounded bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700">
+                  Правки отчета: {reportBadges.revision}
                 </span>
               )}
             </div>

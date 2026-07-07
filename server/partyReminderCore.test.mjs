@@ -3,6 +3,7 @@ import test from 'node:test'
 
 import {
   buildPartyAdditionalEventReminderPayload,
+  collectDueAdditionalEventReminders,
   runPartyAdditionalEventReminderBatch,
 } from './partyReminderCore.js'
 
@@ -126,6 +127,51 @@ test('runPartyAdditionalEventReminderBatch sends due additionalEvents once per l
   assert.equal(result.remindersDue, 2)
   assert.equal(result.remindersDeduped, 1)
   assert.equal(result.remindersSent, 1)
+})
+
+test('collectDueAdditionalEventReminders includes upcoming tasks within company reminder window', () => {
+  const reminders = collectDueAdditionalEventReminders({
+    company: {
+      ...company,
+      settings: {
+        ...company.settings,
+        notifications: {
+          ...company.settings.notifications,
+          additionalEventsReminderDaysBefore: 3,
+        },
+      },
+    },
+    now: new Date('2026-06-20T03:05:00.000Z'),
+    orders: [
+      {
+        _id: 'order-upcoming',
+        title: 'Выпускной',
+        status: 'active',
+        additionalEvents: [
+          {
+            _id: 'task-three-days',
+            title: 'Подтвердить реквизит',
+            date: new Date('2026-06-23T05:00:00.000Z'),
+          },
+          {
+            _id: 'task-four-days',
+            title: 'Не включать',
+            date: new Date('2026-06-24T05:00:00.000Z'),
+          },
+        ],
+      },
+    ],
+  })
+
+  assert.deepEqual(
+    reminders.map((item) => [
+      item.orderId,
+      item.additionalEventId,
+      item.reminderType,
+      item.dateKey,
+    ]),
+    [['order-upcoming', 'task-three-days', 'upcoming', '2026-06-20']]
+  )
 })
 
 test('buildPartyAdditionalEventReminderPayload summarizes overdue and today tasks', () => {

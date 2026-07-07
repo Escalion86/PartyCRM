@@ -33,9 +33,9 @@ const ClientCard = ({ client, canManage, onArchive, onEdit }) => {
             />
             <CardButton
               icon={faBoxArchive}
-              onClick={() => onArchive(client._id)}
+              onClick={() => onArchive && onArchive(client._id)}
               color="red"
-              tooltipText="Архив"
+              tooltipText="В архив"
             />
           </PartyCardActions>
         )}

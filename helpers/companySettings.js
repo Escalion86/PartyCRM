@@ -79,6 +79,22 @@ export const normalizeCompanyTowns = (towns = []) => normalizeTownList(towns)
 const normalizeObjectField = (value) =>
   value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 
+const normalizeReminderDaysBefore = (value) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.min(30, Math.max(0, Math.floor(parsed)))
+}
+
+const normalizeCompanyNotifications = (value = {}) => {
+  const notifications = normalizeObjectField(value)
+  return {
+    ...notifications,
+    additionalEventsReminderDaysBefore: normalizeReminderDaysBefore(
+      notifications.additionalEventsReminderDaysBefore
+    ),
+  }
+}
+
 const REQUISITE_LEGACY_FIELD_MAP = Object.freeze({
   providerStatus: 'artistStatus',
   providerFullName: 'artistFullName',
@@ -190,7 +206,7 @@ export const normalizeCompanySettings = (value = {}) => ({
   publicLeadRoutingRules: normalizeCompanyPublicLeadRoutingRules(
     value?.publicLeadRoutingRules ?? []
   ),
-  notifications: normalizeObjectField(value?.notifications),
+  notifications: normalizeCompanyNotifications(value?.notifications),
   documents: normalizeCompanyDocuments(value?.documents),
   integrations: normalizeObjectField(value?.integrations),
 })
@@ -200,8 +216,8 @@ export const mergeCompanySettingsPatch = (current, patch) =>
     ...normalizeCompanySettings(current),
     ...patch,
     notifications: {
-      ...normalizeObjectField(current?.notifications),
-      ...normalizeObjectField(patch?.notifications),
+      ...normalizeCompanyNotifications(current?.notifications),
+      ...normalizeCompanyNotifications(patch?.notifications),
     },
     documents: {
       ...normalizeObjectField(current?.documents),

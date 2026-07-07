@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons/faMagnifyingGlass'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import getPersonFullName from '@helpers/getPersonFullName'
+import DateInput from '@components/DateInput'
 import PhoneInput from '@components/PhoneInput'
 import Input from '@components/Input'
 import Select from '@components/Select'
@@ -12,6 +13,31 @@ import Modal from '@components/Modal'
 import PartyAddressBlock from '@components/party/inputs/PartyAddressBlock'
 import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
 import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
+
+const similarReasonLabels = {
+  phone: 'телефон',
+  whatsapp: 'WhatsApp',
+  viber: 'Viber',
+  email: 'email',
+  telegram: 'Telegram',
+  vk: 'VK',
+  instagram: 'Instagram',
+}
+
+const createSignificantDate = () => ({
+  title: '',
+  date: null,
+  comment: '',
+})
+
+const normalizeSignificantDates = (items) =>
+  (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      title: String(item?.title ?? '').trim(),
+      date: item?.date || null,
+      comment: String(item?.comment ?? '').trim(),
+    }))
+    .filter((item) => item.title || item.date || item.comment)
 
 export function ClientSelectModal({
   open,
@@ -113,6 +139,9 @@ export function ClientFormModal({
   saving,
   activeCompanyId = '',
   canManage = false,
+  similarClients = [],
+  onSimilarClientSelect,
+  onMergeSimilarClient,
 }) {
   const preferredChannelOptions = [
     { value: '', label: 'Не выбран' },
@@ -127,9 +156,42 @@ export function ClientFormModal({
     setClientDraft((prev) => ({ ...prev, [field]: value }))
   }
 
+  const updateSignificantDate = (index, patch) => {
+    setClientDraft((prev) => ({
+      ...prev,
+      significantDates: (prev.significantDates || []).map((item, itemIndex) =>
+        itemIndex === index ? { ...item, ...patch } : item
+      ),
+    }))
+  }
+
+  const addSignificantDate = () => {
+    setClientDraft((prev) => ({
+      ...prev,
+      significantDates: [
+        ...(prev.significantDates || []),
+        createSignificantDate(),
+      ],
+    }))
+  }
+
+  const removeSignificantDate = (index) => {
+    setClientDraft((prev) => ({
+      ...prev,
+      significantDates: (prev.significantDates || []).filter(
+        (_, itemIndex) => itemIndex !== index
+      ),
+    }))
+  }
+
+  const getNormalizedDraft = () => ({
+    ...clientDraft,
+    significantDates: normalizeSignificantDates(clientDraft.significantDates),
+  })
+
   const handleSubmit = (e) => {
     e.preventDefault()
-    onSubmit()
+    onSubmit(getNormalizedDraft())
   }
 
   const footerContent = (
@@ -145,7 +207,7 @@ export function ClientFormModal({
         type="button"
         className="px-4 py-2 text-sm font-semibold text-white transition rounded cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={saving}
-        onClick={onSubmit}
+        onClick={() => onSubmit(getNormalizedDraft())}
       >
         {saving ? 'Сохранение...' : 'Сохранить'}
       </button>
@@ -167,6 +229,48 @@ export function ClientFormModal({
           onSubmit={handleSubmit}
           className="flex flex-col gap-2"
         >
+          {similarClients.length > 0 && (
+            <div className="grid gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+              <p className="font-semibold">Похожий клиент уже есть</p>
+              <div className="grid gap-2">
+                {similarClients.map((item) => {
+                  const similarClient = item.client || item
+                  const reasons = (item.reasons || [])
+                    .map((reason) => similarReasonLabels[reason] || reason)
+                    .join(', ')
+                  return (
+                    <div
+                      key={similarClient._id}
+                      className="rounded border border-amber-200 bg-white px-3 py-2"
+                    >
+                      <button
+                        type="button"
+                        className="block w-full cursor-pointer text-left font-semibold transition hover:text-amber-700"
+                        onClick={() =>
+                          onSimilarClientSelect &&
+                          onSimilarClientSelect(similarClient)
+                        }
+                      >
+                        {getPersonFullName(similarClient, 'Без имени')}
+                      </button>
+                      <span className="block text-xs text-amber-800">
+                        Совпадение: {reasons || 'контакты'}
+                      </span>
+                      {clientDraft._id && onMergeSimilarClient ? (
+                        <button
+                          type="button"
+                          className="mt-2 cursor-pointer rounded border border-amber-300 px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+                          onClick={() => onMergeSimilarClient(similarClient)}
+                        >
+                          Объединить
+                        </button>
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           <Input
             label="Имя"
             value={clientDraft.firstName}
@@ -345,6 +449,66 @@ export function ClientFormModal({
             tone="party"
             rows={3}
           />
+          <div className="grid gap-3 rounded border border-sky-100 bg-sky-50/50 p-3">
+            <div className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+              Значимые даты
+            </div>
+            {(clientDraft.significantDates || []).map((item, index) => (
+              <div
+                key={`significant-date-${index}`}
+                className="grid gap-2 rounded border border-gray-200 bg-white p-3"
+              >
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                  <Input
+                    label="Название"
+                    value={item.title || ''}
+                    onChange={(value) =>
+                      updateSignificantDate(index, {
+                        title: value.slice(0, 100),
+                      })
+                    }
+                    fullWidth
+                    tone="party"
+                  />
+                  <DateInput
+                    label="Дата"
+                    value={item.date || null}
+                    onChange={(value) =>
+                      updateSignificantDate(index, { date: value })
+                    }
+                    tone="party"
+                    className="w-full md:w-48"
+                  />
+                </div>
+                <Textarea
+                  label="Комментарий"
+                  value={item.comment || ''}
+                  onChange={(value) =>
+                    updateSignificantDate(index, {
+                      comment: value.slice(0, 500),
+                    })
+                  }
+                  fullWidth
+                  tone="party"
+                  rows={2}
+                />
+                <button
+                  type="button"
+                  className="w-fit cursor-pointer rounded border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                  onClick={() => removeSignificantDate(index)}
+                >
+                  Удалить дату
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              className="w-fit cursor-pointer rounded border border-sky-300 bg-white px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
+              onClick={addSignificantDate}
+            >
+              Добавить дату
+            </button>
+          </div>
         </form>
 
         {clientDraft._id && activeCompanyId ? (

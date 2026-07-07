@@ -27,7 +27,7 @@ const pushReminderLogsSchema = {
   reminderType: {
     type: String,
     required: true,
-    enum: ['today', 'tomorrow', 'overdue'],
+    enum: ['today', 'tomorrow', 'overdue', 'upcoming'],
   },
   dateKey: {
     type: String,

@@ -1,5 +1,48 @@
 import { Schema } from 'mongoose'
 
+const partyPerformerReportFileSchema = new Schema(
+  {
+    name: { type: String, trim: true, default: '', maxlength: 240 },
+    url: { type: String, trim: true, default: '', maxlength: 1000 },
+    comment: { type: String, trim: true, default: '', maxlength: 500 },
+  },
+  { _id: true }
+)
+
+const partyPerformerReportSchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: ['draft', 'submitted', 'accepted', 'revision_requested'],
+      default: 'draft',
+    },
+    text: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 4000,
+    },
+    files: {
+      type: [partyPerformerReportFileSchema],
+      default: [],
+    },
+    submittedAt: { type: Date, default: null },
+    reviewedAt: { type: Date, default: null },
+    reviewedByStaffId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Staff',
+      default: null,
+    },
+    reviewComment: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 1000,
+    },
+  },
+  { _id: false }
+)
+
 const assignedStaffSchema = new Schema(
   {
     staffId: {
@@ -26,6 +69,10 @@ const assignedStaffSchema = new Schema(
       type: String,
       enum: ['pending', 'confirmed', 'declined', 'done'],
       default: 'pending',
+    },
+    report: {
+      type: partyPerformerReportSchema,
+      default: () => ({}),
     },
   },
   { _id: false }

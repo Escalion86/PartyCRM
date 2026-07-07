@@ -275,6 +275,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [locations, setLocations] = useState([])
   const [archivedLocations, setArchivedLocations] = useState([])
   const [clients, setClients] = useState([])
+  const [similarClients, setSimilarClients] = useState([])
   const [staff, setStaff] = useState([])
   const [services, setServices] = useState([])
   const [orders, setOrders] = useState([])
@@ -910,6 +911,47 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     [activeCompanyId]
   )
 
+  const reviewPerformerReport = useCallback(
+    async ({ orderId, staffId, status, reviewComment = '' }) => {
+      if (!activeCompanyId || !orderId || !staffId) return
+      const response = await apiJson(
+        `/api/party/orders/${orderId}/reports/${staffId}`,
+        buildCompanyRequestOptions(activeCompanyId, {
+          method: 'PATCH',
+          body: JSON.stringify({ status, reviewComment }),
+        })
+      )
+      const report = response.data?.report
+      setOrders((prev) =>
+        prev.map((order) =>
+          String(order._id) === String(orderId)
+            ? {
+                ...order,
+                assignedStaff: (order.assignedStaff || []).map((item) =>
+                  String(item.staffId) === String(staffId)
+                    ? { ...item, report }
+                    : item
+                ),
+              }
+            : order
+        )
+      )
+      setOrderDraft((prev) =>
+        String(prev?._id) === String(orderId)
+          ? {
+              ...prev,
+              assignedStaff: (prev.assignedStaff || []).map((item) =>
+                String(item.staffId) === String(staffId)
+                  ? { ...item, report }
+                  : item
+              ),
+            }
+          : prev
+      )
+    },
+    [activeCompanyId]
+  )
+
   const downloadFinanceCsv = useCallback(async () => {
     if (!activeCompanyId) return
     const search = new URLSearchParams()
@@ -942,14 +984,14 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   }, [activeCompanyId, financeExportFrom, financeExportTo])
 
   // Client actions
-  const addClient = useCallback(async () => {
+  const addClient = useCallback(async (clientPayload = clientDraft) => {
     setSaving(true)
     try {
       const response = await apiJson(
         '/api/party/clients',
         buildCompanyRequestOptions(activeCompanyId, {
           method: 'POST',
-          body: JSON.stringify(clientDraft),
+          body: JSON.stringify(clientPayload),
         })
       )
       if (response.data) {
@@ -962,7 +1004,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     }
   }, [clientDraft, activeCompanyId])
 
-  const editClient = useCallback(async () => {
+  const editClient = useCallback(async (clientPayload = clientDraft) => {
     if (!editingClientId) return
     setSaving(true)
     try {
@@ -970,7 +1012,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         `/api/party/clients/${editingClientId}`,
         buildCompanyRequestOptions(activeCompanyId, {
           method: 'PATCH',
-          body: JSON.stringify(clientDraft),
+          body: JSON.stringify(clientPayload),
         })
       )
       if (response.data) {
@@ -987,6 +1029,95 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       setSaving(false)
     }
   }, [clientDraft, editingClientId, activeCompanyId])
+
+  const archiveClient = useCallback(async (clientId) => {
+    if (!clientId || !activeCompanyId) return
+    const confirmed = window.confirm(
+      'Переместить клиента в архив? История заказов, звонков и переписок сохранится.'
+    )
+    if (!confirmed) return
+
+    await apiJson(
+      `/api/party/clients/${clientId}`,
+      buildCompanyRequestOptions(activeCompanyId, { method: 'DELETE' })
+    )
+    setClients((prev) => prev.filter((client) => String(client._id) !== String(clientId)))
+  }, [activeCompanyId])
+
+  const mergeSimilarClient = useCallback(async (sourceClient) => {
+    if (!editingClientId || !sourceClient?._id || !activeCompanyId) return
+    const confirmed = window.confirm(
+      'Объединить клиентов? Найденная карточка будет архивирована, а заказы, звонки, транзакции и переписки перейдут к текущему клиенту.'
+    )
+    if (!confirmed) return
+
+    const response = await apiJson(
+      `/api/party/clients/${editingClientId}/merge`,
+      buildCompanyRequestOptions(activeCompanyId, {
+        method: 'POST',
+        body: JSON.stringify({ sourceClientId: sourceClient._id }),
+      })
+    )
+    if (response.data?.targetClient) {
+      setClients((prev) =>
+        prev.filter((client) => String(client._id) !== String(sourceClient._id))
+      )
+      setSimilarClients([])
+      window.alert('Карточки клиентов объединены')
+    }
+  }, [activeCompanyId, editingClientId])
+
+  const loadSimilarClients = useCallback(async (draft) => {
+    if (!activeCompanyId || !canManage) {
+      setSimilarClients([])
+      return
+    }
+    const hasContact = [
+      draft?.phone,
+      draft?.whatsapp,
+      draft?.viber,
+      draft?.email,
+      draft?.telegram,
+      draft?.vk,
+      draft?.instagram,
+    ].some((value) => String(value || '').trim())
+    if (!hasContact) {
+      setSimilarClients([])
+      return
+    }
+
+    try {
+      const response = await apiJson(
+        '/api/party/clients/similar',
+        buildCompanyRequestOptions(activeCompanyId, {
+          method: 'POST',
+          body: JSON.stringify({
+            ...draft,
+            excludeClientId: editingClientId,
+          }),
+        })
+      )
+      setSimilarClients(response.data ?? [])
+    } catch {
+      setSimilarClients([])
+    }
+  }, [activeCompanyId, canManage, editingClientId])
+
+  useEffect(() => {
+    if (activeModal !== 'client' && activeModal !== 'client-edit') {
+      setSimilarClients([])
+      return
+    }
+    const timeoutId = window.setTimeout(() => {
+      loadSimilarClients(clientDraft)
+    }, 350)
+
+    return () => window.clearTimeout(timeoutId)
+  }, [
+    activeModal,
+    clientDraft,
+    loadSimilarClients,
+  ])
 
   // Staff actions
   const addStaff = useCallback(async () => {
@@ -1557,6 +1688,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                 className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
                 onClick={() => {
                   setClientDraft(EMPTY_PARTY_CLIENT)
+                  setEditingClientId('')
+                  setSimilarClients([])
                   setActiveModal('client')
                 }}
               >
@@ -1565,9 +1698,19 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             </div>
             <ClientsList
               clients={clients}
+              canManage={canManage}
+              onArchive={archiveClient}
+              onCreateClick={() => {
+                setClientDraft(EMPTY_PARTY_CLIENT)
+                setEditingClientId('')
+                setSimilarClients([])
+                setActiveModal('client')
+              }}
+              clientsCount={clients.length}
               onEdit={(client) => {
                 setClientDraft(client)
                 setEditingClientId(client._id)
+                setSimilarClients([])
                 setActiveModal('client-edit')
               }}
             />
@@ -1776,6 +1919,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             setEditingOrderId('')
           }}
           onEdit={() => setActiveModal('order-edit')}
+          onReviewReport={reviewPerformerReport}
         />
       )}
 
@@ -1908,10 +2052,19 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           onClose={() => {
             setActiveModal('')
             setEditingClientId('')
+            setSimilarClients([])
           }}
           onSubmit={activeModal === 'client-edit' ? editClient : addClient}
           activeCompanyId={activeCompanyId}
           canManage={canManage}
+          similarClients={similarClients}
+          onSimilarClientSelect={(client) => {
+            setClientDraft(client)
+            setEditingClientId(client._id)
+            setSimilarClients([])
+            setActiveModal('client-edit')
+          }}
+          onMergeSimilarClient={mergeSimilarClient}
         />
       )}
 

@@ -21,6 +21,13 @@ const PLACE_TYPE_LABELS = {
   client_address: 'Выезд к клиенту',
 }
 
+const REPORT_STATUS_LABELS = {
+  draft: 'Черновик',
+  submitted: 'На проверке',
+  accepted: 'Принят',
+  revision_requested: 'Нужны правки',
+}
+
 const formatDateTime = (value) => {
   if (!value) return 'Дата не указана'
   const date = new Date(value)
@@ -89,6 +96,7 @@ export default function OrderViewModal({
   canManage = false,
   onClose,
   onEdit,
+  onReviewReport,
 }) {
   const safeClientsById = clientsById ?? new Map()
   const location = locations.find(
@@ -227,6 +235,100 @@ export default function OrderViewModal({
                         normalizePartyPayoutStatus(assignment.payoutStatus)
                       )}
                     </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Исполнители не назначены.</p>
+          )}
+        </Section>
+
+        <Section title="Отчеты исполнителей">
+          {assignedStaff.length > 0 ? (
+            <div className="grid gap-2">
+              {assignedStaff.map((assignment) => {
+                const staffMember = staff.find(
+                  (item) => String(item._id) === String(assignment.staffId)
+                )
+                const report = assignment.report || {}
+                const files = Array.isArray(report.files) ? report.files : []
+                return (
+                  <div
+                    key={`report-${assignment.staffId}`}
+                    className="rounded-md border border-slate-100 bg-slate-50 p-2 text-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-semibold text-slate-900">
+                        {getStaffLabel(staffMember)}
+                      </div>
+                      <span className="rounded bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
+                        {REPORT_STATUS_LABELS[report.status] || 'Ждет отчет'}
+                      </span>
+                    </div>
+                    {report.text ? (
+                      <div className="mt-2 whitespace-pre-wrap text-slate-700">
+                        {report.text}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-slate-500">Отчет еще не отправлен.</p>
+                    )}
+                    {files.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {files.map((file) => (
+                          <a
+                            key={file._id || file.url || file.name}
+                            href={file.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded border border-sky-200 bg-white px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50"
+                          >
+                            {file.name || 'Файл отчета'}
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                    {report.reviewComment ? (
+                      <div className="mt-2 rounded bg-white p-2 text-xs text-slate-600">
+                        Комментарий проверки: {report.reviewComment}
+                      </div>
+                    ) : null}
+                    {canManage && report.status === 'submitted' ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="cursor-pointer rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                          onClick={() =>
+                            onReviewReport?.({
+                              orderId: order._id,
+                              staffId: assignment.staffId,
+                              status: 'accepted',
+                            })
+                          }
+                        >
+                          Принять
+                        </button>
+                        <button
+                          type="button"
+                          className="cursor-pointer rounded border border-orange-200 bg-white px-3 py-1.5 text-xs font-semibold text-orange-700 transition hover:bg-orange-50"
+                          onClick={() => {
+                            const reviewComment = window.prompt(
+                              'Что нужно исправить в отчете?',
+                              report.reviewComment || ''
+                            )
+                            if (reviewComment === null) return
+                            onReviewReport?.({
+                              orderId: order._id,
+                              staffId: assignment.staffId,
+                              status: 'revision_requested',
+                              reviewComment,
+                            })
+                          }}
+                        >
+                          Запросить правки
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 )
               })}

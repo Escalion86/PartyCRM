@@ -221,9 +221,9 @@ export default function OrderModal({
     [setOrderDraft]
   )
 
-  const handleClientCreate = useCallback(async () => {
+  const handleClientCreate = useCallback(async (clientPayload = clientDraft) => {
     // Проверка дубликата по телефону
-    const normalizedPhone = normalizePhone(clientDraft.phone)
+    const normalizedPhone = normalizePhone(clientPayload.phone)
     if (normalizedPhone) {
       const existingClient = clients.find(
         (item) =>
@@ -251,7 +251,7 @@ export default function OrderModal({
       const response = await apiJson('/api/party/clients', {
         method: 'POST',
         headers: requestHeaders,
-        body: JSON.stringify(clientDraft),
+        body: JSON.stringify(clientPayload),
       })
       if (response.data) {
         setOrderDraft((prev) => ({ ...prev, clientId: response.data._id }))
@@ -272,14 +272,14 @@ export default function OrderModal({
     onClientCreated,
   ])
 
-  const handleClientEdit = useCallback(async () => {
+  const handleClientEdit = useCallback(async (clientPayload = clientDraft) => {
     if (!orderDraft.clientId) return
     setClientSaving(true)
     try {
       await apiJson(`/api/party/clients/${orderDraft.clientId}`, {
         method: 'PATCH',
         headers: requestHeaders,
-        body: JSON.stringify(clientDraft),
+        body: JSON.stringify(clientPayload),
       })
     } finally {
       setClientSaving(false)
