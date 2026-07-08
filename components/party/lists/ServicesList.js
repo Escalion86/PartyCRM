@@ -11,6 +11,7 @@ import { formatMoney } from '@helpers/formatMoney'
 import { useAtomValue } from 'jotai'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 import cn from 'classnames'
+import { buildServicesListViewModel } from './servicesListViewModel'
 
 const specializationLabels = {
   animator: 'Аниматор',
@@ -100,62 +101,18 @@ export default function ServicesList({
 }) {
   const serviceGroups = useAtomValue(serviceGroupsAtom)
   const [expandedGroups, setExpandedGroups] = useState({})
-  const hasGroups = serviceGroups.length > 0
 
   const toggleGroup = (groupId) => {
     setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }))
   }
 
-  const groupedData = useMemo(() => {
-    if (!hasGroups) {
-      // Flat list
-      return {
-        isGrouped: false,
-        flatList: [...services].sort((a, b) =>
-          (a.title || '').localeCompare(b.title || '', 'ru')
-        ),
-      }
-    }
-
-    // Group services
-    const grouped = {}
-    const withoutGroup = []
-
-    services.forEach((service) => {
-      if (service?.groupId) {
-        const gId = service.groupId
-        if (!grouped[gId]) grouped[gId] = []
-        grouped[gId].push(service)
-      } else {
-        withoutGroup.push(service)
-      }
-    })
-
-    Object.keys(grouped).forEach((gId) => {
-      grouped[gId].sort((a, b) =>
-        (a.title || '').localeCompare(b.title || '', 'ru')
-      )
-    })
-
-    const sortedWithoutGroup = [...withoutGroup].sort((a, b) =>
-      (a.title || '').localeCompare(b.title || '', 'ru')
-    )
-
-    const sortedGroups = [...serviceGroups].sort(
-      (a, b) => (a.order ?? 0) - (b.order ?? 0)
-    )
-
-    return {
-      isGrouped: true,
-      groups: sortedGroups,
-      grouped,
-      withoutGroup: sortedWithoutGroup,
-    }
-  }, [services, serviceGroups, hasGroups])
+  const groupedData = useMemo(
+    () => buildServicesListViewModel({ services, serviceGroups }),
+    [services, serviceGroups]
+  )
 
   const renderServices = () => {
-    if (!hasGroups) {
-      // Flat list
+    if (!groupedData.isGrouped) {
       return services.length === 0 ? (
         <p className="text-sm text-black/55">Услуги еще не добавлены.</p>
       ) : (

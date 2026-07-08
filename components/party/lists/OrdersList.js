@@ -1,21 +1,24 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   faBan,
   faClock,
+  faEllipsisV,
   faPen,
   faPlay,
   faLock,
   faTrash,
 } from '@fortawesome/free-solid-svg-icons'
-import CardButton from '@components/CardButton'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import DropDown from '@components/DropDown'
 import Modal from '@components/Modal'
+import ContactsIconsButtons from '@components/ContactsIconsButtons'
 import PartyCard, {
   PartyCardActions,
   PartyCardHeader,
 } from '@components/party/PartyCard'
-import { formatMoney } from '@helpers/formatMoney'
 import getPersonFullName from '@helpers/getPersonFullName'
 import { getOrderPaymentState } from '@helpers/partyOrderTransactions'
 
@@ -26,12 +29,85 @@ const ORDER_STATUSES = [
   { value: 'closed', label: 'Закрыт', color: 'green', icon: faLock },
 ]
 
-const orderStatusColorMap = {
-  draft: 'text-gray-500',
-  active: 'text-blue-500',
-  canceled: 'text-red-500',
-  closed: 'text-green-500',
+const MENU_ITEM_TONE = {
+  red: 'text-red-600 hover:bg-red-600 hover:text-white',
+  blue: 'text-sky-700 hover:bg-sky-600 hover:text-white',
+  gray: 'text-gray-600 hover:bg-gray-600 hover:text-white',
+  green: 'text-emerald-700 hover:bg-emerald-600 hover:text-white',
 }
+
+const OrderActionMenuItem = ({ icon, label, color = 'blue', onClick }) => (
+  <button
+    type="button"
+    className={`flex h-9 w-full cursor-pointer items-center gap-2 bg-white px-3 text-left text-sm font-semibold transition ${MENU_ITEM_TONE[color] || MENU_ITEM_TONE.blue}`}
+    onClick={(event) => {
+      event.stopPropagation()
+      onClick?.()
+    }}
+  >
+    <FontAwesomeIcon icon={icon} className="h-4 w-4 shrink-0" />
+    <span className="whitespace-nowrap">{label}</span>
+  </button>
+)
+
+const OrderActionMenu = ({
+  order,
+  statusConfig,
+  onEdit,
+  onStatus,
+  onDelete,
+}) => (
+  <DropDown
+    trigger={
+      <button
+        type="button"
+        className="action-icon-button action-icon-button--neutral flex h-9 w-9 cursor-pointer items-center justify-center rounded-bl-xl text-base font-normal duration-200"
+        aria-label="Открыть меню действий заказа"
+        title="Действия"
+      >
+        <FontAwesomeIcon icon={faEllipsisV} className="h-5 w-5" />
+      </button>
+    }
+    menuPadding={false}
+    placement="right"
+    renderInPortal
+  >
+    <div className="min-w-52 overflow-hidden rounded-lg">
+      <OrderActionMenuItem
+        icon={faPen}
+        label="Редактировать"
+        color="blue"
+        onClick={() => onEdit?.(order)}
+      />
+      <OrderActionMenuItem
+        icon={currentStatusIcon(order.status)}
+        label={
+          statusConfig
+            ? `${statusConfig.label} (изменить статус)`
+            : 'Изменить статус'
+        }
+        color={
+          order.status === 'canceled'
+            ? 'red'
+            : order.status === 'closed'
+              ? 'green'
+              : order.status === 'draft'
+                ? 'gray'
+                : 'blue'
+        }
+        onClick={onStatus}
+      />
+      {order.status !== 'canceled' && (
+        <OrderActionMenuItem
+          icon={faTrash}
+          label="Удалить"
+          color="red"
+          onClick={() => onDelete?.(order._id)}
+        />
+      )}
+    </div>
+  </DropDown>
+)
 
 const OrderStatusModal = ({ open, order, onClose, onStatusChange, saving }) => {
   const [selectedStatus, setSelectedStatus] = useState(order?.status || 'draft')
@@ -49,7 +125,7 @@ const OrderStatusModal = ({ open, order, onClose, onStatusChange, saving }) => {
     <Modal
       open={open}
       onClose={onClose}
-      title={`Статус заказа: ${order?.title || order?.serviceTitle || 'Заказ'}`}
+      title={`Статус заказа: ${order?.title || 'Заказ'}`}
       tone="party"
       size="sm"
       footer={
@@ -104,17 +180,185 @@ const OrderStatusModal = ({ open, order, onClose, onStatusChange, saving }) => {
   )
 }
 
-const getOrderClientLabel = (order, clientsById) => {
+const getOrderClient = (order, clientsById) => {
   const currentClient = order?.clientId
     ? clientsById.get(String(order.clientId))
     : null
 
+  if (currentClient) return currentClient
+
   return {
-    name: currentClient
-      ? getPersonFullName(currentClient, { fallback: 'не указан' })
-      : order?.client?.name || 'не указан',
-    phone: currentClient?.phone || order?.client?.phone || 'телефон не указан',
+    firstName: order?.client?.name || '',
+    phone: order?.client?.phone || '',
+    email: order?.client?.email || '',
   }
+}
+
+const OrderContactLine = ({ label, client }) => {
+  const name = getPersonFullName(client, { fallback: 'не указан' })
+
+  return (
+    <div className="flex min-h-[25px] flex-wrap items-center gap-x-2 gap-y-1 text-sm text-black/60">
+      <span className="font-medium text-black/70">{label}:</span>
+      <span className="min-w-0 truncate">{name}</span>
+      <ContactsIconsButtons
+        user={client}
+        showChat
+        className="my-0 shrink-0"
+      />
+    </div>
+  )
+}
+
+const OrderContactsSummary = ({ order, clientsById }) => {
+  const client = getOrderClient(order, clientsById)
+  const otherContacts = (order.otherContacts || [])
+    .map((contact) => {
+      const contactClient = contact?.clientId
+        ? clientsById.get(String(contact.clientId))
+        : null
+      if (!contactClient) return null
+      return {
+        client: contactClient,
+        comment: contact.comment || 'Контакт',
+      }
+    })
+    .filter(Boolean)
+
+  return (
+    <div className="grid gap-1">
+      <OrderContactLine label="Клиент" client={client} />
+      {otherContacts.map((contact) => (
+        <OrderContactLine
+          key={`${contact.client._id}-${contact.comment}`}
+          label={contact.comment || 'Контакт'}
+          client={contact.client}
+        />
+      ))}
+    </div>
+  )
+}
+
+const OrderCommentPreview = ({ comment }) => {
+  const textRef = useRef(null)
+  const wrapperRef = useRef(null)
+  const buttonRef = useRef(null)
+  const [isOverflowing, setIsOverflowing] = useState(false)
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false)
+  const [tooltipPosition, setTooltipPosition] = useState(null)
+
+  useEffect(() => {
+    const checkOverflow = () => {
+      const textElement = textRef.current
+      if (!textElement) return
+
+      const hasOverflow = textElement.scrollWidth > textElement.clientWidth
+      setIsOverflowing(hasOverflow)
+      if (!hasOverflow) setIsTooltipOpen(false)
+    }
+
+    const frameId = requestAnimationFrame(checkOverflow)
+    window.addEventListener('resize', checkOverflow)
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      window.removeEventListener('resize', checkOverflow)
+    }
+  }, [comment])
+
+  const updateTooltipPosition = useCallback(() => {
+    const buttonElement = buttonRef.current
+    if (!buttonElement) return
+
+    const rect = buttonElement.getBoundingClientRect()
+    const tooltipWidth = Math.min(320, window.innerWidth - 24)
+    const left = Math.max(
+      12,
+      Math.min(rect.right - tooltipWidth, window.innerWidth - tooltipWidth - 12)
+    )
+
+    setTooltipPosition({
+      top: rect.bottom + 8,
+      left,
+      width: tooltipWidth,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!isTooltipOpen) return undefined
+
+    const handleDocumentClick = (event) => {
+      if (wrapperRef.current?.contains(event.target)) return
+      setIsTooltipOpen(false)
+    }
+
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') setIsTooltipOpen(false)
+    }
+
+    document.addEventListener('click', handleDocumentClick)
+    document.addEventListener('keydown', handleEscape)
+    window.addEventListener('resize', updateTooltipPosition)
+    window.addEventListener('scroll', updateTooltipPosition, true)
+    updateTooltipPosition()
+
+    return () => {
+      document.removeEventListener('click', handleDocumentClick)
+      document.removeEventListener('keydown', handleEscape)
+      window.removeEventListener('resize', updateTooltipPosition)
+      window.removeEventListener('scroll', updateTooltipPosition, true)
+    }
+  }, [isTooltipOpen, updateTooltipPosition])
+
+  if (!comment) return null
+
+  return (
+    <div
+      ref={wrapperRef}
+      className="mt-1 grid max-w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 text-sm text-black/70"
+    >
+      <span className="shrink-0">Комментарий:</span>
+      <span ref={textRef} className="block min-w-0 truncate">
+        {comment}
+      </span>
+      {isOverflowing && (
+        <span className="shrink-0">
+          <button
+            ref={buttonRef}
+            type="button"
+            className="cursor-pointer rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs leading-none font-semibold text-sky-700 transition hover:border-sky-300 hover:bg-sky-100"
+            aria-label="Показать полный комментарий"
+            onClick={(event) => {
+              event.stopPropagation()
+              updateTooltipPosition()
+              setIsTooltipOpen((current) => !current)
+            }}
+          >
+            ...
+          </button>
+          {isTooltipOpen &&
+            tooltipPosition &&
+            createPortal(
+              <div
+                role="tooltip"
+                className="z-[1000] rounded-lg border border-sky-100 bg-white p-3 text-left text-sm text-slate-700 shadow-lg"
+                style={{
+                  position: 'fixed',
+                  top: tooltipPosition.top,
+                  left: tooltipPosition.left,
+                  width: tooltipPosition.width,
+                  maxWidth: 'calc(100vw - 24px)',
+                }}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <p className="whitespace-pre-wrap break-words">{comment}</p>
+              </div>,
+              document.body
+            )}
+        </span>
+      )}
+    </div>
+  )
 }
 
 const getOrderPayoutTotal = (order) =>
@@ -125,6 +369,57 @@ const getOrderPayoutTotal = (order) =>
 
 const getOrderContractAmount = (order) =>
   Number(order.contractAmount ?? order.clientPayment?.totalAmount ?? 0)
+
+const formatCardAmount = (value) => Number(value || 0).toLocaleString('ru-RU')
+
+const OrderAmountSummary = ({
+  contractAmount,
+  grossMargin,
+  isClosed,
+  paymentState,
+}) => {
+  const paid = Number(paymentState.incomeTotal || 0)
+  const isFullyPaid = contractAmount > 0 && paid >= contractAmount
+
+  if (isClosed) {
+    const isZero = grossMargin === 0
+    return (
+      <div
+        className={`event-profit-badge flex min-w-[92px] shrink-0 items-center justify-center rounded-full border px-3 py-1.5 text-base font-semibold ${
+          isZero ? 'event-profit-card--zero' : 'event-profit-card'
+        }`}
+      >
+        <span
+          className={isZero ? 'event-profit-text--zero' : 'event-profit-text'}
+        >
+          {formatCardAmount(grossMargin)}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex min-h-7 min-w-[112px] items-end justify-end gap-2 text-lg leading-none font-semibold whitespace-nowrap">
+      {paid > 0 && contractAmount > 0 && isFullyPaid ? (
+        <span className="text-green-700">{formatCardAmount(paid)}</span>
+      ) : paid > 0 || contractAmount > 0 ? (
+        <span>
+          {paid > 0 ? (
+            <span className="text-green-700">{formatCardAmount(paid)}</span>
+          ) : null}
+          {paid > 0 && contractAmount > 0 ? ' / ' : null}
+          {contractAmount > 0 ? (
+            <span className={isFullyPaid ? 'text-green-700' : 'text-blue-700'}>
+              {formatCardAmount(contractAmount)}
+            </span>
+          ) : null}
+        </span>
+      ) : (
+        <span className="text-gray-400">—</span>
+      )}
+    </div>
+  )
+}
 
 const formatDateTime = (value) => {
   if (!value) return 'Дата не указана'
@@ -205,9 +500,10 @@ const OrderCard = ({
 }) => {
   const [statusModalOpen, setStatusModalOpen] = useState(false)
   const location = locations.find((item) => item._id === order.locationId)
-  const orderClient = getOrderClientLabel(order, clientsById)
   const contractAmount = getOrderContractAmount(order)
-  const transactions = Array.isArray(order.transactions) ? order.transactions : []
+  const transactions = Array.isArray(order.transactions)
+    ? order.transactions
+    : []
   const paymentState = getOrderPaymentState({
     contractAmount,
     transactions,
@@ -218,6 +514,10 @@ const OrderCard = ({
   const reportBadges = getReportBadges(order)
   const statusConfig = ORDER_STATUSES.find((s) => s.value === order.status)
   const isClosed = order.status === 'closed'
+  const orderTypeTitle =
+    typeof order.title === 'string' && order.title.trim()
+      ? order.title.trim()
+      : 'Заказ'
 
   return (
     <>
@@ -226,7 +526,7 @@ const OrderCard = ({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate font-semibold">
-                {order.title || order.serviceTitle || 'Заказ'}
+                {orderTypeTitle}
               </p>
               {statusConfig && (
                 <span
@@ -289,63 +589,39 @@ const OrderCard = ({
                 </span>
               )}
             </div>
+            {order.serviceTitle ? (
+              <p className="mt-1 truncate text-sm font-medium text-black/70">
+                {order.serviceTitle}
+              </p>
+            ) : null}
             <p className="mt-1 text-sm text-black/60">
               {formatDateTime(order.eventDate)} ·{' '}
               {order.placeType === 'company_location'
                 ? location?.title || 'Точка не выбрана'
                 : order.customAddress || 'Выездной адрес не указан'}
             </p>
-            <p className="mt-1 truncate text-sm text-black/60">
-              Клиент: {orderClient.name} · {orderClient.phone}
-            </p>
-            {order.adminComment ? (
-              <p className="mt-1 whitespace-pre-wrap text-sm text-black/70">
-                Комментарий: {order.adminComment}
-              </p>
-            ) : null}
-            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm text-black/60 sm:grid-cols-3">
-              <span>Договор: {formatMoney(contractAmount)}</span>
-              <span>Получено: {formatMoney(paymentState.incomeTotal)}</span>
-              <span>Остаток: {formatMoney(paymentState.balanceDue)}</span>
-              <span>Расходы: {formatMoney(paymentState.expenseTotal)}</span>
-              <span>Выплаты: {formatMoney(payoutTotal)}</span>
-              <span>Маржа: {formatMoney(grossMargin)}</span>
+            <OrderCommentPreview comment={order.adminComment} />
+            <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <OrderContactsSummary order={order} clientsById={clientsById} />
+              </div>
+              <OrderAmountSummary
+                contractAmount={contractAmount}
+                grossMargin={grossMargin}
+                isClosed={isClosed}
+                paymentState={paymentState}
+              />
             </div>
           </div>
           {canManage && !isClosed && (
             <PartyCardActions>
-              <CardButton
-                icon={faPen}
-                onClick={() => onEdit?.(order)}
-                color="blue"
-                tooltipText="Редактировать"
+              <OrderActionMenu
+                order={order}
+                statusConfig={statusConfig}
+                onEdit={onEdit}
+                onStatus={() => setStatusModalOpen(true)}
+                onDelete={onDelete}
               />
-              <CardButton
-                icon={currentStatusIcon(order.status)}
-                onClick={() => setStatusModalOpen(true)}
-                color={
-                  order.status === 'canceled'
-                    ? 'red'
-                    : order.status === 'closed'
-                      ? 'green'
-                      : order.status === 'draft'
-                        ? 'gray'
-                        : 'blue'
-                }
-                tooltipText={
-                  statusConfig
-                    ? `${statusConfig.label} (изменить статус)`
-                    : 'Изменить статус'
-                }
-              />
-              {order.status !== 'canceled' && (
-                <CardButton
-                  icon={faTrash}
-                  onClick={() => onDelete(order._id)}
-                  color="red"
-                  tooltipText="Удалить"
-                />
-              )}
             </PartyCardActions>
           )}
         </PartyCardHeader>

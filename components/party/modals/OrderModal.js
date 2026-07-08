@@ -17,7 +17,9 @@ import InputWrapper from '@components/InputWrapper'
 import DateTimePicker from '@components/DateTimePicker'
 import Textarea from '@components/Textarea'
 import ServiceMultiSelect from '@components/ServiceMultiSelect'
+import OtherContactsPicker from '@components/OtherContactsPicker'
 import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPicker'
+import PartyOrderTypePicker from '@components/party/inputs/PartyOrderTypePicker'
 import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTransactionsSection'
 import PartyOrderDocumentsSection from '@components/party/orders/PartyOrderDocumentsSection'
 import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
@@ -32,6 +34,7 @@ import {
   EMPTY_PARTY_SERVICE,
   EMPTY_LOCATION,
 } from '@helpers/partyHelpers'
+import { normalizeCompanyDictionary } from '@helpers/companySettings'
 import {
   PARTY_ORDER_PAYOUT_STATUSES,
   getPartyPayoutStatusLabel,
@@ -84,6 +87,7 @@ export default function OrderModal({
   const [clientModal, setClientModal] = useState('')
   const [clientDraft, setClientDraft] = useState(EMPTY_PARTY_CLIENT)
   const [clientSaving, setClientSaving] = useState(false)
+  const [otherContactSelectIndex, setOtherContactSelectIndex] = useState(null)
 
   const [serviceModal, setServiceModal] = useState(false)
   const [serviceDraft, setServiceDraft] = useState(EMPTY_PARTY_SERVICE)
@@ -122,6 +126,47 @@ export default function OrderModal({
     },
     [setOrderDraft]
   )
+
+  const handleCompanySettingsResponse = useCallback(
+    (payload = {}) => {
+      onCompanySettingsChange?.(payload?.settings ?? payload ?? {})
+    },
+    [onCompanySettingsChange]
+  )
+
+  const handleOrderTypeCreate = useCallback(
+    async (type) => {
+      if (!activeCompanyId) return
+
+      const normalizedType = String(type ?? '').trim()
+      if (!normalizedType) return
+
+      const nextOrderTypes = normalizeCompanyDictionary([
+        ...(Array.isArray(companySettings?.orderTypes)
+          ? companySettings.orderTypes
+          : []),
+        normalizedType,
+      ])
+
+      const response = await apiJson('/api/party/company-settings', {
+        method: 'PATCH',
+        headers: requestHeaders,
+        body: JSON.stringify({ orderTypes: nextOrderTypes }),
+      })
+      handleCompanySettingsResponse(response.data)
+    },
+    [
+      activeCompanyId,
+      companySettings?.orderTypes,
+      handleCompanySettingsResponse,
+      requestHeaders,
+    ]
+  )
+
+  const closeClientModal = useCallback(() => {
+    setClientModal('')
+    setOtherContactSelectIndex(null)
+  }, [])
 
   const handleAdditionalEventChange = useCallback(
     (index, field, value) => {
@@ -216,7 +261,55 @@ export default function OrderModal({
 
   const handleClientSelect = useCallback(
     (client) => {
+      if (otherContactSelectIndex !== null) {
+        setOrderDraft((prev) => ({
+          ...prev,
+          otherContacts: (prev.otherContacts || []).map((contact, index) =>
+            index === otherContactSelectIndex
+              ? { ...contact, clientId: client._id }
+              : contact
+          ),
+        }))
+        setOtherContactSelectIndex(null)
+        return
+      }
       setOrderDraft((prev) => ({ ...prev, clientId: client._id }))
+    },
+    [otherContactSelectIndex, setOrderDraft]
+  )
+
+  const handleOtherContactAdd = useCallback(() => {
+    setOrderDraft((prev) => ({
+      ...prev,
+      otherContacts: [...(prev.otherContacts || []), { clientId: '', comment: '' }],
+    }))
+  }, [setOrderDraft])
+
+  const handleOtherContactSelect = useCallback((index) => {
+    setOtherContactSelectIndex(index)
+    setClientModal('select')
+  }, [])
+
+  const handleOtherContactCommentChange = useCallback(
+    (index, value) => {
+      setOrderDraft((prev) => ({
+        ...prev,
+        otherContacts: (prev.otherContacts || []).map((contact, itemIndex) =>
+          itemIndex === index ? { ...contact, comment: value } : contact
+        ),
+      }))
+    },
+    [setOrderDraft]
+  )
+
+  const handleOtherContactRemove = useCallback(
+    (index) => {
+      setOrderDraft((prev) => ({
+        ...prev,
+        otherContacts: (prev.otherContacts || []).filter(
+          (_, itemIndex) => itemIndex !== index
+        ),
+      }))
     },
     [setOrderDraft]
   )
@@ -239,7 +332,19 @@ export default function OrderModal({
           `Найден клиент: ${fullName}. Выбрать его?`
         )
         if (confirmed) {
-          setOrderDraft((prev) => ({ ...prev, clientId: existingClient._id }))
+          if (otherContactSelectIndex !== null) {
+            setOrderDraft((prev) => ({
+              ...prev,
+              otherContacts: (prev.otherContacts || []).map((contact, index) =>
+                index === otherContactSelectIndex
+                  ? { ...contact, clientId: existingClient._id }
+                  : contact
+              ),
+            }))
+            setOtherContactSelectIndex(null)
+          } else {
+            setOrderDraft((prev) => ({ ...prev, clientId: existingClient._id }))
+          }
         }
         setClientModal('')
         return
@@ -254,38 +359,53 @@ export default function OrderModal({
         body: JSON.stringify(clientPayload),
       })
       if (response.data) {
-        setOrderDraft((prev) => ({ ...prev, clientId: response.data._id }))
+        if (otherContactSelectIndex !== null) {
+          setOrderDraft((prev) => ({
+            ...prev,
+            otherContacts: (prev.otherContacts || []).map((contact, index) =>
+              index === otherContactSelectIndex
+                ? { ...contact, clientId: response.data._id }
+                : contact
+            ),
+          }))
+          setOtherContactSelectIndex(null)
+        } else {
+          setOrderDraft((prev) => ({ ...prev, clientId: response.data._id }))
+        }
         if (onClientCreated) {
           onClientCreated(response.data)
         }
       }
     } finally {
       setClientSaving(false)
-      setClientModal('')
+      closeClientModal()
     }
   }, [
     clientDraft,
     clients,
     orderDraft.clientId,
+    otherContactSelectIndex,
     requestHeaders,
     setOrderDraft,
     onClientCreated,
+    closeClientModal,
   ])
 
   const handleClientEdit = useCallback(async (clientPayload = clientDraft) => {
-    if (!orderDraft.clientId) return
+    const clientId = clientPayload?._id || orderDraft.clientId
+    if (!clientId) return
     setClientSaving(true)
     try {
-      await apiJson(`/api/party/clients/${orderDraft.clientId}`, {
+      await apiJson(`/api/party/clients/${clientId}`, {
         method: 'PATCH',
         headers: requestHeaders,
         body: JSON.stringify(clientPayload),
       })
     } finally {
       setClientSaving(false)
-      setClientModal('')
+      closeClientModal()
     }
-  }, [clientDraft, orderDraft.clientId, requestHeaders])
+  }, [clientDraft, orderDraft.clientId, requestHeaders, closeClientModal])
 
   const handleServiceCreate = useCallback(async () => {
     setServiceSaving(true)
@@ -417,6 +537,13 @@ export default function OrderModal({
         {/* ====== Вкладка 1: Основное ====== */}
         <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
+            <PartyOrderTypePicker
+              value={orderDraft.title || ''}
+              onChange={(val) => handleChange('title', val || '')}
+              orderTypes={companySettings?.orderTypes || []}
+              onCreateOrderType={handleOrderTypeCreate}
+              allowCreate={Boolean(activeCompanyId)}
+            />
             <ServiceMultiSelect
               value={orderDraft.servicesIds || []}
               onChange={(val) => handleChange('servicesIds', val)}
@@ -557,6 +684,38 @@ export default function OrderModal({
               compact
               fullWidth
               tone="party"
+            />
+            <OtherContactsPicker
+              label="Доп. контакты"
+              contacts={orderDraft.otherContacts || []}
+              clients={clients}
+              tone="party"
+              onSelectContact={handleOtherContactSelect}
+              onChangeComment={handleOtherContactCommentChange}
+              onRemoveContact={handleOtherContactRemove}
+              onEditContact={(index) => {
+                const contact = orderDraft.otherContacts?.[index]
+                const contactClient = contact?.clientId
+                  ? clientsById.get(String(contact.clientId))
+                  : null
+                if (contactClient) {
+                  setClientDraft(contactClient)
+                  setClientModal('edit')
+                }
+              }}
+              onViewContact={(index) => {
+                const contact = orderDraft.otherContacts?.[index]
+                const contactClient = contact?.clientId
+                  ? clientsById.get(String(contact.clientId))
+                  : null
+                if (contactClient) {
+                  setClientDraft(contactClient)
+                  setClientModal('edit')
+                } else {
+                  handleOtherContactSelect(index)
+                }
+              }}
+              onAddContact={handleOtherContactAdd}
             />
           </div>
         </TabPanel>
@@ -823,7 +982,7 @@ export default function OrderModal({
       <ClientSelectModal
         open={clientModal === 'select'}
         clients={clients}
-        onClose={() => setClientModal('')}
+        onClose={closeClientModal}
         onSelect={handleClientSelect}
         onAddNew={() => {
           setClientDraft(EMPTY_PARTY_CLIENT)
@@ -836,9 +995,12 @@ export default function OrderModal({
         title="Новый клиент"
         clientDraft={clientDraft}
         setClientDraft={setClientDraft}
-        onClose={() => setClientModal('')}
+        onClose={closeClientModal}
         onSubmit={handleClientCreate}
         saving={clientSaving}
+        activeCompanyId={activeCompanyId}
+        companySettings={companySettings}
+        onCompanySettingsChange={onCompanySettingsChange}
       />
 
       <ClientFormModal
@@ -846,9 +1008,12 @@ export default function OrderModal({
         title="Редактировать клиента"
         clientDraft={clientDraft}
         setClientDraft={setClientDraft}
-        onClose={() => setClientModal('')}
+        onClose={closeClientModal}
         onSubmit={handleClientEdit}
         saving={clientSaving}
+        activeCompanyId={activeCompanyId}
+        companySettings={companySettings}
+        onCompanySettingsChange={onCompanySettingsChange}
       />
 
       <ServiceCreateModal

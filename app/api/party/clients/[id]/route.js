@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getPartyClientModel, getPartyOrderModel } from '@server/partyModels'
 import {
+  getPartyClientDeleteRelations,
+  hasPartyClientDeleteRelations,
+} from '@server/partyClientDeleteCheck'
+import {
   getPartyRequestContext,
   isValidObjectId,
   parseJsonBody,
@@ -52,7 +56,9 @@ const pickClientPatch = (body) => {
     patch.preferredContactChannelOther = normalizeString(body.preferredContactChannelOther)
   }
   if (typeof body.email === 'string') patch.email = body.email.trim().toLowerCase()
+  if (typeof body.leadSource === 'string') patch.leadSource = normalizeString(body.leadSource)
   if (typeof body.town === 'string') patch.town = normalizeString(body.town)
+  if (typeof body.isLegalEntity === 'boolean') patch.isLegalEntity = body.isLegalEntity
   if (typeof body.legalName === 'string') patch.legalName = normalizeString(body.legalName)
   if (typeof body.inn === 'string') patch.inn = normalizeString(body.inn)
   if (typeof body.kpp === 'string') patch.kpp = normalizeString(body.kpp)
@@ -181,15 +187,34 @@ export async function DELETE(req, { params }) {
   }
 
   const PartyClients = await getPartyClientModel()
-  const client = await PartyClients.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId },
-    { $set: { status: 'archived' } },
-    { returnDocument: 'after' }
-  ).lean()
+  const clientToDelete = await PartyClients.findOne({
+    _id: id,
+    tenantId: context.tenantId,
+  }).lean()
 
-  if (!client) {
+  if (!clientToDelete) {
     return partyError(404, 'partycrm_client_not_found', 'Клиент не найден')
   }
+
+  const relations = await getPartyClientDeleteRelations({
+    tenantId: context.tenantId,
+    clientId: id,
+  })
+
+  if (hasPartyClientDeleteRelations(relations)) {
+    return partyError(
+      409,
+      'partycrm_client_delete_blocked',
+      'Нельзя удалить клиента со связанными заказами, звонками или переписками',
+      'validation',
+      { relations, canArchive: true }
+    )
+  }
+
+  const client = await PartyClients.findOneAndDelete({
+    _id: id,
+    tenantId: context.tenantId,
+  }).lean()
 
   return NextResponse.json({ success: true, data: client })
 }

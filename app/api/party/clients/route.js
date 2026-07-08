@@ -32,7 +32,9 @@ const normalizeClientPayload = (body) => ({
   preferredContactChannelOther: normalizeString(body.preferredContactChannelOther),
   email:
     typeof body.email === 'string' ? body.email.trim().toLowerCase() : '',
+  leadSource: normalizeString(body.leadSource),
   town: normalizeString(body.town),
+  isLegalEntity: body.isLegalEntity === true,
   legalName: normalizeString(body.legalName),
   inn: normalizeString(body.inn),
   kpp: normalizeString(body.kpp),

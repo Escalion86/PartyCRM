@@ -26,6 +26,7 @@ export const DEFAULT_COMPANY_SETTINGS = Object.freeze({
   defaultTown: '',
   orderNumberFormat: 'P-{YYYY}-{SEQ}',
   addresses: [],
+  orderTypes: [],
   eventTypes: [],
   serviceTypes: [],
   preparationStatuses: [],
@@ -189,6 +190,7 @@ export const normalizeCompanySettings = (value = {}) => ({
     normalizeAddressPoolString(value?.orderNumberFormat) ||
     DEFAULT_COMPANY_SETTINGS.orderNumberFormat,
   addresses: normalizeCompanyAddresses(value?.addresses ?? []),
+  orderTypes: normalizeCompanyDictionary(value?.orderTypes ?? []),
   eventTypes: normalizeCompanyEventTypes(value?.eventTypes ?? []),
   serviceTypes: normalizeCompanyDictionary(value?.serviceTypes ?? []),
   preparationStatuses: normalizeCompanyDictionary(

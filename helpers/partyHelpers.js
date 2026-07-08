@@ -134,7 +134,9 @@ export const EMPTY_PARTY_CLIENT = {
   preferredContactChannel: '',
   preferredContactChannelOther: '',
   email: '',
+  leadSource: '',
   town: '',
+  isLegalEntity: false,
   legalName: '',
   inn: '',
   kpp: '',
@@ -182,6 +184,7 @@ export const EMPTY_ORDER = {
   },
   transactions: [],
   additionalEvents: [],
+  otherContacts: [],
   assignedStaff: [],
   adminComment: '',
 }

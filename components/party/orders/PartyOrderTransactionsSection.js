@@ -202,33 +202,6 @@ export default function PartyOrderTransactionsSection({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-2 sm:grid-cols-4">
-        <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2">
-          <div className="text-xs text-emerald-700">Получено</div>
-          <div className="text-sm font-bold text-emerald-900">
-            {money(paymentState.incomeTotal)}
-          </div>
-        </div>
-        <div className="rounded-md border border-amber-100 bg-amber-50 px-3 py-2">
-          <div className="text-xs text-amber-700">Остаток</div>
-          <div className="text-sm font-bold text-amber-900">
-            {money(paymentState.balanceDue)}
-          </div>
-        </div>
-        <div className="rounded-md border border-red-100 bg-red-50 px-3 py-2">
-          <div className="text-xs text-red-700">Расходы</div>
-          <div className="text-sm font-bold text-red-900">
-            {money(paymentState.expenseTotal)}
-          </div>
-        </div>
-        <div className="rounded-md border border-sky-100 bg-sky-50 px-3 py-2">
-          <div className="text-xs text-sky-700">Маржа</div>
-          <div className="text-sm font-bold text-sky-900">
-            {money(paymentState.margin)}
-          </div>
-        </div>
-      </div>
-
       {financeError ? (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           {financeError}

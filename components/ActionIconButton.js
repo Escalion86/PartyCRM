@@ -30,7 +30,7 @@ const ActionIconButton = ({
   <button
     type={type}
     className={cn(
-      'action-icon-button flex cursor-pointer items-center justify-center rounded',
+      'action-icon-button flex cursor-pointer items-center justify-center',
       VARIANT_CLASS[variant] || VARIANT_CLASS.neutral,
       ACTION_ICON_BUTTON_SIZES[size] || ACTION_ICON_BUTTON_SIZES.base,
       className

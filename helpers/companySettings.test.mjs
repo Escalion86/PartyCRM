@@ -23,6 +23,7 @@ test('normalizeCompanySettings deduplicates event types', () => {
 
 test('normalizeCompanySettings deduplicates operational dictionaries', () => {
   const settings = normalizeCompanySettings({
+    orderTypes: ['День рождения', ' день рождения ', 'Выпускной'],
     serviceTypes: ['Аниматоры', ' Аниматоры ', 'Шоу'],
     preparationStatuses: ['Купить реквизит', 'Купить реквизит', 'Позвонить'],
     leadSources: ['Tilda', ' tilda ', 'VK'],
@@ -30,6 +31,7 @@ test('normalizeCompanySettings deduplicates operational dictionaries', () => {
     expenseCategories: ['Дорога', 'Материалы', 'Дорога'],
   })
 
+  assert.deepEqual(settings.orderTypes, ['Выпускной', 'День рождения'])
   assert.deepEqual(settings.serviceTypes, ['Аниматоры', 'Шоу'])
   assert.deepEqual(settings.preparationStatuses, ['Купить реквизит', 'Позвонить'])
   assert.deepEqual(settings.leadSources, ['Tilda', 'VK'])

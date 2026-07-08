@@ -1,11 +1,11 @@
 'use client'
 
-import { faBoxArchive, faPencilAlt } from '@fortawesome/free-solid-svg-icons'
+import { faPencilAlt, faTrash } from '@fortawesome/free-solid-svg-icons'
 import CardButton from '@components/CardButton'
 import PartyCard, { PartyCardActions, PartyCardHeader } from '@components/party/PartyCard'
 import getPersonFullName from '@helpers/getPersonFullName'
 
-const ClientCard = ({ client, canManage, onArchive, onEdit }) => {
+const ClientCard = ({ client, canManage, onDelete, onEdit }) => {
   const displayName = getPersonFullName(client, 'Без имени')
 
   return (
@@ -17,6 +17,11 @@ const ClientCard = ({ client, canManage, onArchive, onEdit }) => {
             {[client.phone ? `+${client.phone}` : '', client.email].filter(Boolean).join(' · ') ||
               'контакты не указаны'}
           </p>
+          {client.leadSource && (
+            <p className="mt-1 text-sm text-black/60">
+              Откуда узнал о компании: {client.leadSource}
+            </p>
+          )}
           {client.comment && (
             <p className="mt-2 text-sm leading-6 text-slate-500 line-clamp-2">
               {client.comment}
@@ -32,10 +37,10 @@ const ClientCard = ({ client, canManage, onArchive, onEdit }) => {
               tooltipText="Редактировать"
             />
             <CardButton
-              icon={faBoxArchive}
-              onClick={() => onArchive && onArchive(client._id)}
+              icon={faTrash}
+              onClick={() => onDelete && onDelete(client._id)}
               color="red"
-              tooltipText="В архив"
+              tooltipText="Удалить"
             />
           </PartyCardActions>
         )}
@@ -47,7 +52,7 @@ const ClientCard = ({ client, canManage, onArchive, onEdit }) => {
 export default function ClientsList({
   clients,
   canManage,
-  onArchive,
+  onDelete,
   onEdit,
   onCreateClick,
   clientsCount,
@@ -81,7 +86,7 @@ export default function ClientsList({
             key={client._id}
             client={client}
             canManage={canManage}
-            onArchive={onArchive}
+            onDelete={onDelete}
             onEdit={onEdit}
           />
         ))}

@@ -19,6 +19,7 @@ export default function PartyAddressBlock({
   },
   commentRows = 2,
   commentPlaceholder = '',
+  noMargin = false,
 }) {
   const blockClassName =
     styleVariant === 'card'
@@ -29,7 +30,9 @@ export default function PartyAddressBlock({
 
   return (
     <div className={blockClassName}>
-      <p className="mb-1 text-sm font-semibold text-sky-700">{title}</p>
+      {title ? (
+        <p className="mb-1 text-sm font-semibold text-sky-700">{title}</p>
+      ) : null}
 
       {(visibleFields.town || visibleFields.street) && (
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -40,6 +43,7 @@ export default function PartyAddressBlock({
               onChange={(next) => onChange('town', next)}
               fullWidth
               tone={tone}
+              noMargin={noMargin}
             />
           )}
           {visibleFields.street && (
@@ -49,6 +53,7 @@ export default function PartyAddressBlock({
               onChange={(next) => onChange('street', next)}
               fullWidth
               tone={tone}
+              noMargin={noMargin}
             />
           )}
         </div>
@@ -63,6 +68,7 @@ export default function PartyAddressBlock({
               onChange={(next) => onChange('house', next)}
               fullWidth
               tone={tone}
+              noMargin={noMargin}
             />
           )}
           {visibleFields.room && (
@@ -72,6 +78,7 @@ export default function PartyAddressBlock({
               onChange={(next) => onChange('room', next)}
               fullWidth
               tone={tone}
+              noMargin={noMargin}
             />
           )}
         </div>
@@ -84,6 +91,7 @@ export default function PartyAddressBlock({
           onChange={(next) => onChange('comment', next)}
           fullWidth
           tone={tone}
+          noMargin={noMargin}
           rows={commentRows}
           placeholder={commentPlaceholder}
         />

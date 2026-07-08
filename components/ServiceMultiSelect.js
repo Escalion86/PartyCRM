@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import PropTypes from 'prop-types'
 import CheckBox from '@components/CheckBox'
 import AddIconButton from '@components/AddIconButton'
@@ -7,6 +7,9 @@ import { useAtomValue } from 'jotai'
 import servicesAtom from '@state/atoms/servicesAtom'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 import cn from 'classnames'
+import { buildServicesListViewModel } from './party/lists/servicesListViewModel'
+
+const EMPTY_SERVICES = []
 
 const ChevronIcon = ({ open }) => (
   <svg
@@ -41,7 +44,7 @@ const ServiceMultiSelect = ({
   // Determine data source: prefer prop services, otherwise use atom
   const atomToUse = atom || servicesAtom
   const atomServices = useAtomValue(atomToUse)
-  const allServices = propServices || atomServices || []
+  const allServices = propServices || atomServices || EMPTY_SERVICES
   const serviceGroups = useAtomValue(serviceGroupsAtom)
   const selectedIds = Array.isArray(value) ? value : []
   const isParty = tone === 'party'
@@ -63,42 +66,24 @@ const ServiceMultiSelect = ({
 
   const withoutGroupExpanded = expandedGroups['__without_group'] !== false
 
-  // Group services
-  const grouped = {}
-  const withoutGroup = []
-
-  allServices.forEach((service) => {
-    if (service?.groupId) {
-      const gId = service.groupId
-      if (!grouped[gId]) grouped[gId] = []
-      grouped[gId].push(service)
-    } else {
-      withoutGroup.push(service)
-    }
-  })
-
-  // Sort groups by order
-  const sortedGroups = [...serviceGroups].sort(
-    (a, b) => (a.order ?? 0) - (b.order ?? 0)
+  const groupedData = useMemo(
+    () =>
+      buildServicesListViewModel({
+        services: allServices,
+        serviceGroups,
+      }),
+    [allServices, serviceGroups]
   )
 
-  // Filter out groups that have no services
-  const groupsWithServices = sortedGroups.filter((g) => {
-    const servicesInGroup = grouped[g._id]
-    return Array.isArray(servicesInGroup) && servicesInGroup.length > 0
-  })
-
-  // Sort services within each group by title
-  Object.keys(grouped).forEach((gId) => {
-    grouped[gId].sort((a, b) =>
-      (a.title || '').localeCompare(b.title || '', 'ru')
-    )
-  })
-
-  // Sort services without group
-  const sortedWithoutGroup = [...withoutGroup].sort((a, b) =>
-    (a.title || '').localeCompare(b.title || '', 'ru')
-  )
+  const groupsWithServices = groupedData.isGrouped
+    ? groupedData.groups.filter((g) => {
+        const servicesInGroup = groupedData.grouped[g._id]
+        return Array.isArray(servicesInGroup) && servicesInGroup.length > 0
+      })
+    : []
+  const sortedWithoutGroup = groupedData.isGrouped
+    ? groupedData.withoutGroup
+    : groupedData.flatList
 
   const hasServices =
     allServices.length > 0 ||
@@ -115,8 +100,25 @@ const ServiceMultiSelect = ({
             <div className="text-sm text-gray-500">Услуги не добавлены</div>
           ) : (
             <>
+              {!groupedData.isGrouped &&
+                sortedWithoutGroup.map((service) => (
+                  <CheckBox
+                    key={service._id}
+                    checked={selectedIds.includes(service._id)}
+                    label={
+                      isParty
+                        ? service.title
+                        : `${service.title}${service.price ? ` — ${service.price} ₽` : ''}`
+                    }
+                    big={isParty}
+                    noMargin
+                    onClick={() => toggleService(service._id)}
+                    tone={tone}
+                  />
+                ))}
+
               {/* Services without group */}
-              {sortedWithoutGroup.length > 0 && (
+              {groupedData.isGrouped && sortedWithoutGroup.length > 0 && (
                 <div className="flex flex-col gap-0.5">
                   <button
                     type="button"
@@ -162,7 +164,7 @@ const ServiceMultiSelect = ({
               {/* Groups with services */}
               {groupsWithServices.map((group) => {
                 const isExpanded = expandedGroups[group._id] !== false
-                const servicesInGroup = grouped[group._id] || []
+                const servicesInGroup = groupedData.grouped[group._id] || []
 
                 return (
                   <div key={group._id} className="flex flex-col gap-0.5">

@@ -136,6 +136,18 @@ const partyOrderAdditionalEventSchema = new Schema(
   { _id: true }
 )
 
+const partyOrderOtherContactSchema = new Schema(
+  {
+    clientId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Client',
+      default: null,
+    },
+    comment: { type: String, trim: true, default: '', maxlength: 180 },
+  },
+  { _id: false }
+)
+
 const partyOrdersSchema = {
   tenantId: {
     type: Schema.Types.ObjectId,
@@ -227,6 +239,10 @@ const partyOrdersSchema = {
   },
   additionalEvents: {
     type: [partyOrderAdditionalEventSchema],
+    default: [],
+  },
+  otherContacts: {
+    type: [partyOrderOtherContactSchema],
     default: [],
   },
   googleCalendarEventId: { type: String, default: '' },

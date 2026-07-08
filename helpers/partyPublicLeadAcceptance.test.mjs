@@ -26,5 +26,7 @@ test('party public lead API and Tilda create draft orders and notify managers', 
   assert.match(service, /sendPushToTenant\(\{/)
   assert.match(service, /product:\s*'partycrm'/)
   assert.match(service, /source:\s*'party-public-lead'/)
+  assert.match(service, /leadSource:\s*normalized\.source/)
+  assert.match(service, /client\.leadSource = normalized\.source/)
   assert.match(service, /url:\s*'\/company\/orders'/)
 })

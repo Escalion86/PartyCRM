@@ -32,9 +32,7 @@ export function PartyCardHeader({ children, className = '' }) {
 
 export function PartyCardActions({ children, className = '' }) {
   return (
-    <CardActions
-      className={`!relative !top-auto !right-auto flex shrink-0 items-center gap-2 ${className}`}
-    >
+    <CardActions className={`flex shrink-0 items-center gap-2 ${className}`}>
       {children}
     </CardActions>
   )

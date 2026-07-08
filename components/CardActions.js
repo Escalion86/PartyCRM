@@ -2,7 +2,7 @@ import PropTypes from 'prop-types'
 
 const CardActions = ({ children, className }) => (
   <div
-    className={`absolute right-2 top-2 z-10 ${className || ''}`}
+    className={`absolute top-0 right-0 z-10 ${className || ''}`}
     onClick={(event) => event.stopPropagation()}
   >
     {children}

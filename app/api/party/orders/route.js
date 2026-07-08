@@ -185,6 +185,25 @@ const normalizeAdditionalEvents = (items) => {
     .filter((item) => item.title || item.description || item.date)
 }
 
+const normalizeOtherContacts = (items) => {
+  if (!Array.isArray(items)) return []
+  const seen = new Set()
+  return items
+    .map((item) => {
+      const clientId = String(item?.clientId || '').trim()
+      if (!isValidObjectId(clientId) || seen.has(clientId)) return null
+      seen.add(clientId)
+      return {
+        clientId,
+        comment:
+          typeof item?.comment === 'string'
+            ? item.comment.trim().slice(0, 180)
+            : '',
+      }
+    })
+    .filter(Boolean)
+}
+
 export const normalizeOrderPayload = (body) => {
   const placeType =
     body.placeType === 'client_address' ? 'client_address' : 'company_location'
@@ -230,6 +249,7 @@ export const normalizeOrderPayload = (body) => {
         : parseMoney(body.clientPayment?.totalAmount),
     transactions: normalizeTransactions(body.transactions),
     additionalEvents: normalizeAdditionalEvents(body.additionalEvents),
+    otherContacts: normalizeOtherContacts(body.otherContacts),
     // Keep legacy clientPayment synchronized for old UI/data readers.
     clientPayment: {
       totalAmount:
@@ -246,18 +266,24 @@ export const normalizeOrderPayload = (body) => {
 }
 
 export const validateOrderReferences = async ({ tenantId, payload }) => {
-  if (payload.clientId) {
+  const clientIds = [
+    payload.clientId,
+    ...(payload.otherContacts ?? []).map((item) => item.clientId),
+  ].filter(Boolean)
+
+  if (clientIds.length > 0) {
     const PartyClients = await getPartyClientModel()
-    const exists = await PartyClients.exists({
-      _id: payload.clientId,
+    const uniqueClientIds = [...new Set(clientIds)]
+    const count = await PartyClients.countDocuments({
+      _id: { $in: uniqueClientIds },
       tenantId,
       status: { $ne: 'archived' },
     })
-    if (!exists) {
+    if (count !== uniqueClientIds.length) {
       return partyError(
         400,
         'partycrm_client_not_found',
-        'Выбранный клиент не найден',
+        'Один или несколько выбранных клиентов не найдены',
         'validation'
       )
     }

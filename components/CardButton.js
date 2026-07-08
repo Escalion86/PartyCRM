@@ -21,14 +21,14 @@ const CardButton = ({
     type="button"
     title={tooltipText}
     className={cn(
-      'action-icon-button flex w-9 items-center justify-center rounded-full text-base font-normal duration-200',
+      'action-icon-button flex w-9 items-center justify-center rounded-bl-xl text-base font-normal duration-200',
       `action-icon-button--${toneByColor[color] || 'neutral'}`,
       paddingY ? 'h-9' : '',
-      active ? 'scale-105 ring-2 ring-general/30' : ''
+      active ? 'ring-general/30 scale-105 ring-2' : ''
     )}
     onClick={onClick}
   >
-    <FontAwesomeIcon icon={icon} className="w-6 h-6" />
+    <FontAwesomeIcon icon={icon} className="h-6 w-6" />
   </button>
 )
 

@@ -75,7 +75,7 @@ export default function PartyAddressPoolPicker({
           towns: nextTowns,
         }),
       })
-      onCompanySettingsChange?.(response.data ?? {})
+      onCompanySettingsChange?.(response.data?.settings ?? response.data ?? {})
     } finally {
       setSaving(false)
     }
@@ -100,7 +100,7 @@ export default function PartyAddressPoolPicker({
           towns: nextTowns,
         }),
       })
-      onCompanySettingsChange?.(response.data ?? {})
+      onCompanySettingsChange?.(response.data?.settings ?? response.data ?? {})
     } finally {
       setSaving(false)
     }

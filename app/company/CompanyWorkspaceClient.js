@@ -82,6 +82,7 @@ const normalizeOrderDraft = (order) => ({
   additionalEvents: Array.isArray(order.additionalEvents)
     ? order.additionalEvents
     : [],
+  otherContacts: Array.isArray(order.otherContacts) ? order.otherContacts : [],
   clientAddress: {
     town: order.clientAddress?.town ?? '',
     street: order.clientAddress?.street ?? '',
@@ -1030,19 +1031,52 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     }
   }, [clientDraft, editingClientId, activeCompanyId])
 
-  const archiveClient = useCallback(async (clientId) => {
+  const archiveClient = useCallback(async (clientId, skipConfirm = false) => {
     if (!clientId || !activeCompanyId) return
-    const confirmed = window.confirm(
-      'Переместить клиента в архив? История заказов, звонков и переписок сохранится.'
-    )
+    const confirmed =
+      skipConfirm ||
+      window.confirm(
+        'Переместить клиента в архив? История заказов, звонков и переписок сохранится.'
+      )
     if (!confirmed) return
 
     await apiJson(
       `/api/party/clients/${clientId}`,
-      buildCompanyRequestOptions(activeCompanyId, { method: 'DELETE' })
+      buildCompanyRequestOptions(activeCompanyId, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'archived' }),
+      })
     )
     setClients((prev) => prev.filter((client) => String(client._id) !== String(clientId)))
   }, [activeCompanyId])
+
+  const deleteClient = useCallback(async (clientId) => {
+    if (!clientId || !activeCompanyId) return
+    const confirmed = window.confirm(
+      'Удалить карточку клиента без возможности восстановления? Это можно сделать только если нет связанных заказов, звонков и переписок.'
+    )
+    if (!confirmed) return
+
+    try {
+      await apiJson(
+        `/api/party/clients/${clientId}`,
+        buildCompanyRequestOptions(activeCompanyId, { method: 'DELETE' })
+      )
+      setClients((prev) =>
+        prev.filter((client) => String(client._id) !== String(clientId))
+      )
+    } catch (deleteError) {
+      if (deleteError.code !== 'partycrm_client_delete_blocked') {
+        throw deleteError
+      }
+      const archiveConfirmed = window.confirm(
+        'Удалить нельзя: у клиента есть связанные заказы, звонки или переписки. Переместить карточку в архив?'
+      )
+      if (archiveConfirmed) {
+        await archiveClient(clientId, true)
+      }
+    }
+  }, [activeCompanyId, archiveClient])
 
   const mergeSimilarClient = useCallback(async (sourceClient) => {
     if (!editingClientId || !sourceClient?._id || !activeCompanyId) return
@@ -1699,7 +1733,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             <ClientsList
               clients={clients}
               canManage={canManage}
-              onArchive={archiveClient}
+              onDelete={deleteClient}
               onCreateClick={() => {
                 setClientDraft(EMPTY_PARTY_CLIENT)
                 setEditingClientId('')
@@ -2056,6 +2090,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           }}
           onSubmit={activeModal === 'client-edit' ? editClient : addClient}
           activeCompanyId={activeCompanyId}
+          companySettings={companySettings}
+          onCompanySettingsChange={setCompanySettings}
           canManage={canManage}
           similarClients={similarClients}
           onSimilarClientSelect={(client) => {

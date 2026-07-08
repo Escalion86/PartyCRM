@@ -76,6 +76,7 @@ export const upsertPartyPublicLeadClient = async ({ tenantId, normalized }) => {
       whatsapp: normalized.whatsapp,
       telegram: normalized.telegram,
       email,
+      leadSource: normalized.source,
       town: normalized.town,
       comment: normalized.comment,
     })
@@ -100,6 +101,10 @@ export const upsertPartyPublicLeadClient = async ({ tenantId, normalized }) => {
   }
   if (email && !client.email) {
     client.email = email
+    changed = true
+  }
+  if (normalized.source && !client.leadSource) {
+    client.leadSource = normalized.source
     changed = true
   }
   if (normalized.town && !client.town) {

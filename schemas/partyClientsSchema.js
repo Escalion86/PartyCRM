@@ -79,11 +79,21 @@ const partyClientsSchema = {
     default: '',
     maxlength: 160,
   },
+  leadSource: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 120,
+  },
   town: {
     type: String,
     trim: true,
     default: '',
     maxlength: 120,
+  },
+  isLegalEntity: {
+    type: Boolean,
+    default: false,
   },
   legalName: {
     type: String,

@@ -15,16 +15,16 @@ test('party client similar route is tenant-aware and management-only', async () 
   assert.match(dedupe, /status:\s*\{\s*\$ne:\s*'archived'\s*\}/)
 })
 
-test('company client list wires archive action through PartyCRM API', async () => {
+test('company client list wires delete action through PartyCRM API', async () => {
   const workspace = await source('app/company/CompanyWorkspaceClient.js')
   const list = await source('components/party/lists/ClientsList.js')
 
-  assert.match(workspace, /const archiveClient = useCallback/)
+  assert.match(workspace, /const deleteClient = useCallback/)
   assert.match(workspace, /\/api\/party\/clients\/\$\{clientId\}/)
   assert.match(workspace, /method:\s*'DELETE'/)
   assert.match(workspace, /setClients\(\(prev\) =>\s*prev\.filter/)
-  assert.match(workspace, /<ClientsList[\s\S]*canManage=\{canManage\}[\s\S]*onArchive=\{archiveClient\}/)
-  assert.match(list, /tooltipText="В архив"/)
+  assert.match(workspace, /<ClientsList[\s\S]*canManage=\{canManage\}[\s\S]*onDelete=\{deleteClient\}/)
+  assert.match(list, /tooltipText="Удалить"/)
 })
 
 test('party client modal shows similar client warning and can open found client', async () => {
