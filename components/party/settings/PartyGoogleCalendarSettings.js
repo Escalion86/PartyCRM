@@ -31,26 +31,26 @@ const SYNC_FIELDS = [
   ['showStatusIcons', 'Иконки финансового состояния'],
 ]
 
-const STATUS_COLORS = [
-  ['draft', 'Черновик'],
-  ['active', 'Активный'],
-  ['canceled', 'Отменён'],
-  ['closed', 'Закрыт'],
-]
+const STATUS_COLOR_FIELDS = Object.freeze([
+  { key: 'draft', label: 'Заявка' },
+  { key: 'active', label: 'Подтверждено' },
+  { key: 'canceled', label: 'Отменено' },
+  { key: 'closed', label: 'Закрыто' },
+])
 
-const GOOGLE_COLORS = [
-  ['1', 'Лавандовый'],
-  ['2', 'Мятный'],
-  ['3', 'Фиолетовый'],
-  ['4', 'Коралловый'],
-  ['5', 'Жёлтый'],
-  ['6', 'Оранжевый'],
-  ['7', 'Бирюзовый'],
-  ['8', 'Серый'],
-  ['9', 'Синий'],
-  ['10', 'Зелёный'],
-  ['11', 'Красный'],
-]
+const STATUS_COLOR_OPTIONS = Object.freeze([
+  { value: '1', name: 'Лаванда', bg: '#a4bdfc', text: '#172554' },
+  { value: '2', name: 'Шалфей', bg: '#7ae7bf', text: '#064e3b' },
+  { value: '3', name: 'Виноград', bg: '#dbadff', text: '#581c87' },
+  { value: '4', name: 'Фламинго', bg: '#ff887c', text: '#7f1d1d' },
+  { value: '5', name: 'Банан', bg: '#fbd75b', text: '#713f12' },
+  { value: '6', name: 'Мандарин', bg: '#ffb878', text: '#7c2d12' },
+  { value: '7', name: 'Павлин', bg: '#46d6db', text: '#164e63' },
+  { value: '8', name: 'Графит', bg: '#e1e1e1', text: '#1f2937' },
+  { value: '9', name: 'Черника', bg: '#5484ed', text: '#ffffff' },
+  { value: '10', name: 'Базилик', bg: '#51b749', text: '#ffffff' },
+  { value: '11', name: 'Томат', bg: '#dc2127', text: '#ffffff' },
+])
 
 const DEFAULT_SETTINGS = {
   reminders: { useDefault: false, overrides: [] },
@@ -374,12 +374,73 @@ export default function PartyGoogleCalendarSettings({
           </Section>
 
           <Section title="Цвета и отменённые заказы">
+            <p className="text-xs text-slate-500">
+              Цвет применяется к событию в Google Calendar при синхронизации.
+            </p>
+            <Toggle
+              checked={draft.deleteCanceledFromCalendar === true}
+              onChange={(checked) =>
+                updateDraft((value) => ({
+                  ...value,
+                  deleteCanceledFromCalendar: checked,
+                }))
+              }
+            >
+              Не синхронизировать с календарем, если отменено
+            </Toggle>
             <div className="grid gap-3 sm:grid-cols-2">
-              {STATUS_COLORS.map(([key, label]) => (
-                <label key={key} className="grid gap-1.5 text-xs font-semibold text-slate-600">{label}<select value={draft.statusColors?.[key] || ''} onChange={(event) => updateDraft((value) => ({ ...value, statusColors: { ...value.statusColors, [key]: event.target.value } }))} className="h-10 cursor-pointer rounded-lg border border-sky-100 bg-white px-2 text-sm font-normal text-slate-800">{GOOGLE_COLORS.map(([value, color]) => <option key={value} value={value}>{color}</option>)}</select></label>
-              ))}
+              {STATUS_COLOR_FIELDS.filter(
+                (field) =>
+                  !(draft.deleteCanceledFromCalendar && field.key === 'canceled')
+              ).map((field) => {
+                const selectedColor = STATUS_COLOR_OPTIONS.find(
+                  (item) => item.value === draft.statusColors?.[field.key]
+                )
+                return (
+                  <label
+                    key={field.key}
+                    className="grid gap-1.5 text-xs font-semibold text-slate-600"
+                  >
+                    {field.label}
+                    <select
+                      value={draft.statusColors?.[field.key] || ''}
+                      onChange={(event) =>
+                        updateDraft((value) => ({
+                          ...value,
+                          statusColors: {
+                            ...value.statusColors,
+                            [field.key]: event.target.value,
+                          },
+                        }))
+                      }
+                      className="h-10 cursor-pointer rounded-lg border border-sky-100 px-2 text-sm font-semibold"
+                      style={
+                        selectedColor
+                          ? {
+                              backgroundColor: selectedColor.bg,
+                              color: selectedColor.text,
+                            }
+                          : undefined
+                      }
+                    >
+                      {STATUS_COLOR_OPTIONS.map((item) => (
+                        <option
+                          key={item.value}
+                          value={item.value}
+                          style={{
+                            backgroundColor: item.bg,
+                            color: item.text,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {item.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )
+              })}
             </div>
-            <Toggle checked={draft.deleteCanceledFromCalendar === true} onChange={(checked) => updateDraft((value) => ({ ...value, deleteCanceledFromCalendar: checked }))}>Удалять отменённые заказы из Google Calendar. Если выключено, событие останется с пометкой «ОТМЕНЕНО».</Toggle>
             <button type="button" onClick={saveSettings} disabled={actionsDisabled} className={`${buttonClass} w-fit bg-sky-600 text-white hover:bg-sky-700`}>{busy === 'save' ? 'Сохраняем...' : 'Сохранить настройки'}</button>
           </Section>
 

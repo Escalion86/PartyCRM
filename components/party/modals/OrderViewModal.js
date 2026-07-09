@@ -1,8 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import Modal from '@components/Modal'
+import ContactsIconsButtons from '@components/ContactsIconsButtons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faPencilAlt } from '@fortawesome/free-solid-svg-icons/faPencilAlt'
 import { formatMoney } from '@helpers/formatMoney'
 import getPersonFullName from '@helpers/getPersonFullName'
+import { ClientViewModal } from '@components/party/modals/ClientModal'
 import {
   getOrderPaymentState,
   getPartyPayoutStatusLabel,
@@ -41,6 +46,14 @@ const formatDateTime = (value) => {
   })
 }
 
+const formatDateTimeLocalValue = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
+}
+
 const Section = ({ title, children }) => (
   <section className="rounded-lg border border-sky-100 bg-white p-3">
     <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -66,18 +79,109 @@ const getOrderPayoutTotal = (order) =>
     0
   )
 
-const getClientLabel = (order, clientsById) => {
+const formatClientContactLines = (client) => {
+  if (!client || typeof client !== 'object') return []
+  const lines = []
+  if (client?.phone) lines.push(`Телефон: ${client.phone}`)
+  if (client?.whatsapp) lines.push(`WhatsApp: ${client.whatsapp}`)
+  if (client?.viber) lines.push(`Viber: ${client.viber}`)
+  if (client?.telegram) lines.push(`Telegram: ${client.telegram}`)
+  if (client?.instagram) lines.push(`Instagram: ${client.instagram}`)
+  if (client?.vk) lines.push(`VK: ${client.vk}`)
+  if (client?.email) lines.push(`Email: ${client.email}`)
+  return lines
+}
+
+const getOrderClient = (order, clientsById) => {
   const client = order?.clientId
     ? clientsById.get(String(order.clientId))
     : null
+
+  if (client) return client
+
   return {
-    client,
-    name: client
-      ? getPersonFullName(client, { fallback: 'Без имени' })
-      : order?.client?.name || 'Не указан',
-    phone: client?.phone || order?.client?.phone || '',
-    email: client?.email || order?.client?.email || '',
+    firstName: order?.client?.name || '',
+    phone: order?.client?.phone || '',
+    email: order?.client?.email || '',
   }
+}
+
+const getOrderContacts = (order, clientsById) => {
+  const mainClient = getOrderClient(order, clientsById)
+  const contacts = [
+    {
+      client: mainClient,
+      label: 'Клиент',
+      name: getPersonFullName(mainClient, { fallback: 'Не указан' }),
+      comment: '',
+    },
+  ]
+
+  ;(Array.isArray(order?.otherContacts) ? order.otherContacts : []).forEach(
+    (contact) => {
+      const contactClient = contact?.clientId
+        ? clientsById.get(String(contact.clientId))
+        : null
+      if (!contactClient) return
+      contacts.push({
+        client: contactClient,
+        label: contact.comment || 'Контакт',
+        name: getPersonFullName(contactClient, { fallback: 'Без имени' }),
+        comment: contact.comment || '',
+      })
+    }
+  )
+
+  return contacts
+}
+
+const ContactCard = ({ contact, onView }) => {
+  const isClickable = Boolean(contact?.client?._id && onView)
+
+  return (
+    <div
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      className={`rounded-lg border border-slate-100 bg-slate-50 p-2 text-sm ${
+        isClickable
+          ? 'cursor-pointer transition hover:border-sky-200 hover:bg-white hover:shadow-sm focus:ring-2 focus:ring-sky-200 focus:outline-none'
+          : ''
+      }`}
+      onClick={() => onView?.(contact.client)}
+      onKeyDown={(event) => {
+        if (!isClickable) return
+        if (event.key !== 'Enter' && event.key !== ' ') return
+        event.preventDefault()
+        onView?.(contact.client)
+      }}
+    >
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="font-semibold text-slate-500">{contact.label}:</span>
+      <span className="min-w-0 font-semibold break-words text-slate-900">
+        {contact.name}
+      </span>
+      <ContactsIconsButtons
+        user={contact.client}
+        showChat
+        className="my-0 shrink-0"
+      />
+    </div>
+    {formatClientContactLines(contact.client).map((line) => (
+      <div key={line} className="mt-0.5 text-xs text-slate-600">
+        {line}
+      </div>
+    ))}
+    </div>
+  )
+}
+
+const getAdditionalEventStatusClassName = (item) => {
+  if (item?.done) return 'border-emerald-200 bg-emerald-50'
+  const date = item?.date ? new Date(item.date) : null
+  if (date && !Number.isNaN(date.getTime()) && date < new Date()) {
+    return 'border-red-200 bg-red-50'
+  }
+  return 'border-slate-100 bg-slate-50'
 }
 
 const getStaffLabel = (staffMember) =>
@@ -97,12 +201,24 @@ export default function OrderViewModal({
   onClose,
   onEdit,
   onReviewReport,
+  onUpdateOrder,
 }) {
+  const [activeAdditionalEvent, setActiveAdditionalEvent] = useState(null)
+  const [editingAdditionalEvent, setEditingAdditionalEvent] = useState(null)
+  const [editingAdditionalEventDraft, setEditingAdditionalEventDraft] =
+    useState({
+      title: '',
+      date: '',
+      description: '',
+    })
+  const [viewingClient, setViewingClient] = useState(null)
   const safeClientsById = clientsById ?? new Map()
   const location = locations.find(
     (item) => String(item._id) === String(order?.locationId)
   )
-  const client = getClientLabel(order, safeClientsById)
+  const orderContacts = getOrderContacts(order, safeClientsById)
+  const mainContact = orderContacts[0]
+  const otherContacts = orderContacts.slice(1)
   const serviceTitles = (order?.servicesIds ?? [])
     .map((serviceId) =>
       services.find((service) => String(service._id) === String(serviceId))
@@ -123,6 +239,79 @@ export default function OrderViewModal({
   const additionalEvents = Array.isArray(order?.additionalEvents)
     ? order.additionalEvents
     : []
+  const activeAdditionalEventItem =
+    activeAdditionalEvent !== null ? additionalEvents[activeAdditionalEvent] : null
+
+  const openAdditionalEvent = (index) => {
+    setActiveAdditionalEvent(index)
+  }
+
+  const closeAdditionalEvent = () => {
+    setActiveAdditionalEvent(null)
+  }
+
+  const openClientView = (client) => {
+    if (!client?._id) return
+    setViewingClient(client)
+  }
+
+  const openAdditionalEventEditor = (index) => {
+    const target = additionalEvents[index]
+    if (!target || !canManage || isClosed) return
+    setActiveAdditionalEvent(null)
+    setEditingAdditionalEvent(index)
+    setEditingAdditionalEventDraft({
+      title: target?.title || '',
+      date: formatDateTimeLocalValue(target?.date),
+      description: target?.description || '',
+    })
+  }
+
+  const closeAdditionalEventEditor = () => {
+    setEditingAdditionalEvent(null)
+    setEditingAdditionalEventDraft({
+      title: '',
+      date: '',
+      description: '',
+    })
+  }
+
+  const toggleAdditionalEventDone = async (index) => {
+    if (!order?._id) return
+    const target = additionalEvents[index]
+    if (!target) return
+    const nextDone = !Boolean(target.done)
+    const nextAdditionalEvents = additionalEvents.map((item, itemIndex) =>
+      itemIndex === index
+        ? {
+            ...item,
+            done: nextDone,
+            doneAt: nextDone ? new Date().toISOString() : null,
+          }
+        : item
+    )
+    await onUpdateOrder?.({ ...order, additionalEvents: nextAdditionalEvents })
+  }
+
+  const saveAdditionalEventEdit = async () => {
+    if (!order?._id || editingAdditionalEvent === null) return
+    const target = additionalEvents[editingAdditionalEvent]
+    if (!target) return
+    const nextAdditionalEvents = additionalEvents.map((item, itemIndex) =>
+      itemIndex === editingAdditionalEvent
+        ? {
+            ...item,
+            title: editingAdditionalEventDraft.title,
+            date: editingAdditionalEventDraft.date
+              ? new Date(editingAdditionalEventDraft.date).toISOString()
+              : null,
+            description: editingAdditionalEventDraft.description,
+          }
+        : item
+    )
+    await onUpdateOrder?.({ ...order, additionalEvents: nextAdditionalEvents })
+    closeAdditionalEventEditor()
+  }
 
   const footer = (
     <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
@@ -189,10 +378,22 @@ export default function OrderViewModal({
         </Section>
 
         <Section title="Клиент">
-          <div className="flex flex-col gap-2">
-            <InfoLine label="Имя">{client.name}</InfoLine>
-            <InfoLine label="Телефон">{client.phone || 'Не указан'}</InfoLine>
-            {client.email ? <InfoLine label="Email">{client.email}</InfoLine> : null}
+          <div className="grid gap-2">
+            <ContactCard contact={mainContact} onView={openClientView} />
+            {otherContacts.length > 0 ? (
+              <div className="grid gap-2">
+                <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                  Доп. контакты
+                </div>
+                {otherContacts.map((contact) => (
+                  <ContactCard
+                    key={`${contact.client?._id || contact.name}-${contact.label}`}
+                    contact={contact}
+                    onView={openClientView}
+                  />
+                ))}
+              </div>
+            ) : null}
           </div>
         </Section>
 
@@ -352,41 +553,234 @@ export default function OrderViewModal({
         <Section title="Доп. события">
           {additionalEvents.length > 0 ? (
             <div className="grid gap-2">
-              {additionalEvents.map((item, index) => (
-                <div
-                  key={`${item?.title || 'event'}-${index}`}
-                  className="rounded-md border border-slate-100 bg-slate-50 p-2 text-sm"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-semibold text-slate-900">
-                      {item?.title || 'Без названия'}
-                    </div>
-                    <span
-                      className={`rounded px-2 py-0.5 text-xs font-semibold ${
-                        item?.done
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}
-                    >
-                      {item?.done ? 'Выполнено' : 'Открыто'}
+              {additionalEvents.map((item, index) => {
+                const isDone = Boolean(item?.done)
+                return (
+                  <div
+                    key={`${item?.title || 'event'}-${index}`}
+                    role="button"
+                    tabIndex={0}
+                    className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-md border p-2 text-left text-sm transition hover:bg-white hover:shadow-sm ${getAdditionalEventStatusClassName(item)}`}
+                    onClick={() => openAdditionalEvent(index)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter' && event.key !== ' ') return
+                      event.preventDefault()
+                      openAdditionalEvent(index)
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isDone}
+                      disabled={!canManage || isClosed}
+                      className="mt-1 h-4 w-4 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
+                      aria-label={
+                        isDone
+                          ? 'Вернуть доп. событие в работу'
+                          : 'Отметить доп. событие выполненным'
+                      }
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={() => toggleAdditionalEventDone(index)}
+                    />
+                    <span className="min-w-0">
+                      <span className="flex flex-wrap items-center justify-between gap-2">
+                        <span
+                          className={`font-semibold break-words ${
+                            isDone ? 'text-emerald-700' : 'text-slate-900'
+                          }`}
+                        >
+                          {item?.title || `Событие #${index + 1}`}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1">
+                          <span
+                            className={`rounded px-2 py-0.5 text-xs font-semibold ${
+                              isDone
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-amber-100 text-amber-700'
+                            }`}
+                          >
+                            {isDone ? 'Выполнено' : 'Открыто'}
+                          </span>
+                          {canManage && !isClosed ? (
+                            <button
+                              type="button"
+                              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-sky-100 bg-white text-sky-700 transition hover:border-sky-300 hover:bg-sky-50"
+                              aria-label="Редактировать доп. событие"
+                              title="Редактировать"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                openAdditionalEventEditor(index)
+                              }}
+                            >
+                              <FontAwesomeIcon icon={faPencilAlt} className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                        </span>
+                      </span>
+                      <span className="mt-1 block text-slate-600">
+                        {formatDateTime(item?.date)}
+                      </span>
+                      {item?.description ? (
+                        <span className="mt-1 block whitespace-pre-wrap text-slate-700">
+                          {item.description}
+                        </span>
+                      ) : null}
                     </span>
                   </div>
-                  <div className="mt-1 text-slate-600">
-                    {formatDateTime(item?.date)}
-                  </div>
-                  {item?.description ? (
-                    <div className="mt-1 whitespace-pre-wrap text-slate-700">
-                      {item.description}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <p className="text-sm text-slate-500">Дополнительные события не добавлены.</p>
           )}
         </Section>
       </div>
+
+      {activeAdditionalEventItem ? (
+        <Modal
+          open={true}
+          onClose={closeAdditionalEvent}
+          title={activeAdditionalEventItem.title || 'Доп. событие'}
+          tone="party"
+          size="sm"
+          footer={
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                onClick={closeAdditionalEvent}
+              >
+                Закрыть
+              </button>
+              {canManage && !isClosed ? (
+                <button
+                  type="button"
+                  className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+                  onClick={() => toggleAdditionalEventDone(activeAdditionalEvent)}
+                >
+                  {activeAdditionalEventItem.done ? 'Вернуть в работу' : 'Выполнено'}
+                </button>
+              ) : null}
+            </div>
+          }
+        >
+          <div className="grid gap-3 text-sm">
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                Статус
+              </div>
+              <div
+                className={`mt-1 font-semibold ${
+                  activeAdditionalEventItem.done
+                    ? 'text-emerald-700'
+                    : 'text-sky-700'
+                }`}
+              >
+                {activeAdditionalEventItem.done ? 'Выполнено' : 'Открыто'}
+              </div>
+            </div>
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                Дата и время
+              </div>
+              <div className="mt-1 font-semibold text-slate-900">
+                {formatDateTime(activeAdditionalEventItem.date)}
+              </div>
+            </div>
+            {activeAdditionalEventItem.description ? (
+              <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                  Описание
+                </div>
+                <div className="mt-1 whitespace-pre-wrap text-slate-700">
+                  {activeAdditionalEventItem.description}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </Modal>
+      ) : null}
+
+      {editingAdditionalEvent !== null ? (
+        <Modal
+          open={true}
+          onClose={closeAdditionalEventEditor}
+          title="Редактировать доп. событие"
+          tone="party"
+          size="sm"
+          footer={
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+                onClick={closeAdditionalEventEditor}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+                onClick={saveAdditionalEventEdit}
+              >
+                Сохранить
+              </button>
+            </div>
+          }
+        >
+          <div className="grid gap-3 text-sm">
+            <label className="grid gap-1 font-semibold text-slate-700">
+              Название
+              <input
+                type="text"
+                value={editingAdditionalEventDraft.title}
+                onChange={(event) =>
+                  setEditingAdditionalEventDraft((prev) => ({
+                    ...prev,
+                    title: event.target.value,
+                  }))
+                }
+                className="rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+              />
+            </label>
+            <label className="grid gap-1 font-semibold text-slate-700">
+              Дата и время
+              <input
+                type="datetime-local"
+                value={editingAdditionalEventDraft.date}
+                onChange={(event) =>
+                  setEditingAdditionalEventDraft((prev) => ({
+                    ...prev,
+                    date: event.target.value,
+                  }))
+                }
+                className="rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+              />
+            </label>
+            <label className="grid gap-1 font-semibold text-slate-700">
+              Описание
+              <textarea
+                value={editingAdditionalEventDraft.description}
+                onChange={(event) =>
+                  setEditingAdditionalEventDraft((prev) => ({
+                    ...prev,
+                    description: event.target.value,
+                  }))
+                }
+                rows={4}
+                className="resize-y rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+              />
+            </label>
+          </div>
+        </Modal>
+      ) : null}
+
+      {viewingClient ? (
+        <ClientViewModal
+          open={true}
+          client={viewingClient}
+          canManage={false}
+          onClose={() => setViewingClient(null)}
+        />
+      ) : null}
     </Modal>
   )
 }

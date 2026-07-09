@@ -2,14 +2,17 @@
 
 import { faPencilAlt, faTrash } from '@fortawesome/free-solid-svg-icons'
 import CardButton from '@components/CardButton'
-import PartyCard, { PartyCardActions, PartyCardHeader } from '@components/party/PartyCard'
+import PartyCard, {
+  PartyCardActions,
+  PartyCardHeader,
+} from '@components/party/PartyCard'
 import getPersonFullName from '@helpers/getPersonFullName'
 
-const ClientCard = ({ client, canManage, onDelete, onEdit }) => {
+const ClientCard = ({ client, canManage, onDelete, onEdit, onView }) => {
   const displayName = getPersonFullName(client, 'Без имени')
 
   return (
-    <PartyCard onClick={() => onEdit && onEdit(client)}>
+    <PartyCard onClick={() => onView?.(client)}>
       <PartyCardHeader>
         <div className="flex-1 min-w-0">
           <p className="font-semibold truncate">{displayName}</p>
@@ -54,6 +57,7 @@ export default function ClientsList({
   canManage,
   onDelete,
   onEdit,
+  onView,
   onCreateClick,
   clientsCount,
 }) {
@@ -88,6 +92,7 @@ export default function ClientsList({
             canManage={canManage}
             onDelete={onDelete}
             onEdit={onEdit}
+            onView={onView}
           />
         ))}
       </div>

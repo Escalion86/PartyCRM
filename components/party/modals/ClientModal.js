@@ -13,6 +13,7 @@ import Select from '@components/Select'
 import Textarea from '@components/Textarea'
 import CheckBox from '@components/CheckBox'
 import Modal from '@components/Modal'
+import ContactsIconsButtons from '@components/ContactsIconsButtons'
 import PartyAddressBlock from '@components/party/inputs/PartyAddressBlock'
 import PartyDictionaryPicker from '@components/party/inputs/PartyDictionaryPicker'
 import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
@@ -42,6 +43,196 @@ const normalizeSignificantDates = (items) =>
       comment: String(item?.comment ?? '').trim(),
     }))
     .filter((item) => item.title || item.date || item.comment)
+
+const formatDate = (value) => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
+const ClientViewSection = ({ title, children }) => (
+  <section className="rounded-lg border border-sky-100 bg-white p-3">
+    <div className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+      {title}
+    </div>
+    {children}
+  </section>
+)
+
+const ClientViewLine = ({ label, children }) => (
+  <div className="grid gap-1 text-sm sm:grid-cols-[10rem_1fr]">
+    <div className="font-semibold text-slate-500">{label}</div>
+    <div className="min-w-0 break-words text-slate-900">{children || '-'}</div>
+  </div>
+)
+
+export function ClientViewModal({
+  open,
+  client,
+  onClose,
+  canManage = false,
+  onEdit,
+}) {
+  const significantDates = Array.isArray(client?.significantDates)
+    ? client.significantDates
+    : []
+  const hasLegalRequisites = Boolean(
+    client?.legalName ||
+      client?.legalAddress ||
+      client?.inn ||
+      client?.kpp ||
+      client?.ogrn ||
+      client?.bankName ||
+      client?.bik ||
+      client?.checkingAccount ||
+      client?.correspondentAccount
+  )
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Просмотр клиента"
+      tone="party"
+      size="full"
+      footer={
+        <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
+            onClick={onClose}
+          >
+            Закрыть
+          </button>
+          {canManage ? (
+            <button
+              type="button"
+              className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
+              onClick={() => onEdit?.(client)}
+            >
+              Редактировать
+            </button>
+          ) : null}
+        </div>
+      }
+    >
+      <div className="grid gap-3">
+        <ClientViewSection title="Клиент">
+          <div className="grid gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-sky-100 bg-sky-50 text-base font-bold text-sky-700">
+                {getPersonFullName(client, 'К').slice(0, 1).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <div className="text-lg font-semibold break-words text-slate-950">
+                  {getPersonFullName(client, 'Без имени')}
+                </div>
+                {client?.leadSource ? (
+                  <div className="text-sm text-slate-500">
+                    Откуда узнал о компании: {client.leadSource}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+            <ContactsIconsButtons
+              user={client}
+              showChat
+              className="my-0 flex-wrap"
+            />
+          </div>
+        </ClientViewSection>
+
+        <ClientViewSection title="Контакты">
+          <div className="grid gap-2">
+            <ClientViewLine label="Телефон">
+              {client?.phone ? `+${client.phone}` : ''}
+            </ClientViewLine>
+            <ClientViewLine label="WhatsApp">
+              {client?.whatsapp ? `+${client.whatsapp}` : ''}
+            </ClientViewLine>
+            <ClientViewLine label="Viber">
+              {client?.viber ? `+${client.viber}` : ''}
+            </ClientViewLine>
+            <ClientViewLine label="Telegram">
+              {client?.telegram ? `@${client.telegram}` : ''}
+            </ClientViewLine>
+            <ClientViewLine label="Instagram">
+              {client?.instagram ? `@${client.instagram}` : ''}
+            </ClientViewLine>
+            <ClientViewLine label="VK">
+              {client?.vk ? `@${client.vk}` : ''}
+            </ClientViewLine>
+            <ClientViewLine label="Email">{client?.email}</ClientViewLine>
+            <ClientViewLine label="Предпочтительный канал">
+              {client?.preferredContactChannelOther ||
+                client?.preferredContactChannel}
+            </ClientViewLine>
+          </div>
+        </ClientViewSection>
+
+        {client?.comment ? (
+          <ClientViewSection title="Комментарий">
+            <div className="whitespace-pre-wrap text-sm text-slate-700">
+              {client.comment}
+            </div>
+          </ClientViewSection>
+        ) : null}
+
+        {significantDates.length > 0 ? (
+          <ClientViewSection title="Значимые даты">
+            <div className="grid gap-2">
+              {significantDates.map((item, index) => (
+                <div
+                  key={`${item.title || 'date'}-${index}`}
+                  className="rounded border border-slate-100 bg-slate-50 p-2 text-sm"
+                >
+                  <div className="font-semibold text-slate-900">
+                    {item.title || 'Дата'}
+                  </div>
+                  <div className="text-slate-600">{formatDate(item.date)}</div>
+                  {item.comment ? (
+                    <div className="mt-1 whitespace-pre-wrap text-slate-700">
+                      {item.comment}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </ClientViewSection>
+        ) : null}
+
+        {hasLegalRequisites ? (
+          <ClientViewSection title="Реквизиты">
+            <div className="grid gap-2">
+              <ClientViewLine label="Юр. название">
+                {client?.legalName}
+              </ClientViewLine>
+              <ClientViewLine label="Юр. адрес">
+                {client?.legalAddress}
+              </ClientViewLine>
+              <ClientViewLine label="ИНН">{client?.inn}</ClientViewLine>
+              <ClientViewLine label="КПП">{client?.kpp}</ClientViewLine>
+              <ClientViewLine label="ОГРН">{client?.ogrn}</ClientViewLine>
+              <ClientViewLine label="Банк">{client?.bankName}</ClientViewLine>
+              <ClientViewLine label="БИК">{client?.bik}</ClientViewLine>
+              <ClientViewLine label="Р/с">
+                {client?.checkingAccount}
+              </ClientViewLine>
+              <ClientViewLine label="К/с">
+                {client?.correspondentAccount}
+              </ClientViewLine>
+            </div>
+          </ClientViewSection>
+        ) : null}
+      </div>
+    </Modal>
+  )
+}
 
 export function ClientSelectModal({
   open,

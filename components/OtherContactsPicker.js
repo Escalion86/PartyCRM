@@ -25,6 +25,18 @@ const OtherContactsPicker = ({
   return (
     <InputWrapper label={label} fullWidth centerLabel tone={tone}>
       <div className="flex flex-col w-full gap-2">
+        {contacts.length === 0 && (
+          <div
+            className={cn(
+              'rounded border border-dashed px-3 py-2 text-sm',
+              isPartyTone
+                ? 'border-sky-100 bg-sky-50 text-slate-500'
+                : 'border-gray-200 bg-gray-50 text-gray-500'
+            )}
+          >
+            Дополнительные контакты еще не добавлены
+          </div>
+        )}
         {contacts.map((contact, index) => {
           const contactClient = clients.find(
             (client) => client._id === contact.clientId

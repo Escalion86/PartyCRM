@@ -24,6 +24,38 @@ test('party order click opens a read-only order view modal', async () => {
   assert.match(viewModal, /Доп\. события/)
 })
 
+test('party order view shows contact shortcuts and interactive additional events', async () => {
+  const workspace = await source('app/company/CompanyWorkspaceClient.js')
+  const viewModal = await source('components/party/modals/OrderViewModal.js')
+
+  assert.match(viewModal, /ContactsIconsButtons/)
+  assert.match(viewModal, /getOrderContacts/)
+  assert.match(viewModal, /order\?\.otherContacts/)
+  assert.match(viewModal, /Доп\. контакты/)
+  assert.match(viewModal, /showChat/)
+  assert.match(viewModal, /activeAdditionalEvent/)
+  assert.match(viewModal, /openAdditionalEvent/)
+  assert.match(viewModal, /toggleAdditionalEventDone/)
+  assert.match(viewModal, /type="checkbox"/)
+  assert.match(viewModal, /onUpdateOrder/)
+  assert.match(workspace, /onUpdateOrder=\{\(nextOrder\) =>/)
+  assert.match(workspace, /setOrderDraft\(normalizeOrderDraft\(updatedOrder\)\)/)
+})
+
+test('party order view can edit additional events from card pencil button', async () => {
+  const viewModal = await source('components/party/modals/OrderViewModal.js')
+
+  assert.match(viewModal, /faPencilAlt/)
+  assert.match(viewModal, /editingAdditionalEvent/)
+  assert.match(viewModal, /openAdditionalEventEditor/)
+  assert.match(viewModal, /saveAdditionalEventEdit/)
+  assert.match(viewModal, /Редактировать доп\. событие/)
+  assert.match(viewModal, /aria-label="Редактировать доп\. событие"/)
+  assert.match(viewModal, /type="datetime-local"/)
+  assert.match(viewModal, /editingAdditionalEventDraft\.title/)
+  assert.match(viewModal, /editingAdditionalEventDraft\.description/)
+})
+
 test('closed party orders hide edit and transaction controls in UI', async () => {
   const list = await source('components/party/lists/OrdersList.js')
   const viewModal = await source('components/party/modals/OrderViewModal.js')

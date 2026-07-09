@@ -4,7 +4,10 @@ import { useSetAtom } from 'jotai'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { faCheck, faChevronDown, faFilter } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { apiJson } from '@helpers/apiClient'
+import DropDown from '@components/DropDown'
 import OrdersList from '@components/party/lists/OrdersList'
 import CallsList from '@components/party/lists/CallsList'
 import PartyUpcomingEventsModal, {
@@ -16,7 +19,10 @@ import LocationsList from '@components/party/lists/LocationsList'
 import ServicesList from '@components/party/lists/ServicesList'
 import OrderModal from '@components/party/modals/OrderModal'
 import OrderViewModal from '@components/party/modals/OrderViewModal'
-import { ClientFormModal } from '@components/party/modals/ClientModal'
+import {
+  ClientFormModal,
+  ClientViewModal,
+} from '@components/party/modals/ClientModal'
 import StaffModal from '@components/party/modals/StaffModal'
 import LocationModal from '@components/party/modals/LocationModal'
 import { ServiceCreateModal } from '@components/party/modals/ServiceModal'
@@ -267,6 +273,89 @@ const createEmptyOrderDraft = (companySettings = {}, locations = []) => ({
       ? locations[0]._id
       : '',
 })
+
+const OrderFilterDropdown = ({
+  orderFilters = [],
+  orderFilter = 'all',
+  setOrderFilter,
+}) => {
+  const selectedFilter =
+    orderFilters.find((filter) => filter.value === orderFilter) ??
+    orderFilters[0]
+
+  if (!orderFilters.length) return null
+
+  return (
+    <DropDown
+      placement="right"
+      menuPadding={false}
+      renderInPortal
+      trigger={
+        <button
+          type="button"
+          className="inline-flex min-h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-sky-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50 sm:w-auto"
+          aria-label="Выбрать фильтр заказов"
+        >
+          <span className="inline-flex min-w-0 items-center gap-2">
+            <FontAwesomeIcon
+              icon={faFilter}
+              className="h-4 w-4 shrink-0 text-sky-600"
+            />
+            <span className="whitespace-nowrap">Фильтр:</span>
+            <span className="min-w-0 truncate text-sky-700">
+              {selectedFilter?.label || 'Все'}
+            </span>
+            <span className="rounded bg-sky-50 px-1.5 py-0.5 text-xs text-sky-500">
+              {selectedFilter?.count ?? 0}
+            </span>
+          </span>
+          <FontAwesomeIcon
+            icon={faChevronDown}
+            className="h-3.5 w-3.5 shrink-0 text-slate-400"
+          />
+        </button>
+      }
+    >
+      <div className="w-72 max-w-[calc(100vw-16px)] overflow-hidden rounded-lg">
+        {orderFilters.map((filter) => {
+          const isActive = orderFilter === filter.value
+          return (
+            <button
+              key={filter.value}
+              type="button"
+              role="menuitemradio"
+              aria-checked={isActive}
+              className={`flex min-h-10 w-full cursor-pointer items-center gap-3 px-3 py-2 text-left text-sm transition ${
+                isActive
+                  ? 'bg-sky-50 text-sky-800'
+                  : 'bg-white text-slate-700 hover:bg-sky-50'
+              }`}
+              onClick={() => setOrderFilter(filter.value)}
+            >
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                {isActive && (
+                  <FontAwesomeIcon icon={faCheck} className="h-3.5 w-3.5" />
+                )}
+              </span>
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                {filter.label}
+              </span>
+              <span
+                className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ${
+                  isActive
+                    ? 'bg-sky-100 text-sky-700'
+                    : 'bg-slate-100 text-slate-500'
+                }`}
+              >
+                {filter.count}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </DropDown>
+  )
+}
 
 export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const setServiceGroups = useSetAtom(serviceGroupsAtom)
@@ -1577,9 +1666,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       : 'Предстоящие заказы'}
                   </h2>
                   <div className="flex flex-wrap items-center justify-end gap-2">
-                    <span className="text-sm text-black/55">
-                      {filteredOrders.length}
-                    </span>
+                    <OrderFilterDropdown
+                      orderFilters={orderFilters}
+                      orderFilter={orderFilter}
+                      setOrderFilter={setOrderFilter}
+                    />
                     {section !== 'orders-past' && (
                       <button
                         type="button"
@@ -1617,45 +1708,6 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                     )}
                   </div>
                 </div>
-
-                {/* Bottom row: filter chips */}
-                {(orderFilters ?? []).length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {orderFilters.map((filter) => {
-                      const isActive = orderFilter === filter.value
-                      return (
-                        <button
-                          key={filter.value}
-                          type="button"
-                          className={`cursor-pointer rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors ${
-                            isActive
-                              ? 'border-sky-600 bg-sky-600 text-white'
-                              : 'border-sky-100 bg-white text-slate-700 hover:bg-sky-50'
-                          }`}
-                          onClick={() => setOrderFilter(filter.value)}
-                        >
-                          {filter.label}
-                          <span
-                            className={`ml-1.5 ${
-                              isActive ? 'text-white/80' : 'text-slate-400'
-                            }`}
-                          >
-                            {filter.count}
-                          </span>
-                        </button>
-                      )
-                    })}
-                    {orderFilter !== 'all' && (
-                      <button
-                        type="button"
-                        className="cursor-pointer px-2 py-1.5 text-xs font-semibold text-sky-600 hover:text-sky-800"
-                        onClick={() => setOrderFilter('all')}
-                      >
-                        Сбросить
-                      </button>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1741,6 +1793,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                 setActiveModal('client')
               }}
               clientsCount={clients.length}
+              onView={(client) => {
+                setClientDraft(client)
+                setEditingClientId(client._id)
+                setSimilarClients([])
+                setActiveModal('client-view')
+              }}
               onEdit={(client) => {
                 setClientDraft(client)
                 setEditingClientId(client._id)
@@ -1954,6 +2012,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           }}
           onEdit={() => setActiveModal('order-edit')}
           onReviewReport={reviewPerformerReport}
+          onUpdateOrder={(nextOrder) =>
+            updateOrder(nextOrder).then((updatedOrder) => {
+              if (updatedOrder) setOrderDraft(normalizeOrderDraft(updatedOrder))
+              return updatedOrder
+            })
+          }
         />
       )}
 
@@ -2069,6 +2133,25 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             activeModal === 'location-edit' ? editLocation : addLocation
           }
           isEdit={activeModal === 'location-edit'}
+        />
+      )}
+
+      {activeModal === 'client-view' && (
+        <ClientViewModal
+          open={true}
+          client={clientDraft}
+          canManage={canManage}
+          onClose={() => {
+            setActiveModal('')
+            setEditingClientId('')
+            setClientDraft(EMPTY_PARTY_CLIENT)
+          }}
+          onEdit={(client) => {
+            setClientDraft(client)
+            setEditingClientId(client._id)
+            setSimilarClients([])
+            setActiveModal('client-edit')
+          }}
         />
       )}
 
