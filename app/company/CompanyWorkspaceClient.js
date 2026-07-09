@@ -4,11 +4,18 @@ import { useSetAtom } from 'jotai'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { faCheck, faChevronDown, faFilter } from '@fortawesome/free-solid-svg-icons'
+import {
+  faCalendarAlt,
+  faCheck,
+  faChevronDown,
+  faFilter,
+  faList,
+} from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { apiJson } from '@helpers/apiClient'
 import DropDown from '@components/DropDown'
 import OrdersList from '@components/party/lists/OrdersList'
+import PartyOrdersCalendar from '@components/party/orders/PartyOrdersCalendar'
 import CallsList from '@components/party/lists/CallsList'
 import PartyUpcomingEventsModal, {
   getOrderEndDate,
@@ -192,11 +199,9 @@ const buildClosedOrdersSummary = (closed = []) => {
         paidPayoutTotal:
           result.paidPayoutTotal + Number(itemSummary.paidPayoutTotal || 0),
         unpaidPayoutTotal:
-          result.unpaidPayoutTotal +
-          Number(itemSummary.unpaidPayoutTotal || 0),
+          result.unpaidPayoutTotal + Number(itemSummary.unpaidPayoutTotal || 0),
         unpaidPayoutCount:
-          result.unpaidPayoutCount +
-          Number(itemSummary.unpaidPayoutCount || 0),
+          result.unpaidPayoutCount + Number(itemSummary.unpaidPayoutCount || 0),
         grossMargin: result.grossMargin + Number(itemSummary.grossMargin || 0),
       }
     },
@@ -390,6 +395,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [activeModal, setActiveModal] = useState('')
   const [accessStatus, setAccessStatus] = useState('loading')
   const [orderFilter, setOrderFilter] = useState('all')
+  const [orderViewMode, setOrderViewMode] = useState('list')
   const [clientSearch, setClientSearch] = useState('')
   const [financeExportFrom, setFinanceExportFrom] = useState('')
   const [financeExportTo, setFinanceExportTo] = useState('')
@@ -400,141 +406,144 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const canUseStatistics = companyAccess?.allowStatistics !== false
 
   // Load workspace data
-  const loadWorkspace = useCallback(async (preferredCompanyId = '') => {
-    setLoading(true)
-    setError('')
-    try {
-      const membershipsResponse = await apiJson('/api/party/memberships', {
-        cache: 'no-store',
-      })
-      const availableMemberships = membershipsResponse.data?.memberships ?? []
-      setMemberships(availableMemberships)
+  const loadWorkspace = useCallback(
+    async (preferredCompanyId = '') => {
+      setLoading(true)
+      setError('')
+      try {
+        const membershipsResponse = await apiJson('/api/party/memberships', {
+          cache: 'no-store',
+        })
+        const availableMemberships = membershipsResponse.data?.memberships ?? []
+        setMemberships(availableMemberships)
 
-      if (availableMemberships.length === 0) {
-        setContext(null)
-        setLocations([])
-        setArchivedLocations([])
-        setClients([])
-        setStaff([])
-        setServices([])
-        setServiceGroups([])
-        setOrders([])
-        setCalls([])
-        setCompanySettings({})
-        setCompanyAccess(null)
-        setActiveCompanyId('')
-        setAccessStatus('not_configured')
-        return
-      }
+        if (availableMemberships.length === 0) {
+          setContext(null)
+          setLocations([])
+          setArchivedLocations([])
+          setClients([])
+          setStaff([])
+          setServices([])
+          setServiceGroups([])
+          setOrders([])
+          setCalls([])
+          setCompanySettings({})
+          setCompanyAccess(null)
+          setActiveCompanyId('')
+          setAccessStatus('not_configured')
+          return
+        }
 
-      const storedCompanyId =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
-          : ''
-      const requestedCompanyId = preferredCompanyId || storedCompanyId
-      const selectedMembership =
-        availableMemberships.find(
-          (membership) => membership.tenantId === requestedCompanyId
-        ) ||
-        availableMemberships.find((membership) => membership.isAdmin) ||
-        availableMemberships[0]
-      const selectedCompanyId = selectedMembership.tenantId
+        const storedCompanyId =
+          typeof window !== 'undefined'
+            ? window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
+            : ''
+        const requestedCompanyId = preferredCompanyId || storedCompanyId
+        const selectedMembership =
+          availableMemberships.find(
+            (membership) => membership.tenantId === requestedCompanyId
+          ) ||
+          availableMemberships.find((membership) => membership.isAdmin) ||
+          availableMemberships[0]
+        const selectedCompanyId = selectedMembership.tenantId
 
-      setActiveCompanyId(selectedCompanyId)
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(
-          ACTIVE_COMPANY_STORAGE_KEY,
-          selectedCompanyId
+        setActiveCompanyId(selectedCompanyId)
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(
+            ACTIVE_COMPANY_STORAGE_KEY,
+            selectedCompanyId
+          )
+        }
+        setContext({
+          tenantId: selectedMembership.tenantId,
+          role: selectedMembership.role,
+          staff: selectedMembership.staff,
+          company: selectedMembership.company,
+        })
+        setAccessStatus('ready')
+
+        const [
+          locationsResponse,
+          archivedLocationsResponse,
+          clientsResponse,
+          staffResponse,
+          servicesResponse,
+          ordersResponse,
+          callsResponse,
+          companySettingsResponse,
+          serviceGroupsResponse,
+        ] = await Promise.all([
+          apiJson(
+            '/api/party/locations',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ),
+          apiJson(
+            '/api/party/locations?status=archived',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ),
+          apiJson(
+            '/api/party/clients',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ),
+          apiJson(
+            '/api/party/staff',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ),
+          apiJson(
+            '/api/party/services',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ),
+          apiJson(
+            '/api/party/orders',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ),
+          apiJson(
+            '/api/party/calls',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ).catch((callsError) => {
+            if (callsError.status === 403) return { data: [] }
+            throw callsError
+          }),
+          apiJson(
+            '/api/party/company-settings',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ),
+          apiJson(
+            '/api/party/service-groups',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ),
+        ])
+        setLocations(locationsResponse.data ?? [])
+        setArchivedLocations(archivedLocationsResponse.data ?? [])
+        setClients(clientsResponse.data ?? [])
+        setStaff(staffResponse.data ?? [])
+        setServices(servicesResponse.data ?? [])
+        setOrders(ordersResponse.data ?? [])
+        setCalls(callsResponse.data ?? [])
+        setServiceGroups(serviceGroupsResponse.data ?? [])
+        setCompanySettings(
+          companySettingsResponse.data?.settings ??
+            companySettingsResponse.data ??
+            {}
         )
+        setCompanyAccess(companySettingsResponse.data?.access ?? null)
+      } catch (loadError) {
+        if (loadError.status === 401) {
+          setContext(null)
+          setAccessStatus('unauthenticated')
+        } else if (loadError.status === 403) {
+          setContext(null)
+          setAccessStatus('not_configured')
+        } else {
+          setAccessStatus('error')
+          setError('Не удалось загрузить данные')
+        }
+      } finally {
+        setLoading(false)
       }
-      setContext({
-        tenantId: selectedMembership.tenantId,
-        role: selectedMembership.role,
-        staff: selectedMembership.staff,
-        company: selectedMembership.company,
-      })
-      setAccessStatus('ready')
-
-      const [
-        locationsResponse,
-        archivedLocationsResponse,
-        clientsResponse,
-        staffResponse,
-        servicesResponse,
-        ordersResponse,
-        callsResponse,
-        companySettingsResponse,
-        serviceGroupsResponse,
-      ] = await Promise.all([
-        apiJson(
-          '/api/party/locations',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ),
-        apiJson(
-          '/api/party/locations?status=archived',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ),
-        apiJson(
-          '/api/party/clients',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ),
-        apiJson(
-          '/api/party/staff',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ),
-        apiJson(
-          '/api/party/services',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ),
-        apiJson(
-          '/api/party/orders',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ),
-        apiJson(
-          '/api/party/calls',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ).catch((callsError) => {
-          if (callsError.status === 403) return { data: [] }
-          throw callsError
-        }),
-        apiJson(
-          '/api/party/company-settings',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ),
-        apiJson(
-          '/api/party/service-groups',
-          buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
-        ),
-      ])
-      setLocations(locationsResponse.data ?? [])
-      setArchivedLocations(archivedLocationsResponse.data ?? [])
-      setClients(clientsResponse.data ?? [])
-      setStaff(staffResponse.data ?? [])
-      setServices(servicesResponse.data ?? [])
-      setOrders(ordersResponse.data ?? [])
-      setCalls(callsResponse.data ?? [])
-      setServiceGroups(serviceGroupsResponse.data ?? [])
-      setCompanySettings(
-        companySettingsResponse.data?.settings ??
-          companySettingsResponse.data ??
-          {}
-      )
-      setCompanyAccess(companySettingsResponse.data?.access ?? null)
-    } catch (loadError) {
-      if (loadError.status === 401) {
-        setContext(null)
-        setAccessStatus('unauthenticated')
-      } else if (loadError.status === 403) {
-        setContext(null)
-        setAccessStatus('not_configured')
-      } else {
-        setAccessStatus('error')
-        setError('Не удалось загрузить данные')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [setServiceGroups])
+    },
+    [setServiceGroups]
+  )
 
   useEffect(() => {
     loadWorkspace()
@@ -1074,157 +1083,179 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   }, [activeCompanyId, financeExportFrom, financeExportTo])
 
   // Client actions
-  const addClient = useCallback(async (clientPayload = clientDraft) => {
-    setSaving(true)
-    try {
-      const response = await apiJson(
-        '/api/party/clients',
-        buildCompanyRequestOptions(activeCompanyId, {
-          method: 'POST',
-          body: JSON.stringify(clientPayload),
-        })
-      )
-      if (response.data) {
-        setClients((prev) => [...prev, response.data])
-        setActiveModal('')
-        setClientDraft(EMPTY_PARTY_CLIENT)
-      }
-    } finally {
-      setSaving(false)
-    }
-  }, [clientDraft, activeCompanyId])
-
-  const editClient = useCallback(async (clientPayload = clientDraft) => {
-    if (!editingClientId) return
-    setSaving(true)
-    try {
-      const response = await apiJson(
-        `/api/party/clients/${editingClientId}`,
-        buildCompanyRequestOptions(activeCompanyId, {
-          method: 'PATCH',
-          body: JSON.stringify(clientPayload),
-        })
-      )
-      if (response.data) {
-        setClients((prev) =>
-          prev.map((c) =>
-            String(c._id) === editingClientId ? response.data : c
-          )
+  const addClient = useCallback(
+    async (clientPayload = clientDraft) => {
+      setSaving(true)
+      try {
+        const response = await apiJson(
+          '/api/party/clients',
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'POST',
+            body: JSON.stringify(clientPayload),
+          })
         )
-        setActiveModal('')
-        setEditingClientId('')
-        setClientDraft(EMPTY_PARTY_CLIENT)
+        if (response.data) {
+          setClients((prev) => [...prev, response.data])
+          setActiveModal('')
+          setClientDraft(EMPTY_PARTY_CLIENT)
+        }
+      } finally {
+        setSaving(false)
       }
-    } finally {
-      setSaving(false)
-    }
-  }, [clientDraft, editingClientId, activeCompanyId])
+    },
+    [clientDraft, activeCompanyId]
+  )
 
-  const archiveClient = useCallback(async (clientId, skipConfirm = false) => {
-    if (!clientId || !activeCompanyId) return
-    const confirmed =
-      skipConfirm ||
-      window.confirm(
-        'Переместить клиента в архив? История заказов, звонков и переписок сохранится.'
-      )
-    if (!confirmed) return
+  const editClient = useCallback(
+    async (clientPayload = clientDraft) => {
+      if (!editingClientId) return
+      setSaving(true)
+      try {
+        const response = await apiJson(
+          `/api/party/clients/${editingClientId}`,
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'PATCH',
+            body: JSON.stringify(clientPayload),
+          })
+        )
+        if (response.data) {
+          setClients((prev) =>
+            prev.map((c) =>
+              String(c._id) === editingClientId ? response.data : c
+            )
+          )
+          setActiveModal('')
+          setEditingClientId('')
+          setClientDraft(EMPTY_PARTY_CLIENT)
+        }
+      } finally {
+        setSaving(false)
+      }
+    },
+    [clientDraft, editingClientId, activeCompanyId]
+  )
 
-    await apiJson(
-      `/api/party/clients/${clientId}`,
-      buildCompanyRequestOptions(activeCompanyId, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: 'archived' }),
-      })
-    )
-    setClients((prev) => prev.filter((client) => String(client._id) !== String(clientId)))
-  }, [activeCompanyId])
+  const archiveClient = useCallback(
+    async (clientId, skipConfirm = false) => {
+      if (!clientId || !activeCompanyId) return
+      const confirmed =
+        skipConfirm ||
+        window.confirm(
+          'Переместить клиента в архив? История заказов, звонков и переписок сохранится.'
+        )
+      if (!confirmed) return
 
-  const deleteClient = useCallback(async (clientId) => {
-    if (!clientId || !activeCompanyId) return
-    const confirmed = window.confirm(
-      'Удалить карточку клиента без возможности восстановления? Это можно сделать только если нет связанных заказов, звонков и переписок.'
-    )
-    if (!confirmed) return
-
-    try {
       await apiJson(
         `/api/party/clients/${clientId}`,
-        buildCompanyRequestOptions(activeCompanyId, { method: 'DELETE' })
+        buildCompanyRequestOptions(activeCompanyId, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'archived' }),
+        })
       )
       setClients((prev) =>
         prev.filter((client) => String(client._id) !== String(clientId))
       )
-    } catch (deleteError) {
-      if (deleteError.code !== 'partycrm_client_delete_blocked') {
-        throw deleteError
-      }
-      const archiveConfirmed = window.confirm(
-        'Удалить нельзя: у клиента есть связанные заказы, звонки или переписки. Переместить карточку в архив?'
+    },
+    [activeCompanyId]
+  )
+
+  const deleteClient = useCallback(
+    async (clientId) => {
+      if (!clientId || !activeCompanyId) return
+      const confirmed = window.confirm(
+        'Удалить карточку клиента без возможности восстановления? Это можно сделать только если нет связанных заказов, звонков и переписок.'
       )
-      if (archiveConfirmed) {
-        await archiveClient(clientId, true)
+      if (!confirmed) return
+
+      try {
+        await apiJson(
+          `/api/party/clients/${clientId}`,
+          buildCompanyRequestOptions(activeCompanyId, { method: 'DELETE' })
+        )
+        setClients((prev) =>
+          prev.filter((client) => String(client._id) !== String(clientId))
+        )
+      } catch (deleteError) {
+        if (deleteError.code !== 'partycrm_client_delete_blocked') {
+          throw deleteError
+        }
+        const archiveConfirmed = window.confirm(
+          'Удалить нельзя: у клиента есть связанные заказы, звонки или переписки. Переместить карточку в архив?'
+        )
+        if (archiveConfirmed) {
+          await archiveClient(clientId, true)
+        }
       }
-    }
-  }, [activeCompanyId, archiveClient])
+    },
+    [activeCompanyId, archiveClient]
+  )
 
-  const mergeSimilarClient = useCallback(async (sourceClient) => {
-    if (!editingClientId || !sourceClient?._id || !activeCompanyId) return
-    const confirmed = window.confirm(
-      'Объединить клиентов? Найденная карточка будет архивирована, а заказы, звонки, транзакции и переписки перейдут к текущему клиенту.'
-    )
-    if (!confirmed) return
-
-    const response = await apiJson(
-      `/api/party/clients/${editingClientId}/merge`,
-      buildCompanyRequestOptions(activeCompanyId, {
-        method: 'POST',
-        body: JSON.stringify({ sourceClientId: sourceClient._id }),
-      })
-    )
-    if (response.data?.targetClient) {
-      setClients((prev) =>
-        prev.filter((client) => String(client._id) !== String(sourceClient._id))
+  const mergeSimilarClient = useCallback(
+    async (sourceClient) => {
+      if (!editingClientId || !sourceClient?._id || !activeCompanyId) return
+      const confirmed = window.confirm(
+        'Объединить клиентов? Найденная карточка будет архивирована, а заказы, звонки, транзакции и переписки перейдут к текущему клиенту.'
       )
-      setSimilarClients([])
-      window.alert('Карточки клиентов объединены')
-    }
-  }, [activeCompanyId, editingClientId])
+      if (!confirmed) return
 
-  const loadSimilarClients = useCallback(async (draft) => {
-    if (!activeCompanyId || !canManage) {
-      setSimilarClients([])
-      return
-    }
-    const hasContact = [
-      draft?.phone,
-      draft?.whatsapp,
-      draft?.viber,
-      draft?.email,
-      draft?.telegram,
-      draft?.vk,
-      draft?.instagram,
-    ].some((value) => String(value || '').trim())
-    if (!hasContact) {
-      setSimilarClients([])
-      return
-    }
-
-    try {
       const response = await apiJson(
-        '/api/party/clients/similar',
+        `/api/party/clients/${editingClientId}/merge`,
         buildCompanyRequestOptions(activeCompanyId, {
           method: 'POST',
-          body: JSON.stringify({
-            ...draft,
-            excludeClientId: editingClientId,
-          }),
+          body: JSON.stringify({ sourceClientId: sourceClient._id }),
         })
       )
-      setSimilarClients(response.data ?? [])
-    } catch {
-      setSimilarClients([])
-    }
-  }, [activeCompanyId, canManage, editingClientId])
+      if (response.data?.targetClient) {
+        setClients((prev) =>
+          prev.filter(
+            (client) => String(client._id) !== String(sourceClient._id)
+          )
+        )
+        setSimilarClients([])
+        window.alert('Карточки клиентов объединены')
+      }
+    },
+    [activeCompanyId, editingClientId]
+  )
+
+  const loadSimilarClients = useCallback(
+    async (draft) => {
+      if (!activeCompanyId || !canManage) {
+        setSimilarClients([])
+        return
+      }
+      const hasContact = [
+        draft?.phone,
+        draft?.whatsapp,
+        draft?.viber,
+        draft?.email,
+        draft?.telegram,
+        draft?.vk,
+        draft?.instagram,
+      ].some((value) => String(value || '').trim())
+      if (!hasContact) {
+        setSimilarClients([])
+        return
+      }
+
+      try {
+        const response = await apiJson(
+          '/api/party/clients/similar',
+          buildCompanyRequestOptions(activeCompanyId, {
+            method: 'POST',
+            body: JSON.stringify({
+              ...draft,
+              excludeClientId: editingClientId,
+            }),
+          })
+        )
+        setSimilarClients(response.data ?? [])
+      } catch {
+        setSimilarClients([])
+      }
+    },
+    [activeCompanyId, canManage, editingClientId]
+  )
 
   useEffect(() => {
     if (activeModal !== 'client' && activeModal !== 'client-edit') {
@@ -1236,11 +1267,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     }, 350)
 
     return () => window.clearTimeout(timeoutId)
-  }, [
-    activeModal,
-    clientDraft,
-    loadSimilarClients,
-  ])
+  }, [activeModal, clientDraft, loadSimilarClients])
 
   // Staff actions
   const addStaff = useCallback(async () => {
@@ -1464,7 +1491,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   if (accessStatus === 'loading') {
     return (
       <section className="min-h-screen bg-white">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Загрузка...</p>
         </div>
       </section>
@@ -1474,7 +1501,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   if (accessStatus === 'unauthenticated') {
     return (
       <section className="min-h-screen bg-white">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Необходимо авторизоваться</p>
         </div>
       </section>
@@ -1484,7 +1511,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   if (accessStatus === 'not_configured') {
     return (
       <section className="min-h-screen bg-white">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Нет доступных компаний</p>
         </div>
       </section>
@@ -1494,7 +1521,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   if (accessStatus === 'error') {
     return (
       <section className="min-h-screen bg-white">
-        <div className="flex items-center justify-center h-64">
+        <div className="flex h-64 items-center justify-center">
           <p className="text-red-500">{error || 'Ошибка загрузки'}</p>
         </div>
       </section>
@@ -1504,11 +1531,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   return (
     <section className="min-h-screen bg-white">
       {/* Main content */}
-      <main className="max-w-6xl px-5 py-8 mx-auto">
+      <main className="mx-auto max-w-6xl px-5 py-8">
         {memberships.length > 1 && (
           <div className="mb-6 flex flex-col gap-2 rounded-lg border border-sky-100 bg-sky-50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase text-sky-700">
+              <p className="text-xs font-semibold text-sky-700 uppercase">
                 Активная компания
               </p>
               {context?.staff?.isDeveloperAccess ? (
@@ -1533,7 +1560,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )}
 
         {error && (
-          <div className="p-3 mb-5 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
+          <div className="border-danger/30 bg-danger/10 text-danger mb-5 rounded-md border p-3 text-sm">
             {error}
           </div>
         )}
@@ -1541,7 +1568,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         {section === 'overview' && (
           <>
             {!onboardingProgress.finished && (
-              <div className="p-5 mb-6 bg-white border rounded-2xl border-sky-100">
+              <div className="mb-6 rounded-2xl border border-sky-100 bg-white p-5">
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div>
                     <h2 className="text-lg font-semibold">
@@ -1552,11 +1579,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       {onboardingProgress.totalCount} выполнено
                     </p>
                   </div>
-                  <div className="px-3 py-2 text-sm font-semibold rounded-lg bg-sky-50 text-sky-700">
+                  <div className="rounded-lg bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700">
                     Стартовая настройка
                   </div>
                 </div>
-                <div className="grid gap-3 mt-4 md:grid-cols-2">
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {onboardingSteps.map((step) => (
                     <div
                       key={step.id}
@@ -1588,7 +1615,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       {!step.completed && canManage && (
                         <button
                           type="button"
-                          className="px-3 py-2 mt-3 text-sm font-semibold text-white rounded-md bg-sky-600 hover:bg-sky-700"
+                          className="mt-3 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                           onClick={() => {
                             if (step.modal === 'order') {
                               setOrderDraft(
@@ -1621,7 +1648,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
             {/* Finance summary */}
             {canUseStatistics ? (
-              <div className="p-4 mb-6 rounded-2xl bg-sky-50">
+              <div className="mb-6 rounded-2xl bg-sky-50 p-4">
                 <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                   <div>
                     <p className="text-sm text-gray-600">Заказов</p>
@@ -1656,10 +1683,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         {(section === 'orders' || section === 'orders-past') && (
           <>
             {/* Header with filters and actions (orders/past) */}
-            <div className="mb-6">
-              <div className="flex flex-col gap-3">
+            <div className="mb-4 md:mb-6">
+              <div className="flex flex-col gap-2">
                 {/* Top row: title + actions */}
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col items-center gap-2">
                   <h2 className="text-xl font-semibold">
                     {section === 'orders-past'
                       ? 'Прошедшие заказы'
@@ -1671,11 +1698,31 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       orderFilter={orderFilter}
                       setOrderFilter={setOrderFilter}
                     />
+                    <button
+                      type="button"
+                      className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-sky-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50"
+                      onClick={() =>
+                        setOrderViewMode((current) =>
+                          current === 'list' ? 'month' : 'list'
+                        )
+                      }
+                      title={
+                        orderViewMode === 'list'
+                          ? 'Показать календарь'
+                          : 'Показать список'
+                      }
+                    >
+                      <FontAwesomeIcon
+                        icon={orderViewMode === 'list' ? faCalendarAlt : faList}
+                        className="h-4 w-4 text-sky-600"
+                      />
+                      {orderViewMode === 'list' ? 'Список' : 'Месяц'}
+                    </button>
                     {section !== 'orders-past' && (
                       <button
                         type="button"
                         onClick={() => setActiveModal('upcoming-events')}
-                        className="px-3 py-2 text-sm font-semibold transition border rounded-md cursor-pointer border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100"
+                        className="cursor-pointer rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
                       >
                         Ближайшие
                       </button>
@@ -1684,7 +1731,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       <button
                         type="button"
                         onClick={closePastOrders}
-                        className="px-3 py-2 text-sm font-semibold transition bg-white border rounded-md cursor-pointer border-sky-200 text-sky-700 hover:bg-sky-50"
+                        className="cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
                       >
                         Закрыть прошедшие
                         <span className="ml-2 text-sky-400">
@@ -1695,7 +1742,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                     {canManage && (
                       <button
                         type="button"
-                        className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
+                        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                         onClick={() => {
                           setOrderDraft(
                             createEmptyOrderDraft(companySettings, locations)
@@ -1711,36 +1758,47 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               </div>
             </div>
 
-            {/* Orders list (orders/past) */}
-            <OrdersList
-              orders={filteredOrders}
-              filteredOrders={filteredOrders}
-              clients={clients}
-              clientsById={clientsById}
-              staff={staff}
-              locations={locations}
-              hasOrderConflict={hasOrderConflict}
-              canManage={canManage}
-              onView={(order) => {
-                setOrderDraft(normalizeOrderDraft(order))
-                setEditingOrderId(order._id)
-                setActiveModal('order-view')
-              }}
-              onEdit={(order) => {
-                setOrderDraft(normalizeOrderDraft(order))
-                setEditingOrderId(order._id)
-                setActiveModal('order-edit')
-              }}
-              onCancel={cancelOrder}
-              onStatusChange={changeOrderStatus}
-              onDelete={deleteOrder}
-            />
+            {orderViewMode === 'list' ? (
+              <OrdersList
+                orders={filteredOrders}
+                filteredOrders={filteredOrders}
+                clients={clients}
+                clientsById={clientsById}
+                staff={staff}
+                locations={locations}
+                hasOrderConflict={hasOrderConflict}
+                canManage={canManage}
+                onView={(order) => {
+                  setOrderDraft(normalizeOrderDraft(order))
+                  setEditingOrderId(order._id)
+                  setActiveModal('order-view')
+                }}
+                onEdit={(order) => {
+                  setOrderDraft(normalizeOrderDraft(order))
+                  setEditingOrderId(order._id)
+                  setActiveModal('order-edit')
+                }}
+                onCancel={cancelOrder}
+                onStatusChange={changeOrderStatus}
+                onDelete={deleteOrder}
+              />
+            ) : (
+              <PartyOrdersCalendar
+                orders={filteredOrders}
+                locations={locations}
+                onView={(order) => {
+                  setOrderDraft(normalizeOrderDraft(order))
+                  setEditingOrderId(order._id)
+                  setActiveModal('order-view')
+                }}
+              />
+            )}
           </>
         )}
 
         {section === 'calls' && (
           <>
-            <div className="flex flex-col gap-2 mb-6 md:flex-row md:items-end md:justify-between">
+            <div className="mb-6 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div>
                 <h2 className="text-xl font-semibold">Звонки Novofon</h2>
                 <p className="mt-1 text-sm text-slate-500">
@@ -1750,7 +1808,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               <span className="text-sm text-black/55">{calls.length}</span>
             </div>
             {companyAccess?.allowTelephony === false ? (
-              <div className="p-6 text-sm leading-6 border rounded-2xl border-amber-200 bg-amber-50 text-amber-900">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
                 Телефония недоступна на текущем тарифе компании. Подключите
                 тариф с опцией телефонии во вкладке `Тарифы`.
               </div>
@@ -1768,10 +1826,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'clients' && (
           <>
-            <div className="flex justify-end mb-6">
+            <div className="mb-6 flex justify-end">
               <button
                 type="button"
-                className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
+                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                 onClick={() => {
                   setClientDraft(EMPTY_PARTY_CLIENT)
                   setEditingClientId('')
@@ -1810,15 +1868,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )}
 
         {section === 'finance' && !canUseStatistics && (
-          <div className="p-6 text-sm leading-6 border rounded-2xl border-amber-200 bg-amber-50 text-amber-900">
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
             Финансы и аналитика недоступны на текущем тарифе компании.
             Подключите тариф с опцией статистики во вкладке `Тарифы`.
           </div>
         )}
 
         {section === 'finance' && canUseStatistics && (
-          <div className="p-6 rounded-2xl bg-sky-50">
-            <div className="flex flex-col gap-3 mb-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="rounded-2xl bg-sky-50 p-6">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <h2 className="text-xl font-semibold">Финансы</h2>
               <div className="flex flex-wrap items-end gap-2">
                 <label className="grid gap-1 text-xs font-semibold text-slate-600">
@@ -1829,7 +1887,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                     onChange={(event) =>
                       setFinanceExportFrom(event.target.value)
                     }
-                    className="px-2 py-2 text-sm font-normal bg-white border rounded-md outline-none border-sky-100 text-slate-900 focus:border-sky-400"
+                    className="rounded-md border border-sky-100 bg-white px-2 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
                   />
                 </label>
                 <label className="grid gap-1 text-xs font-semibold text-slate-600">
@@ -1838,12 +1896,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                     type="date"
                     value={financeExportTo}
                     onChange={(event) => setFinanceExportTo(event.target.value)}
-                    className="px-2 py-2 text-sm font-normal bg-white border rounded-md outline-none border-sky-100 text-slate-900 focus:border-sky-400"
+                    className="rounded-md border border-sky-100 bg-white px-2 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
                   />
                 </label>
                 <button
                   type="button"
-                  className="px-4 py-2 text-sm font-semibold text-white rounded-md bg-sky-600 hover:bg-sky-700"
+                  className="rounded-md bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                   onClick={downloadFinanceCsv}
                 >
                   Скачать CSV
@@ -1899,10 +1957,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'locations' && (
           <>
-            <div className="flex justify-end mb-6">
+            <div className="mb-6 flex justify-end">
               <button
                 type="button"
-                className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
+                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                 onClick={() => {
                   setLocationDraft(EMPTY_LOCATION)
                   setActiveModal('location')
@@ -1925,10 +1983,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'staff' && (
           <>
-            <div className="flex justify-end mb-6">
+            <div className="mb-6 flex justify-end">
               <button
                 type="button"
-                className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
+                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                 onClick={() => {
                   setStaffDraft(EMPTY_STAFF)
                   setActiveModal('staff')
@@ -1955,10 +2013,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'services' && (
           <>
-            <div className="flex justify-end mb-6">
+            <div className="mb-6 flex justify-end">
               <button
                 type="button"
-                className="px-4 py-2 text-sm font-semibold text-white rounded cursor-pointer bg-sky-600 hover:bg-sky-700"
+                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                 onClick={() => {
                   setServiceDraft(EMPTY_PARTY_SERVICE)
                   setActiveModal('service')

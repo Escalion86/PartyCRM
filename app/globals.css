@@ -618,17 +618,17 @@ body.theme-dark .value-picker-item--disabled {
 }
 
 .event-month-calendar {
-  border-color: #c3c8d0;
+  border-color: #bae6fd;
 }
 
 .event-month-calendar__weekdays {
-  border-color: #b8bec8;
-  background-color: rgba(243, 244, 246, 0.98);
-  color: #4b5563;
+  border-color: #bae6fd;
+  background-color: rgba(240, 249, 255, 0.98);
+  color: #0369a1;
 }
 
 .event-month-calendar__day {
-  border-color: #c7ccd4;
+  border-color: #dbeafe;
 }
 
 .event-month-calendar__day--current,
@@ -637,15 +637,15 @@ body.theme-dark .value-picker-item--disabled {
 }
 
 .event-month-calendar__day--past {
-  background-color: #f7f8fa;
+  background-color: #f8fafc;
 }
 
 .event-month-calendar__day--outside {
-  background-color: #eceff3;
+  background-color: #eef2f7;
 }
 
 .event-month-calendar__day--interactive:hover {
-  background-color: #f3f5f8;
+  background-color: #f0f9ff;
 }
 
 .event-month-calendar__day-number--current {
@@ -661,59 +661,59 @@ body.theme-dark .value-picker-item--disabled {
 }
 
 .event-month-calendar__day-number--today {
-  border: 1px solid rgba(125, 100, 53, 0.45);
-  background-color: rgba(125, 100, 53, 0.12);
-  color: #7d6435;
+  border: 1px solid rgba(2, 132, 199, 0.45);
+  background-color: rgba(14, 165, 233, 0.12);
+  color: #0369a1;
 }
 
 body.theme-dark .event-month-calendar {
-  border-color: rgba(235, 211, 165, 0.24);
-  background-color: #11100d;
+  border-color: rgba(56, 189, 248, 0.24);
+  background-color: #0f172a;
 }
 
 body.theme-dark .event-month-calendar__weekdays {
-  border-color: rgba(235, 211, 165, 0.24);
-  background-color: rgba(15, 12, 9, 0.96);
-  color: #d9c6a4;
+  border-color: rgba(56, 189, 248, 0.24);
+  background-color: rgba(15, 23, 42, 0.96);
+  color: #bae6fd;
 }
 
 body.theme-dark .event-month-calendar__day {
-  border-color: rgba(235, 211, 165, 0.22);
+  border-color: rgba(56, 189, 248, 0.18);
 }
 
 body.theme-dark .event-month-calendar__day--current,
 body.theme-dark .event-month-calendar__day--today {
-  background-color: #11100d;
+  background-color: #0f172a;
 }
 
 body.theme-dark .event-month-calendar__day--past {
-  background-color: #17130f;
+  background-color: #111827;
 }
 
 body.theme-dark .event-month-calendar__day--outside {
-  background-color: #363432;
+  background-color: #1e293b;
 }
 
 body.theme-dark .event-month-calendar__day--interactive:hover {
-  background-color: #241e16;
+  background-color: #082f49;
 }
 
 body.theme-dark .event-month-calendar__day-number--current {
-  color: #f7efe1;
+  color: #f8fafc;
 }
 
 body.theme-dark .event-month-calendar__day-number--past {
-  color: #b8ab96;
+  color: #94a3b8;
 }
 
 body.theme-dark .event-month-calendar__day-number--outside {
-  color: #f1e7d4;
+  color: #cbd5e1;
 }
 
 body.theme-dark .event-month-calendar__day-number--today {
-  border-color: rgba(235, 211, 165, 0.72);
-  background-color: rgba(235, 211, 165, 0.18);
-  color: #ffe5ad;
+  border-color: rgba(125, 211, 252, 0.72);
+  background-color: rgba(14, 165, 233, 0.2);
+  color: #e0f2fe;
 }
 
 .hide-number-spin::-webkit-outer-spin-button,
