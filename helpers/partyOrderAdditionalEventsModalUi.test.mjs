@@ -40,3 +40,19 @@ test('order editor uses additional event cards and create modal', async () => {
   assert.match(orderModal, /editingAdditionalEvent === -1/)
   assert.doesNotMatch(orderModal, /handleAddAdditionalEvent/)
 })
+
+test('new additional event inherits responsible staff from order', async () => {
+  const orderModal = await source('components/party/modals/OrderModal.js')
+  const additionalEventsModal = await source(
+    'components/party/modals/OrderAdditionalEventsModal.js'
+  )
+
+  assert.match(
+    orderModal,
+    /responsibleStaffId: orderDraft\.responsibleStaffId \|\| '',/
+  )
+  assert.match(
+    additionalEventsModal,
+    /responsibleStaffId: order\?\.responsibleStaffId \|\| '',/
+  )
+})

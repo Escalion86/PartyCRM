@@ -27,6 +27,7 @@ import ServicesList from '@components/party/lists/ServicesList'
 import OrderModal from '@components/party/modals/OrderModal'
 import OrderViewModal from '@components/party/modals/OrderViewModal'
 import OrderAdditionalEventsModal from '@components/party/modals/OrderAdditionalEventsModal'
+import OrderMessengerModal from '@components/party/modals/OrderMessengerModal'
 import {
   ClientFormModal,
   ClientViewModal,
@@ -290,6 +291,21 @@ const buildCompanyRequestOptions = (companyId, options = {}) => ({
     ...(companyId ? { 'x-partycrm-company-id': companyId } : {}),
   },
 })
+
+const getUniqueCompanyMemberships = (memberships = []) => {
+  const result = []
+  const seenTenantIds = new Set()
+
+  memberships.forEach((membership) => {
+    const tenantId = String(membership?.tenantId || '')
+    if (!tenantId || seenTenantIds.has(tenantId)) return
+
+    seenTenantIds.add(tenantId)
+    result.push(membership)
+  })
+
+  return result
+}
 
 const isOrderPast = (order, now = new Date()) => {
   const endDate = getOrderEndDate(order)
@@ -614,6 +630,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const onboardingProgress = useMemo(
     () => getPartyCompanyOnboardingProgress(onboardingSteps),
     [onboardingSteps]
+  )
+  const companySelectMemberships = useMemo(
+    () => getUniqueCompanyMemberships(memberships),
+    [memberships]
   )
 
   const ordersScope = section === 'orders-past' ? 'past' : 'upcoming'
@@ -1582,7 +1602,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     <section className="h-full min-h-full bg-white">
       {/* Main content */}
       <main className="mx-auto max-w-6xl px-5 py-8">
-        {memberships.length > 1 && (
+        {companySelectMemberships.length > 1 && (
           <div className="mb-6 flex flex-col gap-2 rounded-lg border border-sky-100 bg-sky-50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-semibold text-sky-700 uppercase">
@@ -1599,7 +1619,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               onChange={(event) => switchCompany(event.target.value)}
               className="min-h-10 w-full cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none focus:border-sky-500 sm:w-80"
             >
-              {memberships.map((membership) => (
+              {companySelectMemberships.map((membership) => (
                 <option key={membership.tenantId} value={membership.tenantId}>
                   {membership.company?.title || 'Компания без названия'}
                   {membership.isDeveloperAccess ? ' · dev' : ''}
@@ -1819,6 +1839,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                 filteredOrders={filteredOrders}
                 clients={clients}
                 clientsById={clientsById}
+                companySettings={companySettings}
                 staff={staff}
                 locations={locations}
                 hasOrderConflict={hasOrderConflict}
@@ -1837,6 +1858,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                   setOrderDraft(normalizeOrderDraft(order))
                   setEditingOrderId(order._id)
                   setActiveModal('order-additional-events')
+                }}
+                onMessenger={(order) => {
+                  setOrderDraft(normalizeOrderDraft(order))
+                  setEditingOrderId(order._id)
+                  setActiveModal('order-messenger')
                 }}
                 onCancel={cancelOrder}
                 onStatusChange={changeOrderStatus}
@@ -2057,6 +2083,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             </div>
             <StaffList
               staff={staff}
+              loading={loading}
               canManage={canManage}
               linkingStaffId={linkingStaffId}
               activeCompanyId={activeCompanyId}
@@ -2156,6 +2183,20 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               return updatedOrder
             })
           }
+        />
+      )}
+
+      {activeModal === 'order-messenger' && (
+        <OrderMessengerModal
+          open={true}
+          order={orderDraft}
+          clientsById={clientsById}
+          activeCompanyId={activeCompanyId}
+          canManage={canManage}
+          onClose={() => {
+            setActiveModal('')
+            setEditingOrderId('')
+          }}
         />
       )}
 

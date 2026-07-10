@@ -52,9 +52,13 @@ const getPartyMembershipContext = async () => {
       buildPartyMembership(staff, companiesById.get(String(staff.tenantId)))
     )
     .filter((membership) => membership.company)
-  const memberships = isDeveloper
+  const developerMemberships = isDeveloper
     ? buildPartyDeveloperMemberships({ sessionUser, companies })
-    : sortPartyMemberships(staffMemberships)
+    : []
+  const memberships = sortPartyMemberships([
+    ...developerMemberships,
+    ...staffMemberships,
+  ])
 
   return {
     session: sessionUser ? { user: sessionUser } : null,

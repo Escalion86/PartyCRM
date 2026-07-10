@@ -3,6 +3,7 @@ export const sanitizePartyOrderForPerformer = ({
   membership,
   locationsById,
   clientsById,
+  servicesById = new Map(),
 }) => {
   const staffId = String(membership.staffId)
   const assignment = (order.assignedStaff ?? []).find(
@@ -13,6 +14,14 @@ export const sanitizePartyOrderForPerformer = ({
     : ''
   const location = locationKey ? locationsById.get(locationKey) : null
   const client = order.clientId ? clientsById.get(String(order.clientId)) : null
+  const serviceTitles = Array.isArray(order.servicesIds)
+    ? order.servicesIds
+        .map((serviceId) => servicesById.get(String(serviceId))?.title)
+        .filter(Boolean)
+    : []
+  if (order.serviceTitle && !serviceTitles.includes(order.serviceTitle)) {
+    serviceTitles.push(order.serviceTitle)
+  }
 
   return {
     _id: String(order._id),
@@ -35,7 +44,12 @@ export const sanitizePartyOrderForPerformer = ({
       : null,
     customAddress: order.customAddress || '',
     serviceTitle: order.serviceTitle || '',
+    serviceTitles,
     client: {
+      _id: client?._id ? String(client._id) : '',
+      firstName: client?.firstName || order.client?.name || '',
+      secondName: client?.secondName || '',
+      thirdName: client?.thirdName || '',
       name:
         [client?.firstName, client?.secondName, client?.thirdName]
           .filter(Boolean)
@@ -43,6 +57,12 @@ export const sanitizePartyOrderForPerformer = ({
         order.client?.name ||
         '',
       phone: client?.phone || order.client?.phone || '',
+      whatsapp: client?.whatsapp || '',
+      viber: client?.viber || '',
+      telegram: client?.telegram || '',
+      instagram: client?.instagram || '',
+      vk: client?.vk || '',
+      email: client?.email || order.client?.email || '',
     },
     assignment: assignment
       ? {

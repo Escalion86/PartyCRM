@@ -1,7 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import ContactsIconsButtons from '@components/ContactsIconsButtons'
 import { apiJson } from '@helpers/apiClient'
+import getPersonFullName from '@helpers/getPersonFullName'
 import { isPushSupported, syncPushSubscription } from '@helpers/pushClient'
 
 const formatDateTime = (value) => {
@@ -54,6 +56,21 @@ const getAddressText = (order) => {
   return [order.location?.title, addressText].filter(Boolean).join(' · ') ||
     'Точка не указана'
 }
+
+const formatCompanyTitle = (title) =>
+  title ? `Компания "${title}"` : 'Компания'
+
+const isOrderStarted = (order) => {
+  const eventDate = order?.eventDate ? new Date(order.eventDate) : null
+  return Boolean(
+    eventDate &&
+      !Number.isNaN(eventDate.getTime()) &&
+      eventDate.getTime() <= Date.now()
+  )
+}
+
+const getClientName = (client) =>
+  getPersonFullName(client, { fallback: client?.name || 'не указан' })
 
 export default function PerformerWorkspaceClient() {
   const [orders, setOrders] = useState([])
@@ -517,7 +534,7 @@ export default function PerformerWorkspaceClient() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-sky-700">
-                    {order.companyTitle || 'Компания'}
+                    {formatCompanyTitle(order.companyTitle)}
                   </p>
                   <p className="text-lg font-semibold">{order.title}</p>
                   <p className="mt-1 text-sm text-black/60">
@@ -526,10 +543,32 @@ export default function PerformerWorkspaceClient() {
                   <p className="mt-1 text-sm text-black/60">
                     {getAddressText(order)}
                   </p>
-                  <p className="mt-1 text-sm text-black/60">
-                    Клиент: {order.client?.name || 'не указан'} ·{' '}
-                    {order.client?.phone || 'телефон не указан'}
-                  </p>
+                  {order.serviceTitles?.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-black/65">
+                        Услуги:
+                      </span>
+                      {order.serviceTitles.map((title) => (
+                        <span
+                          key={title}
+                          className="rounded bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-800"
+                        >
+                          {title}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="mt-2 flex min-h-[25px] flex-wrap items-center gap-x-2 gap-y-1 text-sm text-black/60">
+                    <span className="font-medium text-black/70">Клиент:</span>
+                    <span className="min-w-0 truncate">
+                      {getClientName(order.client)}
+                    </span>
+                    <ContactsIconsButtons
+                      user={order.client}
+                      showChat
+                      className="my-0 shrink-0"
+                    />
+                  </div>
                 </div>
                 <div className="sm:text-right">
                   <p className="text-sm text-black/55">Выплата</p>
@@ -556,7 +595,7 @@ export default function PerformerWorkspaceClient() {
                         Подтвердить участие
                       </button>
                     )}
-                    {confirmationStatus !== 'done' && (
+                    {confirmationStatus === 'confirmed' && isOrderStarted(order) && (
                       <button
                         type="button"
                         disabled={isSaving}

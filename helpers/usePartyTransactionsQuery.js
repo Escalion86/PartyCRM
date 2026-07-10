@@ -13,6 +13,9 @@ const normalizeListPayload = (payload) =>
 
 export { removePartyTransaction, upsertPartyTransaction }
 
+const buildCompanyHeaders = (activeCompanyId) =>
+  activeCompanyId ? { 'x-partycrm-company-id': activeCompanyId } : {}
+
 const buildQueryString = (params = {}) => {
   const query = new URLSearchParams()
   if (params.orderId) query.set('orderId', params.orderId)
@@ -34,19 +37,22 @@ export const usePartyTransactionsQuery = (params = {}, options = {}) =>
     queryKey: queryKeys.partyTransactions(params),
     queryFn: async () =>
       normalizeListPayload(
-        await apiJson(`/api/party/transactions${buildQueryString(params)}`)
+        await apiJson(`/api/party/transactions${buildQueryString(params)}`, {
+          headers: buildCompanyHeaders(params.activeCompanyId),
+        })
       ),
     enabled: options.enabled ?? Boolean(params.orderId),
     ...options,
   })
 
-export const useCreatePartyTransactionMutation = () => {
+export const useCreatePartyTransactionMutation = (activeCompanyId = '') => {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (item) => {
       const payload = await apiJson('/api/party/transactions', {
         method: 'POST',
+        headers: buildCompanyHeaders(activeCompanyId),
         body: JSON.stringify(item),
       })
       return payload?.data
@@ -61,13 +67,14 @@ export const useCreatePartyTransactionMutation = () => {
   })
 }
 
-export const useUpdatePartyTransactionMutation = () => {
+export const useUpdatePartyTransactionMutation = (activeCompanyId = '') => {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (item) => {
       const payload = await apiJson(`/api/party/transactions/${item._id}`, {
         method: 'PATCH',
+        headers: buildCompanyHeaders(activeCompanyId),
         body: JSON.stringify(item),
       })
       return payload?.data
@@ -82,13 +89,14 @@ export const useUpdatePartyTransactionMutation = () => {
   })
 }
 
-export const useDeletePartyTransactionMutation = () => {
+export const useDeletePartyTransactionMutation = (activeCompanyId = '') => {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (transaction) => {
       await apiJson(`/api/party/transactions/${transaction._id}`, {
         method: 'DELETE',
+        headers: buildCompanyHeaders(activeCompanyId),
       })
       return transaction
     },

@@ -413,7 +413,7 @@ export default function OrderAdditionalEventsModal({
       title: '',
       date: '',
       description: '',
-      responsibleStaffId: '',
+      responsibleStaffId: order?.responsibleStaffId || '',
     })
   }
 

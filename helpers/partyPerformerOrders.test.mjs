@@ -14,6 +14,7 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
       dateEnd: '2026-06-20T14:00:00.000Z',
       placeType: 'company_location',
       locationId: 'location-1',
+      servicesIds: ['service-1'],
       serviceTitle: 'Анимация',
       clientId: 'client-1',
       client: { name: 'Снапшот', phone: '79990000000' },
@@ -57,6 +58,18 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
           firstName: 'Иван',
           secondName: 'Клиент',
           phone: '78880000000',
+          whatsapp: '78880000001',
+          telegram: 'client_handle',
+          email: 'client@example.com',
+        },
+      ],
+    ]),
+    servicesById: new Map([
+      [
+        'service-1',
+        {
+          _id: 'service-1',
+          title: 'Бумажное шоу',
         },
       ],
     ]),
@@ -64,6 +77,10 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
 
   assert.equal(result.assignment.payoutAmount, 5000)
   assert.equal(result.client.name, 'Иван Клиент')
+  assert.equal(result.client.whatsapp, '78880000001')
+  assert.equal(result.client.telegram, 'client_handle')
+  assert.equal(result.client.email, 'client@example.com')
+  assert.deepEqual(result.serviceTitles, ['Бумажное шоу', 'Анимация'])
   assert.equal(Object.hasOwn(result, 'contractAmount'), false)
   assert.equal(Object.hasOwn(result, 'clientPayment'), false)
   assert.equal(Object.hasOwn(result, 'transactions'), false)

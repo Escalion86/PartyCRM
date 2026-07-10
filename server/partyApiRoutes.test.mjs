@@ -22,6 +22,16 @@ test('party memberships route exposes only membership context for current sessio
   assert.match(source, /unauthorized/)
 })
 
+test('party membership context keeps real staff memberships for developers', async () => {
+  const source = await route('server/getPartyMembershipContext.js')
+
+  assert.match(source, /buildPartyDeveloperMemberships/)
+  assert.match(source, /staffMemberships/)
+  assert.match(source, /\.\.\.developerMemberships/)
+  assert.match(source, /\.\.\.staffMemberships/)
+  assert.match(source, /sortPartyMemberships/)
+})
+
 test('party me route resolves active company through request context', async () => {
   const source = await route('app/api/party/me/route.js')
 
@@ -288,6 +298,9 @@ test('party performer calendar route exports only sanitized performer assignment
   const source = await route('app/api/party/performer/calendar/route.js')
 
   assert.match(source, /getPartyMembershipContext/)
+  assert.match(source, /isValidObjectId/)
+  assert.match(source, /!membership\.isDeveloperAccess/)
+  assert.match(source, /isValidObjectId\(membership\.staffId\)/)
   assert.match(source, /sanitizePartyOrderForPerformer/)
   assert.match(source, /buildPartyPerformerCalendarIcs/)
   assert.match(source, /text\/calendar/)
@@ -306,6 +319,9 @@ test('party performer routes expose assignments and allow confirming and complet
   const workspaceSource = await route('app/performer/PerformerWorkspaceClient.js')
 
   assert.match(listSource, /getPartyMembershipContext/)
+  assert.match(listSource, /isValidObjectId/)
+  assert.match(listSource, /!membership\.isDeveloperAccess/)
+  assert.match(listSource, /isValidObjectId\(membership\.staffId\)/)
   assert.match(listSource, /sanitizePartyOrderForPerformer/)
   assert.match(listSource, /'assignedStaff\.staffId':\s*String\(membership\.staffId\)/)
   assert.match(statusSource, /ALLOWED_STATUSES\s*=\s*new Set\(\['confirmed', 'declined', 'done'\]\)/)

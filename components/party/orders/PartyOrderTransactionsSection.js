@@ -17,6 +17,9 @@ import {
   usePartyTransactionsQuery,
   useUpdatePartyTransactionMutation,
 } from '@helpers/usePartyTransactionsQuery'
+import Modal from '@components/Modal'
+import Input from '@components/Input'
+import Select from '@components/Select'
 import { buildPartyOrderTransactionsViewModel } from './partyOrderTransactionViewModel'
 
 const money = (value) =>
@@ -41,9 +44,27 @@ const emptyDraft = (orderId) => ({
 const normalizeDraftForSubmit = (draft) => ({
   ...draft,
   amount: Number(draft.amount || 0),
-  date: draft.date ? new Date(draft.date).toISOString() : new Date().toISOString(),
+  date: draft.date
+    ? new Date(draft.date).toISOString()
+    : new Date().toISOString(),
   staffId: draft.category === 'payout' ? draft.staffId || null : null,
 })
+
+const transactionTypeOptions = [
+  {
+    value: 'income',
+    label: PARTY_ORDER_TRANSACTION_TYPE_LABELS.income,
+  },
+  {
+    value: 'expense',
+    label: PARTY_ORDER_TRANSACTION_TYPE_LABELS.expense,
+  },
+]
+
+const paymentMethodOptions = PARTY_ORDER_PAYMENT_METHODS.map((method) => ({
+  value: method,
+  label: PARTY_ORDER_PAYMENT_METHOD_LABELS[method] || method,
+}))
 
 const TransactionList = ({
   title,
@@ -76,7 +97,9 @@ const TransactionList = ({
                 {item.staffId && staffById.get(String(item.staffId))
                   ? ` · ${staffById.get(String(item.staffId))}`
                   : ''}
-                {item.date ? ` · ${new Date(item.date).toLocaleDateString('ru-RU')}` : ''}
+                {item.date
+                  ? ` · ${new Date(item.date).toLocaleDateString('ru-RU')}`
+                  : ''}
                 {item.comment ? ` · ${item.comment}` : ''}
               </div>
             </div>
@@ -107,6 +130,7 @@ const TransactionList = ({
 
 export default function PartyOrderTransactionsSection({
   orderId,
+  activeCompanyId = '',
   contractAmount = 0,
   isDraft = false,
   isClone = false,
@@ -119,12 +143,12 @@ export default function PartyOrderTransactionsSection({
   const [financeError, setFinanceError] = useState('')
   const [draft, setDraft] = useState(null)
   const transactionsQuery = usePartyTransactionsQuery(
-    { orderId },
+    { orderId, activeCompanyId },
     { enabled: Boolean(orderId) }
   )
-  const createMutation = useCreatePartyTransactionMutation()
-  const updateMutation = useUpdatePartyTransactionMutation()
-  const deleteMutation = useDeletePartyTransactionMutation()
+  const createMutation = useCreatePartyTransactionMutation(activeCompanyId)
+  const updateMutation = useUpdatePartyTransactionMutation(activeCompanyId)
+  const deleteMutation = useDeletePartyTransactionMutation(activeCompanyId)
 
   const transactions = useMemo(
     () => (Array.isArray(transactionsQuery.data) ? transactionsQuery.data : []),
@@ -155,6 +179,15 @@ export default function PartyOrderTransactionsSection({
       ),
     [staff]
   )
+  const assignedStaffIds = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(assignedStaff) ? assignedStaff : [])
+          .map((assignment) => String(assignment?.staffId || ''))
+          .filter(Boolean)
+      ),
+    [assignedStaff]
+  )
   const staffOptions = useMemo(
     () =>
       (Array.isArray(assignedStaff) ? assignedStaff : [])
@@ -173,7 +206,9 @@ export default function PartyOrderTransactionsSection({
   const startCreate = async () => {
     setFinanceError('')
     if (isClosed) {
-      setFinanceError('Закрытый заказ: транзакции доступны только для просмотра')
+      setFinanceError(
+        'Закрытый заказ: транзакции доступны только для просмотра'
+      )
       return
     }
     const action = getOrderTransactionAction({
@@ -201,9 +236,24 @@ export default function PartyOrderTransactionsSection({
     setDraft(emptyDraft(targetOrderId))
   }
 
+  const startEdit = (item) => {
+    setFinanceError('')
+    setDraft({
+      ...item,
+      date: item.date ? item.date.slice(0, 10) : '',
+    })
+  }
+
+  const closeDraftEditor = () => {
+    setDraft(null)
+    setFinanceError('')
+  }
+
   const saveDraft = async () => {
     if (isClosed) {
-      setFinanceError('Закрытый заказ: транзакции доступны только для просмотра')
+      setFinanceError(
+        'Закрытый заказ: транзакции доступны только для просмотра'
+      )
       setDraft(null)
       return
     }
@@ -223,6 +273,14 @@ export default function PartyOrderTransactionsSection({
       setFinanceError('Выберите исполнителя')
       return
     }
+    if (
+      draft.type === 'expense' &&
+      draft.category === 'payout' &&
+      !assignedStaffIds.has(String(draft.staffId))
+    ) {
+      setFinanceError('Выберите исполнителя из назначенных в заказе')
+      return
+    }
     setFinanceError('')
     const payload = normalizeDraftForSubmit(draft)
     if (draft._id) {
@@ -230,12 +288,14 @@ export default function PartyOrderTransactionsSection({
     } else {
       await createMutation.mutateAsync(payload)
     }
-    setDraft(null)
+    closeDraftEditor()
   }
 
   const deleteTransaction = async (item) => {
     if (isClosed) {
-      setFinanceError('Закрытый заказ: транзакции доступны только для просмотра')
+      setFinanceError(
+        'Закрытый заказ: транзакции доступны только для просмотра'
+      )
       return
     }
     const confirmed = window.confirm('Удалить транзакцию?')
@@ -279,121 +339,6 @@ export default function PartyOrderTransactionsSection({
         </button>
       </div>
 
-      {draft ? (
-        <div className="grid gap-2 rounded-md border border-sky-100 bg-sky-50 p-3 md:grid-cols-2">
-          <select
-            className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-            value={draft.type}
-            onChange={(e) =>
-              setDraft((prev) => ({
-                ...prev,
-                type: e.target.value,
-                category: getPartyTransactionCategoryOptions(
-                  e.target.value
-                )[0]?.value,
-                staffId: '',
-              }))
-            }
-          >
-            <option value="income">
-              {PARTY_ORDER_TRANSACTION_TYPE_LABELS.income}
-            </option>
-            <option value="expense">
-              {PARTY_ORDER_TRANSACTION_TYPE_LABELS.expense}
-            </option>
-          </select>
-          <select
-            className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-            value={draft.category}
-            onChange={(e) =>
-              setDraft((prev) => ({
-                ...prev,
-                category: e.target.value,
-                staffId: e.target.value === 'payout' ? prev.staffId : '',
-              }))
-            }
-          >
-            {categoryOptions.map((category) => (
-              <option key={category.value} value={category.value}>
-                {category.label}
-              </option>
-            ))}
-          </select>
-          {draft.type === 'expense' && draft.category === 'payout' ? (
-            <select
-              className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-              value={draft.staffId || ''}
-              onChange={(e) =>
-                setDraft((prev) => ({ ...prev, staffId: e.target.value }))
-              }
-            >
-              <option value="">Выберите исполнителя</option>
-              {staffOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          ) : null}
-          <input
-            className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-            type="number"
-            min="0"
-            placeholder="Сумма"
-            value={draft.amount}
-            onChange={(e) =>
-              setDraft((prev) => ({ ...prev, amount: e.target.value }))
-            }
-          />
-          <input
-            className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-            type="date"
-            value={draft.date}
-            onChange={(e) =>
-              setDraft((prev) => ({ ...prev, date: e.target.value }))
-            }
-          />
-          <select
-            className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-            value={draft.paymentMethod}
-            onChange={(e) =>
-              setDraft((prev) => ({ ...prev, paymentMethod: e.target.value }))
-            }
-          >
-            {PARTY_ORDER_PAYMENT_METHODS.map((method) => (
-              <option key={method} value={method}>
-                {PARTY_ORDER_PAYMENT_METHOD_LABELS[method] || method}
-              </option>
-            ))}
-          </select>
-          <input
-            className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
-            placeholder="Комментарий"
-            value={draft.comment}
-            onChange={(e) =>
-              setDraft((prev) => ({ ...prev, comment: e.target.value }))
-            }
-          />
-          <div className="flex gap-2 md:col-span-2">
-            <button
-              type="button"
-              className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
-              onClick={saveDraft}
-              disabled={busy}
-            >
-              Сохранить
-            </button>
-            <button
-              type="button"
-              className="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-              onClick={() => setDraft(null)}
-            >
-              Отмена
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {busy && <p className="text-sm text-gray-500">Обновляем транзакции...</p>}
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -402,12 +347,7 @@ export default function PartyOrderTransactionsSection({
           items={viewModel.income}
           isClosed={isClosed}
           staffById={staffById}
-          onEdit={(item) =>
-            setDraft({
-              ...item,
-              date: item.date ? item.date.slice(0, 10) : '',
-            })
-          }
+          onEdit={startEdit}
           onDelete={deleteTransaction}
         />
         <TransactionList
@@ -415,15 +355,141 @@ export default function PartyOrderTransactionsSection({
           items={viewModel.expense}
           isClosed={isClosed}
           staffById={staffById}
-          onEdit={(item) =>
-            setDraft({
-              ...item,
-              date: item.date ? item.date.slice(0, 10) : '',
-            })
-          }
+          onEdit={startEdit}
           onDelete={deleteTransaction}
         />
       </div>
+
+      <Modal
+        open={Boolean(draft)}
+        title={draft?._id ? 'Редактировать транзакцию' : 'Добавить транзакцию'}
+        tone="party"
+        size="lg"
+        onClose={closeDraftEditor}
+        footer={
+          <>
+            <button
+              type="button"
+              className="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              onClick={closeDraftEditor}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="rounded bg-sky-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
+              onClick={saveDraft}
+              disabled={busy}
+            >
+              Сохранить
+            </button>
+          </>
+        }
+      >
+        {draft ? (
+          <div className="flex flex-col gap-3">
+            {financeError ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                {financeError}
+              </div>
+            ) : null}
+            <div className="grid gap-x-3 gap-y-4 md:grid-cols-2">
+              <Select
+                label="Тип"
+                value={draft.type}
+                onChange={(value) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    type: value,
+                    category:
+                      getPartyTransactionCategoryOptions(value)[0]?.value,
+                    staffId: '',
+                  }))
+                }
+                options={transactionTypeOptions}
+                fullWidth
+                noMargin
+                tone="party"
+              />
+              <Select
+                label="Категория"
+                value={draft.category}
+                onChange={(value) =>
+                  setDraft((prev) => ({
+                    ...prev,
+                    category: value,
+                    staffId: value === 'payout' ? prev.staffId : '',
+                  }))
+                }
+                options={categoryOptions}
+                fullWidth
+                noMargin
+                tone="party"
+              />
+              {draft.type === 'expense' && draft.category === 'payout' ? (
+                <Select
+                  label="Исполнитель"
+                  value={draft.staffId || ''}
+                  onChange={(value) =>
+                    setDraft((prev) => ({ ...prev, staffId: value }))
+                  }
+                  options={staffOptions}
+                  placeholder="Выберите исполнителя"
+                  fullWidth
+                  noMargin
+                  tone="party"
+                />
+              ) : null}
+              <Input
+                label="Сумма"
+                type="number"
+                value={draft.amount}
+                onChange={(value) =>
+                  setDraft((prev) => ({ ...prev, amount: value }))
+                }
+                min={0}
+                step={1000}
+                noMargin
+                tone="party"
+                postfix="₽"
+              />
+              <Input
+                label="Дата"
+                type="date"
+                value={draft.date}
+                onChange={(value) =>
+                  setDraft((prev) => ({ ...prev, date: value }))
+                }
+                fullWidth
+                noMargin
+                tone="party"
+              />
+              <Select
+                label="Способ оплаты"
+                value={draft.paymentMethod}
+                onChange={(value) =>
+                  setDraft((prev) => ({ ...prev, paymentMethod: value }))
+                }
+                options={paymentMethodOptions}
+                fullWidth
+                noMargin
+                tone="party"
+              />
+              <Input
+                label="Комментарий"
+                value={draft.comment}
+                onChange={(value) =>
+                  setDraft((prev) => ({ ...prev, comment: value }))
+                }
+                className="md:col-span-2"
+                fullWidth
+                noMargin
+                tone="party"
+              />
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   )
 }

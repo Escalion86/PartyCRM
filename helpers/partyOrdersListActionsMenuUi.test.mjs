@@ -34,3 +34,17 @@ test('party order action menu opens additional events modal', async () => {
   assert.match(component, /onAdditionalEvents/)
   assert.match(component, /label="Доп\. события"/)
 })
+
+test('party order cards show assignment confirmation statuses', async () => {
+  const component = await source('components/party/lists/OrdersList.js')
+
+  assert.match(component, /ASSIGNMENT_STATUS_META/)
+  assert.match(component, /getAssignmentSummaryBadge/)
+  assert.match(component, /OrderAssignmentsSummary/)
+  assert.match(component, /Все подтвердили/)
+  assert.match(component, /Подтвердил/)
+  assert.match(component, /Ждет/)
+  assert.match(component, /Отказ/)
+  assert.match(component, /Выполнено/)
+  assert.match(component, /Без исполнителя/)
+})

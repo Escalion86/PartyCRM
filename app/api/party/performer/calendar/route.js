@@ -5,7 +5,7 @@ import {
   getPartyOrderModel,
 } from '@server/partyModels'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
-import { partyError } from '@server/partyApi'
+import { isValidObjectId, partyError } from '@server/partyApi'
 import { sanitizePartyOrderForPerformer } from '@helpers/partyPerformerOrders'
 import { buildPartyPerformerCalendarIcs } from '@helpers/partyPerformerCalendar'
 
@@ -17,7 +17,10 @@ export async function GET() {
   }
 
   const activeMemberships = memberships.filter(
-    (membership) => membership.status !== 'archived'
+    (membership) =>
+      membership.status !== 'archived' &&
+      !membership.isDeveloperAccess &&
+      isValidObjectId(membership.staffId)
   )
 
   const PartyOrders = await getPartyOrderModel()

@@ -62,6 +62,7 @@ const ordersSubMenu = [
 
 const performerMenu = [
   { href: '/performer', label: 'Мои заказы', icon: faBriefcase },
+  { href: '/performer/settings', label: 'Настройки кабинета', icon: faGear },
 ]
 
 const secondaryMenu = [

@@ -22,8 +22,6 @@ import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPic
 import PartyOrderTypePicker from '@components/party/inputs/PartyOrderTypePicker'
 import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTransactionsSection'
 import PartyOrderDocumentsSection from '@components/party/orders/PartyOrderDocumentsSection'
-import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
-import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
 import {
   AdditionalEventCard,
   AdditionalEventEditModal,
@@ -189,7 +187,7 @@ export default function OrderModal({
   // Определяем, является ли заказ новым (без _id) — для блокировки транзакций
   const isNewOrder = !orderDraft._id
   const partyTransactionsQuery = usePartyTransactionsQuery(
-    { orderId: orderDraft._id || '' },
+    { orderId: orderDraft._id || '', activeCompanyId },
     { enabled: Boolean(orderDraft._id) }
   )
   const orderTransactions = useMemo(
@@ -324,9 +322,9 @@ export default function OrderModal({
       title: '',
       date: '',
       description: '',
-      responsibleStaffId: '',
+      responsibleStaffId: orderDraft.responsibleStaffId || '',
     })
-  }, [canManage])
+  }, [canManage, orderDraft.responsibleStaffId])
 
   const closeAdditionalEventEditor = useCallback(() => {
     setEditingAdditionalEvent(null)
@@ -980,6 +978,7 @@ export default function OrderModal({
                             postfix="₽"
                           />
                           <div
+                            title="Статус выплаты"
                             className={`mt-2 h-7 rounded-md border px-2 py-1 text-sm font-semibold ${getPayoutStatusClassName(
                               payoutState?.status
                             )}`}
@@ -1042,6 +1041,7 @@ export default function OrderModal({
 
             <PartyOrderTransactionsSection
               orderId={orderDraft._id || ''}
+              activeCompanyId={activeCompanyId}
               contractAmount={
                 orderDraft.clientPayment?.totalAmount ??
                 orderDraft.contractAmount ??
@@ -1067,34 +1067,6 @@ export default function OrderModal({
                 companySettings={companySettings}
                 activeCompanyId={activeCompanyId}
               />
-            </div>
-
-            <hr className="border-t border-gray-200" />
-
-            <div className="mt-2 grid gap-4">
-              <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-                Переписки
-              </div>
-              {orderDraft._id ? (
-                <>
-                  <PartyVkConversationsPanel
-                    clientId={orderDraft.clientId || ''}
-                    orderId={orderDraft._id || ''}
-                    companyId={activeCompanyId}
-                    canReply={canManage}
-                  />
-                  <PartyAvitoConversationsPanel
-                    clientId={orderDraft.clientId || ''}
-                    orderId={orderDraft._id || ''}
-                    companyId={activeCompanyId}
-                    canReply={canManage}
-                  />
-                </>
-              ) : (
-                <p className="text-sm text-gray-500">
-                  Переписки появятся после сохранения заказа.
-                </p>
-              )}
             </div>
           </div>
         </TabPanel>

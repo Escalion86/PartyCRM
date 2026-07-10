@@ -38,6 +38,29 @@ const REPORT_STATUS_LABELS = {
   revision_requested: 'Нужны правки',
 }
 
+const ASSIGNMENT_STATUS_META = {
+  pending: {
+    label: 'Ждет подтверждения',
+    shortLabel: 'Ждет',
+    className: 'bg-amber-100 text-amber-700',
+  },
+  confirmed: {
+    label: 'Участие подтверждено',
+    shortLabel: 'Подтвердил',
+    className: 'bg-emerald-100 text-emerald-700',
+  },
+  declined: {
+    label: 'Участие отклонено',
+    shortLabel: 'Отказ',
+    className: 'bg-red-100 text-red-700',
+  },
+  done: {
+    label: 'Выполнено',
+    shortLabel: 'Выполнено',
+    className: 'bg-sky-100 text-sky-700',
+  },
+}
+
 const formatDateTime = (value) => {
   if (!value) return 'Дата не указана'
   const date = new Date(value)
@@ -178,6 +201,30 @@ const getStaffLabel = (staffMember) =>
   staffMember?.email ||
   'Без имени'
 
+const getAssignmentStatusMeta = (status) =>
+  ASSIGNMENT_STATUS_META[status] || ASSIGNMENT_STATUS_META.pending
+
+const getAssignmentSummaryItems = (assignedStaff = []) => {
+  const counts = assignedStaff.reduce((result, assignment) => {
+    const status = assignment?.confirmationStatus || 'pending'
+    result[status] = (result[status] || 0) + 1
+    return result
+  }, {})
+
+  return [
+    ['pending', counts.pending],
+    ['confirmed', counts.confirmed],
+    ['declined', counts.declined],
+    ['done', counts.done],
+  ]
+    .filter(([, count]) => count > 0)
+    .map(([status, count]) => ({
+      status,
+      count,
+      meta: getAssignmentStatusMeta(status),
+    }))
+}
+
 export default function OrderViewModal({
   open,
   order,
@@ -228,6 +275,7 @@ export default function OrderViewModal({
   const assignedStaff = Array.isArray(order?.assignedStaff)
     ? order.assignedStaff
     : []
+  const assignmentSummaryItems = getAssignmentSummaryItems(assignedStaff)
   const additionalEvents = Array.isArray(order?.additionalEvents)
     ? order.additionalEvents
     : []
@@ -438,9 +486,22 @@ export default function OrderViewModal({
         <Section title="Команда">
           {assignedStaff.length > 0 ? (
             <div className="grid gap-2">
+              <div className="flex flex-wrap gap-2">
+                {assignmentSummaryItems.map((item) => (
+                  <span
+                    key={item.status}
+                    className={`rounded px-2 py-1 text-xs font-semibold ${item.meta.className}`}
+                  >
+                    {item.meta.shortLabel}: {item.count}
+                  </span>
+                ))}
+              </div>
               {assignedStaff.map((assignment) => {
                 const staffMember = staff.find(
                   (item) => String(item._id) === String(assignment.staffId)
+                )
+                const statusMeta = getAssignmentStatusMeta(
+                  assignment.confirmationStatus
                 )
                 const payoutState = getPartyAssignmentPayoutState({
                   assignment,
@@ -451,8 +512,18 @@ export default function OrderViewModal({
                     key={assignment.staffId}
                     className="rounded-md border border-slate-100 bg-slate-50 p-2 text-sm"
                   >
-                    <div className="font-semibold text-slate-900">
-                      {getStaffLabel(staffMember)}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="font-semibold text-slate-900">
+                        {getStaffLabel(staffMember)}
+                      </div>
+                      <span
+                        className={`rounded px-2 py-0.5 text-xs font-semibold ${statusMeta.className}`}
+                      >
+                        {statusMeta.shortLabel}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-slate-600">
+                      Участие: {statusMeta.label}
                     </div>
                     <div className="mt-1 text-slate-600">
                       Выплата: {formatMoney(Number(assignment.payoutAmount || 0))}

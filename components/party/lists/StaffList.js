@@ -1,7 +1,13 @@
 'use client'
 
-import { faPencilAlt, faTrash } from '@fortawesome/free-solid-svg-icons'
-import CardButton from '@components/CardButton'
+import {
+  faEllipsisV,
+  faPencilAlt,
+  faTrash,
+} from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import DropDown from '@components/DropDown'
+import LoadingSpinner from '@components/LoadingSpinner'
 import PartyCard, {
   PartyCardActions,
   PartyCardHeader,
@@ -28,6 +34,70 @@ const getCandidateName = (candidate) =>
   candidate?.phone ||
   candidate?.email ||
   ''
+
+const MENU_ITEM_TONE = {
+  red: 'text-red-600 hover:bg-red-600 hover:text-white',
+  orange: 'text-amber-700 hover:bg-amber-600 hover:text-white',
+}
+
+const StaffActionMenuItem = ({ icon, label, color = 'orange', onClick }) => (
+  <button
+    type="button"
+    className={`flex h-9 w-full cursor-pointer items-center gap-2 bg-white px-3 text-left text-sm font-semibold transition ${MENU_ITEM_TONE[color] || MENU_ITEM_TONE.orange}`}
+    onClick={(event) => {
+      event.stopPropagation()
+      onClick?.()
+    }}
+  >
+    <FontAwesomeIcon icon={icon} className="h-4 w-4 shrink-0" />
+    <span className="whitespace-nowrap">{label}</span>
+  </button>
+)
+
+const StaffActionMenu = ({ person, displayName, onDelete, onEdit }) => (
+  <DropDown
+    trigger={
+      <button
+        type="button"
+        className="action-icon-button action-icon-button--neutral flex h-9 w-9 cursor-pointer items-center justify-center rounded-bl-xl text-base font-normal duration-200"
+        aria-label="Открыть меню действий сотрудника"
+        title="Действия"
+      >
+        <FontAwesomeIcon icon={faEllipsisV} className="h-5 w-5" />
+      </button>
+    }
+    menuPadding={false}
+    placement="right"
+    renderInPortal
+  >
+    <div className="min-w-44 overflow-hidden rounded-lg">
+      {onEdit && (
+        <StaffActionMenuItem
+          icon={faPencilAlt}
+          label="Редактировать"
+          color="orange"
+          onClick={() => onEdit(person)}
+        />
+      )}
+      {onDelete && person.role !== 'owner' && (
+        <StaffActionMenuItem
+          icon={faTrash}
+          label="Удалить"
+          color="red"
+          onClick={() => {
+            if (
+              window.confirm(
+                `Вы уверены, что хотите удалить сотрудника "${displayName}" из компании?`
+              )
+            ) {
+              onDelete(person._id)
+            }
+          }}
+        />
+      )}
+    </div>
+  </DropDown>
+)
 
 const StaffCard = ({
   person,
@@ -132,30 +202,12 @@ const StaffCard = ({
         </div>
         {canManage && (
           <PartyCardActions>
-            {onEdit && (
-              <CardButton
-                icon={faPencilAlt}
-                onClick={() => onEdit(person)}
-                color="orange"
-                tooltipText="Редактировать"
-              />
-            )}
-            {onDelete && person.role !== 'owner' && (
-              <CardButton
-                icon={faTrash}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      `Вы уверены, что хотите удалить сотрудника "${displayName}" из компании?`
-                    )
-                  ) {
-                    onDelete(person._id)
-                  }
-                }}
-                color="red"
-                tooltipText="Удалить"
-              />
-            )}
+            <StaffActionMenu
+              person={person}
+              displayName={displayName}
+              onDelete={onDelete}
+              onEdit={onEdit}
+            />
           </PartyCardActions>
         )}
       </PartyCardHeader>
@@ -165,6 +217,7 @@ const StaffCard = ({
 
 export default function StaffList({
   staff,
+  loading = false,
   canManage,
   onDelete,
   onEdit,
@@ -197,10 +250,18 @@ export default function StaffList({
       </div>
 
       <div className="mt-5 grid gap-3">
-        {staff.length === 0 && (
+        {loading && (
+          <LoadingSpinner
+            size="sm"
+            text="Загрузка сотрудников..."
+            heightClassName="h-40"
+            className="text-gray-500"
+          />
+        )}
+        {!loading && staff.length === 0 && (
           <p className="text-sm text-black/55">Сотрудники еще не добавлены.</p>
         )}
-        {staff.map((person) => (
+        {!loading && staff.map((person) => (
           <StaffCard
             key={person._id}
             person={person}

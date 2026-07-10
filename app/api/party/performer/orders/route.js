@@ -3,8 +3,10 @@ import {
   getPartyClientModel,
   getPartyLocationModel,
   getPartyOrderModel,
+  getPartyServiceModel,
 } from '@server/partyModels'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
+import { isValidObjectId } from '@server/partyApi'
 import { sanitizePartyOrderForPerformer } from '@helpers/partyPerformerOrders'
 
 export async function GET() {
@@ -25,7 +27,10 @@ export async function GET() {
   }
 
   const activeMemberships = memberships.filter(
-    (membership) => membership.status !== 'archived'
+    (membership) =>
+      membership.status !== 'archived' &&
+      !membership.isDeveloperAccess &&
+      isValidObjectId(membership.staffId)
   )
 
   if (activeMemberships.length === 0) {
@@ -60,6 +65,7 @@ export async function GET() {
   ]
   const PartyLocations = await getPartyLocationModel()
   const PartyClients = await getPartyClientModel()
+  const PartyServices = await getPartyServiceModel()
   const locations = locationFilters.length
     ? await PartyLocations.find({
         $or: locationFilters.map((pair) => ({
@@ -81,6 +87,30 @@ export async function GET() {
         status: { $ne: 'archived' },
       }).lean()
     : []
+  const serviceFilters = [
+    ...new Map(
+      orders
+        .flatMap((order) =>
+          (order.servicesIds ?? []).map((serviceId) => ({
+            tenantId: String(order.tenantId),
+            serviceId: String(serviceId || ''),
+          }))
+        )
+        .filter((pair) => pair.serviceId)
+        .map((pair) => [`${pair.tenantId}:${pair.serviceId}`, pair])
+    ).values(),
+  ]
+  const services = serviceFilters.length
+    ? await PartyServices.find({
+        $or: serviceFilters.map((pair) => ({
+          _id: pair.serviceId,
+          tenantId: pair.tenantId,
+          status: { $ne: 'archived' },
+        })),
+      })
+        .select('_id title')
+        .lean()
+    : []
   const locationsById = new Map(
     locations.map((location) => [
       `${String(location.tenantId)}:${String(location._id)}`,
@@ -89,6 +119,9 @@ export async function GET() {
   )
   const clientsById = new Map(
     clients.map((client) => [String(client._id), client])
+  )
+  const servicesById = new Map(
+    services.map((service) => [String(service._id), service])
   )
   const membershipsByStaffId = new Map(
     activeMemberships.map((membership) => [
@@ -113,6 +146,7 @@ export async function GET() {
           membership,
           locationsById,
           clientsById,
+          servicesById,
         })
       })
       .filter(Boolean),

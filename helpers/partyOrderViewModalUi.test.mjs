@@ -106,3 +106,15 @@ test('party order payout status is read-only and payout transaction selects perf
   assert.match(transactions, /draft\.category === 'payout'/)
   assert.match(transactions, /Выберите исполнителя/)
 })
+
+test('party order view shows performer confirmation statuses', async () => {
+  const viewModal = await source('components/party/modals/OrderViewModal.js')
+
+  assert.match(viewModal, /ASSIGNMENT_STATUS_META/)
+  assert.match(viewModal, /getAssignmentSummaryItems/)
+  assert.match(viewModal, /confirmationStatus/)
+  assert.match(viewModal, /Ждет подтверждения/)
+  assert.match(viewModal, /Участие подтверждено/)
+  assert.match(viewModal, /Участие отклонено/)
+  assert.match(viewModal, /Участие: \{statusMeta\.label\}/)
+})

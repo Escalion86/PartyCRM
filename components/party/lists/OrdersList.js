@@ -12,6 +12,7 @@ import {
   faLock,
   faTrash,
 } from '@fortawesome/free-solid-svg-icons'
+import { faComments } from '@fortawesome/free-regular-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import DropDown from '@components/DropDown'
 import Modal from '@components/Modal'
@@ -46,6 +47,42 @@ const ORDER_STATUS_STRIPE_CLASSES = {
   active: 'border-l-sky-500',
   canceled: 'border-l-red-500',
   closed: 'border-l-emerald-500',
+}
+
+const ASSIGNMENT_STATUS_META = {
+  pending: {
+    label: 'Ждет',
+    summaryLabel: 'Ждет',
+    className: 'bg-amber-100 text-amber-700',
+  },
+  confirmed: {
+    label: 'Подтвердил',
+    summaryLabel: 'Подтвердили',
+    className: 'bg-emerald-100 text-emerald-700',
+  },
+  declined: {
+    label: 'Отказ',
+    summaryLabel: 'Отказ',
+    className: 'bg-red-100 text-red-700',
+  },
+  done: {
+    label: 'Выполнено',
+    summaryLabel: 'Выполнено',
+    className: 'bg-sky-100 text-sky-700',
+  },
+}
+
+const hasConnectedMessengerIntegration = (companySettings) => {
+  const integrations = companySettings?.integrations ?? {}
+  const vkGroups = Array.isArray(integrations.vkGroups)
+    ? integrations.vkGroups
+    : []
+
+  return (
+    integrations.avitoEnabled === true ||
+    integrations.vkGroupEnabled === true ||
+    vkGroups.some((group) => group?.enabled === true)
+  )
 }
 
 const OrderActionMenuItem = ({ icon, label, color = 'blue', onClick }) => (
@@ -213,7 +250,22 @@ const getOrderClient = (order, clientsById) => {
   }
 }
 
-const OrderContactLine = ({ label, client }) => {
+const OrderMessengerButton = ({ onClick }) => (
+  <button
+    type="button"
+    className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center text-sky-600 duration-300 hover:scale-110 hover:text-sky-800"
+    title="Открыть переписки заказа"
+    aria-label="Открыть переписки заказа"
+    onClick={(event) => {
+      event.stopPropagation()
+      onClick?.()
+    }}
+  >
+    <FontAwesomeIcon icon={faComments} size="lg" />
+  </button>
+)
+
+const OrderContactLine = ({ label, client, onMessenger }) => {
   const name = getPersonFullName(client, { fallback: 'не указан' })
 
   return (
@@ -221,6 +273,7 @@ const OrderContactLine = ({ label, client }) => {
       <span className="font-medium text-black/70">{label}:</span>
       <span className="min-w-0 truncate">{name}</span>
       <ContactsIconsButtons user={client} showChat className="my-0 shrink-0" />
+      {onMessenger ? <OrderMessengerButton onClick={onMessenger} /> : null}
     </div>
   )
 }
@@ -316,7 +369,7 @@ const OrderContactsPopover = ({ contacts, triggerRef, onClose }) => {
   )
 }
 
-const OrderContactsSummary = ({ order, clientsById }) => {
+const OrderContactsSummary = ({ order, clientsById, onMessenger }) => {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false)
   const triggerRef = useRef(null)
   const client = getOrderClient(order, clientsById)
@@ -325,7 +378,11 @@ const OrderContactsSummary = ({ order, clientsById }) => {
   return (
     <div className="grid gap-1">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
-        <OrderContactLine label="Клиент" client={client} />
+        <OrderContactLine
+          label="Клиент"
+          client={client}
+          onMessenger={onMessenger}
+        />
         {otherContacts.length > 0 && (
           <button
             ref={triggerRef}
@@ -668,17 +725,98 @@ const getStaffLabel = (staffMember) =>
   staffMember?.email ||
   ''
 
+const getAssignmentStatusMeta = (status) =>
+  ASSIGNMENT_STATUS_META[status] || ASSIGNMENT_STATUS_META.pending
+
+const getOrderAssignmentItems = (order, staff = []) =>
+  (Array.isArray(order.assignedStaff) ? order.assignedStaff : []).map(
+    (assignment) => {
+      const staffMember = staff.find(
+        (item) => String(item._id) === String(assignment.staffId)
+      )
+      return {
+        staffId: String(assignment.staffId || ''),
+        label: getStaffLabel(staffMember) || 'Исполнитель',
+        status: assignment.confirmationStatus || 'pending',
+      }
+    }
+  )
+
+const getAssignmentSummaryBadge = (assignments) => {
+  if (assignments.length === 0) return null
+
+  const counts = assignments.reduce((result, assignment) => {
+    result[assignment.status] = (result[assignment.status] || 0) + 1
+    return result
+  }, {})
+
+  if (counts.declined > 0) {
+    return {
+      label: `Отказ: ${counts.declined}`,
+      className: ASSIGNMENT_STATUS_META.declined.className,
+    }
+  }
+
+  if (counts.pending > 0) {
+    return {
+      label: `Ждет: ${counts.pending}`,
+      className: ASSIGNMENT_STATUS_META.pending.className,
+    }
+  }
+
+  if (counts.done === assignments.length) {
+    return {
+      label: 'Все выполнено',
+      className: ASSIGNMENT_STATUS_META.done.className,
+    }
+  }
+
+  return {
+    label: 'Все подтвердили',
+    className: ASSIGNMENT_STATUS_META.confirmed.className,
+  }
+}
+
+const OrderAssignmentsSummary = ({ assignments }) => {
+  if (assignments.length === 0) return null
+
+  return (
+    <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2 text-sm">
+      <span className="font-medium text-black/65">Исполнители:</span>
+      {assignments.map((assignment) => {
+        const statusMeta = getAssignmentStatusMeta(assignment.status)
+        return (
+          <span
+            key={`${assignment.staffId}-${assignment.status}`}
+            className="inline-flex min-h-7 max-w-full items-center gap-1 rounded bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700"
+            title={`${assignment.label}: ${statusMeta.label}`}
+          >
+            <span className="min-w-0 truncate">{assignment.label}</span>
+            <span
+              className={`shrink-0 rounded px-1.5 py-0.5 ${statusMeta.className}`}
+            >
+              {statusMeta.label}
+            </span>
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
 const OrderCard = ({
   order,
   locations,
   staff,
   clientsById,
+  companySettings,
   hasConflict,
   canManage,
   onCancel,
   onView,
   onEdit,
   onAdditionalEvents,
+  onMessenger,
   onStatusChange,
   onDelete,
 }) => {
@@ -713,6 +851,9 @@ const OrderCard = ({
     (item) => String(item._id) === String(order.responsibleStaffId)
   )
   const responsibleLabel = getStaffLabel(responsibleStaff)
+  const showMessengerButton = hasConnectedMessengerIntegration(companySettings)
+  const assignmentItems = getOrderAssignmentItems(order, staff)
+  const assignmentSummaryBadge = getAssignmentSummaryBadge(assignmentItems)
 
   return (
     <>
@@ -731,6 +872,13 @@ const OrderCard = ({
                   Без исполнителя
                 </span>
               )}
+              {assignmentSummaryBadge ? (
+                <span
+                  className={`shrink-0 rounded px-2 py-1 text-xs font-semibold ${assignmentSummaryBadge.className}`}
+                >
+                  {assignmentSummaryBadge.label}
+                </span>
+              ) : null}
               {nearestAdditionalEventInfo ? (
                 <>
                   <span
@@ -781,10 +929,17 @@ const OrderCard = ({
                 Ответственный: {responsibleLabel}
               </p>
             ) : null}
+            <OrderAssignmentsSummary assignments={assignmentItems} />
             <OrderCommentPreview comment={order.adminComment} />
             <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <OrderContactsSummary order={order} clientsById={clientsById} />
+                <OrderContactsSummary
+                  order={order}
+                  clientsById={clientsById}
+                  onMessenger={
+                    showMessengerButton ? () => onMessenger?.(order) : null
+                  }
+                />
               </div>
               <OrderAmountSummary
                 contractAmount={contractAmount}
@@ -827,12 +982,14 @@ export default function OrdersList({
   locations,
   staff = [],
   clientsById,
+  companySettings,
   hasOrderConflict,
   canManage,
   onCancel,
   onView,
   onEdit,
   onAdditionalEvents,
+  onMessenger,
   onStatusChange,
   onDelete,
 }) {
@@ -854,12 +1011,14 @@ export default function OrdersList({
             locations={locations}
             staff={staff}
             clientsById={clientsById}
+            companySettings={companySettings}
             hasConflict={hasOrderConflict(order, orders)}
             canManage={canManage}
             onCancel={onCancel}
             onView={onView}
             onEdit={onEdit}
             onAdditionalEvents={onAdditionalEvents}
+            onMessenger={onMessenger}
             onStatusChange={onStatusChange}
             onDelete={onDelete}
           />
