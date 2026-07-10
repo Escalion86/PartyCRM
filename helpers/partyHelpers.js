@@ -98,6 +98,7 @@ export const EMPTY_PARTY_ADDITIONAL_EVENT = {
   description: '',
   date: '',
   done: false,
+  responsibleStaffId: '',
 }
 
 export const EMPTY_LOCATION = {
@@ -186,6 +187,7 @@ export const EMPTY_ORDER = {
   additionalEvents: [],
   otherContacts: [],
   assignedStaff: [],
+  responsibleStaffId: '',
   adminComment: '',
 }
 

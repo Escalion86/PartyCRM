@@ -267,7 +267,11 @@ export const syncPartyOrderToCompanyCalendar = async ({
       }
       const payload = buildAdditionalPayload({
         item,
-        orderContext: { order, location: dependencies.location },
+        orderContext: {
+          order,
+          location: dependencies.location,
+          staff: dependencies.staff,
+        },
         settings,
         company,
         domain: dependencies.domain,

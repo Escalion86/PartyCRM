@@ -95,7 +95,11 @@ export const syncPartyOrderCalendarAfterCrud = async ({
     if (!company || !order) return { ok: false, status: 'hook_failed' }
 
     const serviceIds = ids(asArray(order.servicesIds))
-    const staffIds = ids(asArray(order.assignedStaff).map((item) => item?.staffId))
+    const staffIds = ids([
+      ...asArray(order.assignedStaff).map((item) => item?.staffId),
+      order.responsibleStaffId,
+      ...asArray(order.additionalEvents).map((item) => item?.responsibleStaffId),
+    ])
     const [location, services, staff, transactions, access] = await Promise.all([
       order.locationId
         ? loadLean(Location.findOne({ _id: order.locationId, tenantId }))

@@ -30,3 +30,13 @@ test('company workspace opens order additional events modal from selected card',
   assert.match(workspace, /onAdditionalEvents=\{\(order\) =>/)
   assert.match(workspace, /onUpdateOrder=\{\(nextOrder\) =>/)
 })
+
+test('order editor uses additional event cards and create modal', async () => {
+  const orderModal = await source('components/party/modals/OrderModal.js')
+
+  assert.match(orderModal, /AdditionalEventCard/)
+  assert.match(orderModal, /AdditionalEventEditModal/)
+  assert.match(orderModal, /createAdditionalEvent/)
+  assert.match(orderModal, /editingAdditionalEvent === -1/)
+  assert.doesNotMatch(orderModal, /handleAddAdditionalEvent/)
+})

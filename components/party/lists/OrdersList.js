@@ -659,9 +659,16 @@ const currentStatusIcon = (status) => {
   return found?.icon || faClock
 }
 
+const getStaffLabel = (staffMember) =>
+  [staffMember?.secondName, staffMember?.firstName].filter(Boolean).join(' ') ||
+  staffMember?.phone ||
+  staffMember?.email ||
+  ''
+
 const OrderCard = ({
   order,
   locations,
+  staff,
   clientsById,
   hasConflict,
   canManage,
@@ -696,15 +703,14 @@ const OrderCard = ({
     typeof order.title === 'string' && order.title.trim()
       ? order.title.trim()
       : 'Заказ'
+  const responsibleStaff = (Array.isArray(staff) ? staff : []).find(
+    (item) => String(item._id) === String(order.responsibleStaffId)
+  )
+  const responsibleLabel = getStaffLabel(responsibleStaff)
 
   return (
     <>
-      <PartyCard
-        className={`overflow-hidden border-l-4 ${
-          ORDER_STATUS_STRIPE_CLASSES[order.status] || 'border-l-gray-300'
-        }`}
-        onClick={() => onView?.(order)}
-      >
+      <PartyCard onClick={() => onView?.(order)} className={`overflow-hidden border-l-4 ${ORDER_STATUS_STRIPE_CLASSES[order.status] || 'border-l-gray-300'}`}>
         <PartyCardHeader>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -764,6 +770,11 @@ const OrderCard = ({
                 ? location?.title || 'Точка не выбрана'
                 : order.customAddress || 'Выездной адрес не указан'}
             </p>
+            {responsibleLabel ? (
+              <p className="mt-1 truncate text-sm font-medium text-sky-700">
+                Ответственный: {responsibleLabel}
+              </p>
+            ) : null}
             <OrderCommentPreview comment={order.adminComment} />
             <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
               <div className="min-w-0 flex-1">
@@ -808,6 +819,7 @@ export default function OrdersList({
   orders = [],
   filteredOrders = [],
   locations,
+  staff = [],
   clientsById,
   hasOrderConflict,
   canManage,
@@ -834,6 +846,7 @@ export default function OrdersList({
             key={order._id}
             order={order}
             locations={locations}
+            staff={staff}
             clientsById={clientsById}
             hasConflict={hasOrderConflict(order, orders)}
             canManage={canManage}

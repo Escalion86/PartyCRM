@@ -27,6 +27,9 @@ test('party order click opens a read-only order view modal', async () => {
 test('party order view shows contact shortcuts and interactive additional events', async () => {
   const workspace = await source('app/company/CompanyWorkspaceClient.js')
   const viewModal = await source('components/party/modals/OrderViewModal.js')
+  const additionalEventsModal = await source(
+    'components/party/modals/OrderAdditionalEventsModal.js'
+  )
 
   assert.match(viewModal, /ContactsIconsButtons/)
   assert.match(viewModal, /getOrderContacts/)
@@ -36,7 +39,7 @@ test('party order view shows contact shortcuts and interactive additional events
   assert.match(viewModal, /activeAdditionalEvent/)
   assert.match(viewModal, /openAdditionalEvent/)
   assert.match(viewModal, /toggleAdditionalEventDone/)
-  assert.match(viewModal, /type="checkbox"/)
+  assert.match(additionalEventsModal, /faCircleCheck/)
   assert.match(viewModal, /onUpdateOrder/)
   assert.match(workspace, /onUpdateOrder=\{\(nextOrder\) =>/)
   assert.match(workspace, /setOrderDraft\(normalizeOrderDraft\(updatedOrder\)\)/)
@@ -44,16 +47,30 @@ test('party order view shows contact shortcuts and interactive additional events
 
 test('party order view can edit additional events from card pencil button', async () => {
   const viewModal = await source('components/party/modals/OrderViewModal.js')
+  const additionalEventsModal = await source(
+    'components/party/modals/OrderAdditionalEventsModal.js'
+  )
 
-  assert.match(viewModal, /faPencilAlt/)
+  assert.match(viewModal, /AdditionalEventCard/)
   assert.match(viewModal, /editingAdditionalEvent/)
   assert.match(viewModal, /openAdditionalEventEditor/)
   assert.match(viewModal, /saveAdditionalEventEdit/)
-  assert.match(viewModal, /Редактировать доп\. событие/)
-  assert.match(viewModal, /aria-label="Редактировать доп\. событие"/)
-  assert.match(viewModal, /type="datetime-local"/)
+  assert.match(viewModal, /title="Редактировать доп\. событие"/)
+  assert.match(viewModal, /AdditionalEventEditModal/)
+  assert.match(additionalEventsModal, /type="datetime-local"/)
   assert.match(viewModal, /editingAdditionalEventDraft\.title/)
   assert.match(viewModal, /editingAdditionalEventDraft\.description/)
+})
+
+test('party order view reuses additional events modal cards', async () => {
+  const viewModal = await source('components/party/modals/OrderViewModal.js')
+
+  assert.match(
+    viewModal,
+    /import \{\s*AdditionalEventCard,\s*AdditionalEventEditModal/s
+  )
+  assert.doesNotMatch(viewModal, /getAdditionalEventStatusClassName/)
+  assert.doesNotMatch(viewModal, /faPencilAlt/)
 })
 
 test('closed party orders hide edit and transaction controls in UI', async () => {

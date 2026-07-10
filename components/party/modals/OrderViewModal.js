@@ -3,11 +3,15 @@
 import { useState } from 'react'
 import Modal from '@components/Modal'
 import ContactsIconsButtons from '@components/ContactsIconsButtons'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faPencilAlt } from '@fortawesome/free-solid-svg-icons/faPencilAlt'
 import { formatMoney } from '@helpers/formatMoney'
 import getPersonFullName from '@helpers/getPersonFullName'
 import { ClientViewModal } from '@components/party/modals/ClientModal'
+import {
+  AdditionalEventCard,
+  AdditionalEventEditModal,
+  formatDateTimeLocalValue,
+  isAdminStaff,
+} from '@components/party/modals/OrderAdditionalEventsModal'
 import {
   getOrderPaymentState,
   getPartyPayoutStatusLabel,
@@ -44,14 +48,6 @@ const formatDateTime = (value) => {
     hour: '2-digit',
     minute: '2-digit',
   })
-}
-
-const formatDateTimeLocalValue = (value) => {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  const offsetMs = date.getTimezoneOffset() * 60 * 1000
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
 }
 
 const Section = ({ title, children }) => (
@@ -175,15 +171,6 @@ const ContactCard = ({ contact, onView }) => {
   )
 }
 
-const getAdditionalEventStatusClassName = (item) => {
-  if (item?.done) return 'border-emerald-200 bg-emerald-50'
-  const date = item?.date ? new Date(item.date) : null
-  if (date && !Number.isNaN(date.getTime()) && date < new Date()) {
-    return 'border-red-200 bg-red-50'
-  }
-  return 'border-slate-100 bg-slate-50'
-}
-
 const getStaffLabel = (staffMember) =>
   [staffMember?.secondName, staffMember?.firstName].filter(Boolean).join(' ') ||
   staffMember?.phone ||
@@ -210,6 +197,7 @@ export default function OrderViewModal({
       title: '',
       date: '',
       description: '',
+      responsibleStaffId: '',
     })
   const [viewingClient, setViewingClient] = useState(null)
   const safeClientsById = clientsById ?? new Map()
@@ -241,6 +229,24 @@ export default function OrderViewModal({
     : []
   const activeAdditionalEventItem =
     activeAdditionalEvent !== null ? additionalEvents[activeAdditionalEvent] : null
+  const responsibleStaffMember = staff.find(
+    (item) => String(item._id) === String(order?.responsibleStaffId)
+  )
+  const adminStaffOptions = staff
+    .filter(isAdminStaff)
+    .map((item) => ({
+      value: String(item._id),
+      label: getStaffLabel(item),
+    }))
+
+  const getAdditionalEventResponsibleLabel = (item) => {
+    const responsibleStaffId = item?.responsibleStaffId || order?.responsibleStaffId
+    if (!responsibleStaffId) return 'Не назначен'
+    const person = staff.find(
+      (staffMember) => String(staffMember._id) === String(responsibleStaffId)
+    )
+    return person ? getStaffLabel(person) : 'Администратор не найден'
+  }
 
   const openAdditionalEvent = (index) => {
     setActiveAdditionalEvent(index)
@@ -264,6 +270,7 @@ export default function OrderViewModal({
       title: target?.title || '',
       date: formatDateTimeLocalValue(target?.date),
       description: target?.description || '',
+      responsibleStaffId: target?.responsibleStaffId || '',
     })
   }
 
@@ -273,6 +280,7 @@ export default function OrderViewModal({
       title: '',
       date: '',
       description: '',
+      responsibleStaffId: '',
     })
   }
 
@@ -306,6 +314,8 @@ export default function OrderViewModal({
               ? new Date(editingAdditionalEventDraft.date).toISOString()
               : null,
             description: editingAdditionalEventDraft.description,
+            responsibleStaffId:
+              editingAdditionalEventDraft.responsibleStaffId || '',
           }
         : item
     )
@@ -370,6 +380,13 @@ export default function OrderViewModal({
               {order?.placeType === 'company_location'
                 ? location?.title || 'Точка не выбрана'
                 : order?.customAddress || 'Выездной адрес не указан'}
+            </InfoLine>
+            <InfoLine label="Ответственный">
+              {order?.responsibleStaffId
+                ? responsibleStaffMember
+                  ? getStaffLabel(responsibleStaffMember)
+                  : 'Администратор не найден'
+                : 'Не назначен'}
             </InfoLine>
             {order?.adminComment ? (
               <InfoLine label="Комментарий">{order.adminComment}</InfoLine>
@@ -553,81 +570,19 @@ export default function OrderViewModal({
         <Section title="Доп. события">
           {additionalEvents.length > 0 ? (
             <div className="grid gap-2">
-              {additionalEvents.map((item, index) => {
-                const isDone = Boolean(item?.done)
-                return (
-                  <div
-                    key={`${item?.title || 'event'}-${index}`}
-                    role="button"
-                    tabIndex={0}
-                    className={`grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-md border p-2 text-left text-sm transition hover:bg-white hover:shadow-sm ${getAdditionalEventStatusClassName(item)}`}
-                    onClick={() => openAdditionalEvent(index)}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'Enter' && event.key !== ' ') return
-                      event.preventDefault()
-                      openAdditionalEvent(index)
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isDone}
-                      disabled={!canManage || isClosed}
-                      className="mt-1 h-4 w-4 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed"
-                      aria-label={
-                        isDone
-                          ? 'Вернуть доп. событие в работу'
-                          : 'Отметить доп. событие выполненным'
-                      }
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={() => toggleAdditionalEventDone(index)}
-                    />
-                    <span className="min-w-0">
-                      <span className="flex flex-wrap items-center justify-between gap-2">
-                        <span
-                          className={`font-semibold break-words ${
-                            isDone ? 'text-emerald-700' : 'text-slate-900'
-                          }`}
-                        >
-                          {item?.title || `Событие #${index + 1}`}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-1">
-                          <span
-                            className={`rounded px-2 py-0.5 text-xs font-semibold ${
-                              isDone
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-amber-100 text-amber-700'
-                            }`}
-                          >
-                            {isDone ? 'Выполнено' : 'Открыто'}
-                          </span>
-                          {canManage && !isClosed ? (
-                            <button
-                              type="button"
-                              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-sky-100 bg-white text-sky-700 transition hover:border-sky-300 hover:bg-sky-50"
-                              aria-label="Редактировать доп. событие"
-                              title="Редактировать"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                openAdditionalEventEditor(index)
-                              }}
-                            >
-                              <FontAwesomeIcon icon={faPencilAlt} className="h-3.5 w-3.5" />
-                            </button>
-                          ) : null}
-                        </span>
-                      </span>
-                      <span className="mt-1 block text-slate-600">
-                        {formatDateTime(item?.date)}
-                      </span>
-                      {item?.description ? (
-                        <span className="mt-1 block whitespace-pre-wrap text-slate-700">
-                          {item.description}
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                )
-              })}
+              {additionalEvents.map((item, index) => (
+                <AdditionalEventCard
+                  key={`${item?.title || 'event'}-${index}`}
+                  item={item}
+                  index={index}
+                  canManage={canManage && !isClosed}
+                  disabled={isClosed}
+                  responsibleLabel={getAdditionalEventResponsibleLabel(item)}
+                  onOpen={openAdditionalEvent}
+                  onToggleDone={toggleAdditionalEventDone}
+                  onEdit={openAdditionalEventEditor}
+                />
+              ))}
             </div>
           ) : (
             <p className="text-sm text-slate-500">Дополнительные события не добавлены.</p>
@@ -696,81 +651,28 @@ export default function OrderViewModal({
                 </div>
               </div>
             ) : null}
+            <div className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                Ответственный
+              </div>
+              <div className="mt-1 font-semibold text-slate-900">
+                {getAdditionalEventResponsibleLabel(activeAdditionalEventItem)}
+              </div>
+            </div>
           </div>
         </Modal>
       ) : null}
 
       {editingAdditionalEvent !== null ? (
-        <Modal
+        <AdditionalEventEditModal
           open={true}
-          onClose={closeAdditionalEventEditor}
           title="Редактировать доп. событие"
-          tone="party"
-          size="sm"
-          footer={
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-                onClick={closeAdditionalEventEditor}
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
-                onClick={saveAdditionalEventEdit}
-              >
-                Сохранить
-              </button>
-            </div>
-          }
-        >
-          <div className="grid gap-3 text-sm">
-            <label className="grid gap-1 font-semibold text-slate-700">
-              Название
-              <input
-                type="text"
-                value={editingAdditionalEventDraft.title}
-                onChange={(event) =>
-                  setEditingAdditionalEventDraft((prev) => ({
-                    ...prev,
-                    title: event.target.value,
-                  }))
-                }
-                className="rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
-              />
-            </label>
-            <label className="grid gap-1 font-semibold text-slate-700">
-              Дата и время
-              <input
-                type="datetime-local"
-                value={editingAdditionalEventDraft.date}
-                onChange={(event) =>
-                  setEditingAdditionalEventDraft((prev) => ({
-                    ...prev,
-                    date: event.target.value,
-                  }))
-                }
-                className="rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
-              />
-            </label>
-            <label className="grid gap-1 font-semibold text-slate-700">
-              Описание
-              <textarea
-                value={editingAdditionalEventDraft.description}
-                onChange={(event) =>
-                  setEditingAdditionalEventDraft((prev) => ({
-                    ...prev,
-                    description: event.target.value,
-                  }))
-                }
-                rows={4}
-                className="resize-y rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
-              />
-            </label>
-          </div>
-        </Modal>
+          draft={editingAdditionalEventDraft}
+          setDraft={setEditingAdditionalEventDraft}
+          adminStaffOptions={adminStaffOptions}
+          onClose={closeAdditionalEventEditor}
+          onSubmit={saveAdditionalEventEdit}
+        />
       ) : null}
 
       {viewingClient ? (

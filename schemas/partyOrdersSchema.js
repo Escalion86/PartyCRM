@@ -131,6 +131,11 @@ const partyOrderAdditionalEventSchema = new Schema(
     date: { type: Date, default: null },
     done: { type: Boolean, default: false },
     doneAt: { type: Date, default: null },
+    responsibleStaffId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Staff',
+      default: null,
+    },
     googleCalendarEventId: { type: String, default: '' },
   },
   { _id: true }
@@ -271,6 +276,12 @@ const partyOrdersSchema = {
   assignedStaff: {
     type: [assignedStaffSchema],
     default: [],
+  },
+  responsibleStaffId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Staff',
+    default: null,
+    index: true,
   },
   adminComment: {
     type: String,

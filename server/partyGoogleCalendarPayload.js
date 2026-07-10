@@ -220,6 +220,12 @@ export const buildPartyOrderCalendarPayload = ({
   if (syncSettings.showServices) addBlock(blocks, 'Услуги', serviceTitles.join(', '))
   if (syncSettings.showStaff) {
     const staffById = new Map(asArray(staff).map((item) => [idOf(item), item]))
+    const responsible = staffById.get(idOf(order.responsibleStaffId))
+    addBlock(
+      blocks,
+      'Ответственный',
+      plainText(responsible?.name || responsible?.title)
+    )
     addBlock(
       blocks,
       'Исполнители',
@@ -309,6 +315,12 @@ export const buildPartyAdditionalCalendarPayload = ({
   const timeZone = getTimeZone(company)
   const end = new Date(start.getTime() + 30 * 60 * 1000)
   const lines = [plainText(item.description), `Заказ: ${getOrderTitle(order)}`]
+  if (settings.syncSettings?.showStaff) {
+    const staffById = new Map(asArray(orderContext.staff).map((staffItem) => [idOf(staffItem), staffItem]))
+    const responsible = staffById.get(idOf(item.responsibleStaffId || order.responsibleStaffId))
+    const responsibleName = plainText(responsible?.name || responsible?.title)
+    if (responsibleName) lines.push(`Ответственный: ${responsibleName}`)
+  }
   const address = getLocationText(order, orderContext.location)
   if (settings.syncSettings?.showLocation && address) lines.push(`Место: ${address}`)
   const orderLink = settings.syncSettings?.showOrderLink

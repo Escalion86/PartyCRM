@@ -24,7 +24,11 @@ import {
   filterPartyOrderPayloadByTariffAccess,
 } from '@helpers/partyTariffAccess'
 import { sendPartyPerformerAssignmentPushes } from '@server/partyPerformerPush'
-import { normalizePartyOrderTiming } from '@server/partyOrderPayload'
+import {
+  normalizePartyAdditionalEvents,
+  normalizePartyOrderResponsibleStaffId,
+  normalizePartyOrderTiming,
+} from '@server/partyOrderPayload'
 
 const parseDate = (value) => {
   if (!value) return null
@@ -163,29 +167,6 @@ const normalizeTransactions = (items) => {
     .filter((item) => item.amount > 0)
 }
 
-const normalizeAdditionalEvents = (items) => {
-  if (!Array.isArray(items)) return []
-  return items
-    .map((item) => {
-      const done = Boolean(item?.done)
-      return {
-        title: typeof item?.title === 'string' ? item.title.trim() : '',
-        description:
-          typeof item?.description === 'string'
-            ? item.description.trim().slice(0, 1000)
-            : '',
-        date: parseOptionalDate(item?.date),
-        done,
-        doneAt: done ? parseOptionalDate(item?.doneAt) || new Date() : null,
-        googleCalendarEventId:
-          typeof item?.googleCalendarEventId === 'string'
-            ? item.googleCalendarEventId
-            : '',
-      }
-    })
-    .filter((item) => item.title || item.description || item.date)
-}
-
 const normalizeOtherContacts = (items) => {
   if (!Array.isArray(items)) return []
   const seen = new Set()
@@ -205,7 +186,10 @@ const normalizeOtherContacts = (items) => {
     .filter(Boolean)
 }
 
-export const normalizeOrderPayload = (body) => {
+export const normalizeOrderPayload = (
+  body,
+  { fallbackResponsibleStaffId = null } = {}
+) => {
   const placeType =
     body.placeType === 'client_address' ? 'client_address' : 'company_location'
   const locationId =
@@ -255,7 +239,9 @@ export const normalizeOrderPayload = (body) => {
         ? parseMoney(body.contractAmount)
         : parseMoney(body.clientPayment?.totalAmount),
     transactions: normalizeTransactions(body.transactions),
-    additionalEvents: normalizeAdditionalEvents(body.additionalEvents),
+    additionalEvents: normalizePartyAdditionalEvents(body.additionalEvents, {
+      isValidObjectId,
+    }),
     otherContacts: normalizeOtherContacts(body.otherContacts),
     // Keep legacy clientPayment synchronized for old UI/data readers.
     clientPayment: {
@@ -267,6 +253,13 @@ export const normalizeOrderPayload = (body) => {
       status: normalizePaymentStatus(body.clientPayment?.status),
     },
     assignedStaff: normalizeAssignedStaff(body.assignedStaff),
+    responsibleStaffId: normalizePartyOrderResponsibleStaffId(
+      body.responsibleStaffId,
+      {
+        fallbackStaffId: fallbackResponsibleStaffId,
+        isValidObjectId,
+      }
+    ),
     adminComment:
       typeof body.adminComment === 'string' ? body.adminComment.trim() : '',
   }
@@ -326,6 +319,30 @@ export const validateOrderReferences = async ({ tenantId, payload }) => {
         400,
         'partycrm_staff_not_found',
         'Один или несколько исполнителей не найдены',
+        'validation'
+      )
+    }
+  }
+
+  const responsibleStaffIds = [
+    payload.responsibleStaffId,
+    ...(payload.additionalEvents ?? []).map((item) => item.responsibleStaffId),
+  ].filter(Boolean)
+
+  if (responsibleStaffIds.length > 0) {
+    const uniqueIds = [...new Set(responsibleStaffIds.map(String))]
+    const PartyStaff = await getPartyStaffModel()
+    const count = await PartyStaff.countDocuments({
+      _id: { $in: uniqueIds },
+      tenantId,
+      role: { $in: ['owner', 'admin'] },
+      status: { $ne: 'archived' },
+    })
+    if (count !== uniqueIds.length) {
+      return partyError(
+        400,
+        'partycrm_responsible_staff_not_found',
+        'Выбранный ответственный администратор не найден',
         'validation'
       )
     }
@@ -436,7 +453,9 @@ export async function POST(req) {
   if (error) return error
 
   const body = await parseJsonBody(req)
-  const payload = normalizeOrderPayload(body)
+  const payload = normalizeOrderPayload(body, {
+    fallbackResponsibleStaffId: context.staff?._id,
+  })
 
   if (
     !payload.clientId &&

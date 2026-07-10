@@ -24,17 +24,23 @@ import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTr
 import PartyOrderDocumentsSection from '@components/party/orders/PartyOrderDocumentsSection'
 import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
 import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
+import {
+  AdditionalEventCard,
+  AdditionalEventEditModal,
+  formatDateTimeLocalValue,
+  getResponsibleLabel,
+} from '@components/party/modals/OrderAdditionalEventsModal'
 import partyServicesAtom from '@state/atoms/partyServicesAtom'
 import AddIconButton from '@components/AddIconButton'
 import TabContext from '@components/Tabs/TabContext'
 import TabPanel from '@components/Tabs/TabPanel'
 import {
-  EMPTY_PARTY_ADDITIONAL_EVENT,
   EMPTY_PARTY_CLIENT,
   EMPTY_PARTY_SERVICE,
   EMPTY_LOCATION,
 } from '@helpers/partyHelpers'
 import { normalizeCompanyDictionary } from '@helpers/companySettings'
+import { getAdditionalEventsDisplayGroups } from '@helpers/additionalEvents'
 import {
   PARTY_ORDER_PAYOUT_STATUSES,
   getPartyPayoutStatusLabel,
@@ -76,6 +82,16 @@ const buildDateEnd = (eventDate, durationMinutes) => {
   return new Date(start.getTime() + duration * 60 * 1000).toISOString()
 }
 
+const getStaffLabel = (staffMember) =>
+  [staffMember?.secondName, staffMember?.firstName].filter(Boolean).join(' ') ||
+  staffMember?.phone ||
+  staffMember?.email ||
+  'Без имени'
+
+const isAdminStaff = (staffMember) =>
+  ['owner', 'admin'].includes(String(staffMember?.role || '')) &&
+  staffMember?.status !== 'archived'
+
 export default function OrderModal({
   open,
   title = 'Новый заказ',
@@ -110,6 +126,14 @@ export default function OrderModal({
   const [locationModal, setLocationModal] = useState(false)
   const [locationDraft, setLocationDraft] = useState(EMPTY_LOCATION)
   const [locationSaving, setLocationSaving] = useState(false)
+  const [editingAdditionalEvent, setEditingAdditionalEvent] = useState(null)
+  const [editingAdditionalEventDraft, setEditingAdditionalEventDraft] =
+    useState({
+      title: '',
+      date: '',
+      description: '',
+      responsibleStaffId: '',
+    })
 
   const setPartyServices = useSetAtom(partyServicesAtom)
 
@@ -119,6 +143,29 @@ export default function OrderModal({
   const selectedClient = orderDraft.clientId
     ? (clientsById.get(String(orderDraft.clientId)) ?? null)
     : null
+
+  const adminStaffOptions = useMemo(
+    () =>
+      (Array.isArray(staff) ? staff : [])
+        .filter(isAdminStaff)
+        .map((person) => ({
+          value: String(person._id),
+          label: getStaffLabel(person),
+        })),
+    [staff]
+  )
+
+  const additionalEvents = useMemo(
+    () =>
+      Array.isArray(orderDraft.additionalEvents)
+        ? orderDraft.additionalEvents
+        : [],
+    [orderDraft.additionalEvents]
+  )
+  const additionalEventGroups = useMemo(
+    () => getAdditionalEventsDisplayGroups(additionalEvents),
+    [additionalEvents]
+  )
 
   const requestHeaders = useMemo(
     () =>
@@ -204,47 +251,116 @@ export default function OrderModal({
     setOtherContactSelectIndex(null)
   }, [])
 
-  const handleAdditionalEventChange = useCallback(
-    (index, field, value) => {
+  const updateAdditionalEvents = useCallback(
+    (nextItems) => {
       setOrderDraft((prev) => ({
         ...prev,
-        additionalEvents: (prev.additionalEvents || []).map(
-          (item, itemIndex) =>
-            itemIndex === index
-              ? {
-                  ...item,
-                  [field]: value,
-                  ...(field === 'done'
-                    ? { doneAt: value ? new Date().toISOString() : null }
-                    : {}),
-                }
-              : item
-        ),
+        additionalEvents: nextItems,
       }))
     },
     [setOrderDraft]
   )
 
-  const handleAddAdditionalEvent = useCallback(() => {
-    setOrderDraft((prev) => ({
-      ...prev,
-      additionalEvents: [
-        ...(prev.additionalEvents || []),
-        { ...EMPTY_PARTY_ADDITIONAL_EVENT },
-      ],
-    }))
-  }, [setOrderDraft])
-
-  const handleRemoveAdditionalEvent = useCallback(
+  const toggleAdditionalEventDone = useCallback(
     (index) => {
-      setOrderDraft((prev) => ({
-        ...prev,
-        additionalEvents: (prev.additionalEvents || []).filter(
-          (_, itemIndex) => itemIndex !== index
-        ),
-      }))
+      const target = additionalEvents[index]
+      if (!target || !canManage) return
+      const nextDone = !Boolean(target.done)
+      updateAdditionalEvents(
+        additionalEvents.map((item, itemIndex) =>
+          itemIndex === index
+            ? {
+                ...item,
+                done: nextDone,
+                doneAt: nextDone ? new Date().toISOString() : null,
+              }
+            : item
+        )
+      )
     },
-    [setOrderDraft]
+    [additionalEvents, canManage, updateAdditionalEvents]
+  )
+
+  const openAdditionalEventEditor = useCallback(
+    (index) => {
+      const target = additionalEvents[index]
+      if (!target || !canManage) return
+      setEditingAdditionalEvent(index)
+      setEditingAdditionalEventDraft({
+        title: target?.title || '',
+        date: formatDateTimeLocalValue(target?.date),
+        description: target?.description || '',
+        responsibleStaffId: target?.responsibleStaffId || '',
+      })
+    },
+    [additionalEvents, canManage]
+  )
+
+  const createAdditionalEvent = useCallback(() => {
+    if (!canManage) return
+    setEditingAdditionalEvent(-1)
+    setEditingAdditionalEventDraft({
+      title: '',
+      date: '',
+      description: '',
+      responsibleStaffId: '',
+    })
+  }, [canManage])
+
+  const closeAdditionalEventEditor = useCallback(() => {
+    setEditingAdditionalEvent(null)
+    setEditingAdditionalEventDraft({
+      title: '',
+      date: '',
+      description: '',
+      responsibleStaffId: '',
+    })
+  }, [])
+
+  const saveAdditionalEventEdit = useCallback(() => {
+    if (!canManage || editingAdditionalEvent === null) return
+    const nextItem = {
+      title: editingAdditionalEventDraft.title,
+      date: editingAdditionalEventDraft.date
+        ? new Date(editingAdditionalEventDraft.date).toISOString()
+        : null,
+      description: editingAdditionalEventDraft.description,
+      responsibleStaffId: editingAdditionalEventDraft.responsibleStaffId || '',
+      done: false,
+      doneAt: null,
+    }
+    const nextItems =
+      editingAdditionalEvent === -1
+        ? [...additionalEvents, nextItem]
+        : additionalEvents.map((item, itemIndex) =>
+            itemIndex === editingAdditionalEvent
+              ? {
+                  ...item,
+                  ...nextItem,
+                  done: Boolean(item?.done),
+                  doneAt: item?.doneAt ?? null,
+                }
+              : item
+          )
+    updateAdditionalEvents(nextItems)
+    closeAdditionalEventEditor()
+  }, [
+    additionalEvents,
+    canManage,
+    closeAdditionalEventEditor,
+    editingAdditionalEvent,
+    editingAdditionalEventDraft,
+    updateAdditionalEvents,
+  ])
+
+  const deleteAdditionalEvent = useCallback(
+    (index) => {
+      const target = additionalEvents[index]
+      if (!target || !canManage) return
+      if (!window.confirm('Удалить это доп. событие?')) return
+      updateAdditionalEvents(additionalEvents.filter((_, idx) => idx !== index))
+    },
+    [additionalEvents, canManage, updateAdditionalEvents]
   )
 
   const handleStaffToggle = useCallback(
@@ -613,6 +729,21 @@ export default function OrderModal({
             </div>
 
             <Select
+              label="Ответственный администратор"
+              value={orderDraft.responsibleStaffId || ''}
+              onChange={(val) => handleChange('responsibleStaffId', val)}
+              options={adminStaffOptions}
+              placeholder={
+                adminStaffOptions.length === 0
+                  ? 'Администраторы не найдены'
+                  : undefined
+              }
+              disabled={adminStaffOptions.length === 0}
+              fullWidth
+              tone="party"
+            />
+
+            <Select
               label="Место"
               value={orderDraft.placeType}
               onChange={(val) => {
@@ -943,76 +1074,45 @@ export default function OrderModal({
               <button
                 type="button"
                 className="cursor-pointer rounded-md border border-sky-200 bg-sky-50 px-3 py-1.5 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
-                onClick={handleAddAdditionalEvent}
+                onClick={createAdditionalEvent}
               >
                 Добавить
               </button>
             </div>
 
-            {(orderDraft.additionalEvents || []).length === 0 ? (
+            {additionalEvents.length === 0 ? (
               <p className="text-sm text-gray-500">
                 Дополнительные события еще не добавлены.
               </p>
             ) : (
-              <div className="grid gap-2">
-                {(orderDraft.additionalEvents || []).map((item, index) => (
-                  <div
-                    key={item._id || index}
-                    className="p-3 border rounded-2xl border-sky-100 bg-sky-50/50"
-                  >
-                    <div className="grid gap-2 md:grid-cols-[1fr_auto]">
-                      <Input
-                        label="Название"
-                        value={item.title}
-                        onChange={(val) =>
-                          handleAdditionalEventChange(index, 'title', val)
-                        }
-                        fullWidth
-                        tone="party"
-                      />
-                      <DateTimePicker
-                        label="Дата и время"
-                        value={item.date}
-                        onChange={(val) =>
-                          handleAdditionalEventChange(index, 'date', val)
-                        }
-                        tone="party"
-                      />
+              <div className="flex flex-col gap-3">
+                {additionalEventGroups.map((group) => (
+                  <section key={group.key} className="flex flex-col gap-2">
+                    <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                      {group.label}
                     </div>
-                    <Textarea
-                      label="Описание"
-                      value={item.description}
-                      onChange={(val) =>
-                        handleAdditionalEventChange(index, 'description', val)
-                      }
-                      fullWidth
-                      tone="party"
-                    />
-                    <div className="flex flex-wrap items-center justify-between gap-2 mt-2">
-                      <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer text-slate-700">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(item.done)}
-                          onChange={(e) =>
-                            handleAdditionalEventChange(
-                              index,
-                              'done',
-                              e.target.checked
-                            )
-                          }
-                          className="cursor-pointer"
+                    {group.items.map((item) => {
+                      const originalIndex = item.originalIndex
+                      return (
+                        <AdditionalEventCard
+                          key={`order-editor-additional-event-${originalIndex}`}
+                          item={item}
+                          index={originalIndex}
+                          canManage={canManage}
+                          disabled={saving}
+                          responsibleLabel={getResponsibleLabel({
+                            staff,
+                            order: orderDraft,
+                            item,
+                          })}
+                          onOpen={openAdditionalEventEditor}
+                          onToggleDone={toggleAdditionalEventDone}
+                          onEdit={openAdditionalEventEditor}
+                          onDelete={deleteAdditionalEvent}
                         />
-                        Выполнено
-                      </label>
-                      <button
-                        type="button"
-                        className="cursor-pointer rounded-md border border-red-100 bg-white px-3 py-1.5 text-sm font-semibold text-red-600 transition hover:bg-red-50"
-                        onClick={() => handleRemoveAdditionalEvent(index)}
-                      >
-                        Удалить
-                      </button>
-                    </div>
-                  </div>
+                      )
+                    })}
+                  </section>
                 ))}
               </div>
             )}
@@ -1082,6 +1182,23 @@ export default function OrderModal({
         activeCompanyId={activeCompanyId}
         onCompanySettingsChange={onCompanySettingsChange}
       />
+
+      {editingAdditionalEvent !== null ? (
+        <AdditionalEventEditModal
+          open={true}
+          title={
+            editingAdditionalEvent === -1
+              ? 'Создать доп. событие'
+              : 'Редактировать доп. событие'
+          }
+          draft={editingAdditionalEventDraft}
+          setDraft={setEditingAdditionalEventDraft}
+          adminStaffOptions={adminStaffOptions}
+          saving={saving}
+          onClose={closeAdditionalEventEditor}
+          onSubmit={saveAdditionalEventEdit}
+        />
+      ) : null}
     </Modal>
   )
 }

@@ -26,7 +26,7 @@ const formatDateTime = (value) => {
   })
 }
 
-const formatDateTimeLocalValue = (value) => {
+export const formatDateTimeLocalValue = (value) => {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
@@ -42,6 +42,25 @@ const DetailBlock = ({ label, children }) => (
     <div className="mt-1">{children}</div>
   </div>
 )
+
+export const getStaffLabel = (staffMember) =>
+  [staffMember?.secondName, staffMember?.firstName].filter(Boolean).join(' ') ||
+  staffMember?.phone ||
+  staffMember?.email ||
+  'Без имени'
+
+export const isAdminStaff = (staffMember) =>
+  ['owner', 'admin'].includes(String(staffMember?.role || '')) &&
+  staffMember?.status !== 'archived'
+
+export const getResponsibleLabel = ({ staff, order, item }) => {
+  const responsibleStaffId = item?.responsibleStaffId || order?.responsibleStaffId
+  if (!responsibleStaffId) return 'Не назначен'
+  const person = staff.find(
+    (staffMember) => String(staffMember._id) === String(responsibleStaffId)
+  )
+  return person ? getStaffLabel(person) : 'Администратор не найден'
+}
 
 const ActionItem = ({ icon, label, tone = 'blue', onClick }) => (
   <button
@@ -63,11 +82,12 @@ const ActionItem = ({ icon, label, tone = 'blue', onClick }) => (
   </button>
 )
 
-const AdditionalEventCard = ({
+export const AdditionalEventCard = ({
   item,
   index,
   canManage,
   disabled,
+  responsibleLabel,
   onOpen,
   onToggleDone,
   onEdit,
@@ -151,6 +171,11 @@ const AdditionalEventCard = ({
                 {item.description}
               </div>
             ) : null}
+            {responsibleLabel ? (
+              <div className="mt-1 truncate text-xs font-semibold text-sky-700">
+                Ответственный: {responsibleLabel}
+              </div>
+            ) : null}
           </div>
           {canManage ? (
             <div
@@ -179,12 +204,14 @@ const AdditionalEventCard = ({
                   tone="orange"
                   onClick={() => onEdit?.(index)}
                 />
-                <ActionItem
-                  icon={faTrashAlt}
-                  label="Удалить"
-                  tone="red"
-                  onClick={() => onDelete?.(index)}
-                />
+                {onDelete ? (
+                  <ActionItem
+                    icon={faTrashAlt}
+                    label="Удалить"
+                    tone="red"
+                    onClick={() => onDelete(index)}
+                  />
+                ) : null}
               </DropDown>
             </div>
           ) : null}
@@ -194,9 +221,113 @@ const AdditionalEventCard = ({
   )
 }
 
+export const AdditionalEventEditModal = ({
+  open = true,
+  title = 'Редактировать доп. событие',
+  draft,
+  setDraft,
+  adminStaffOptions = [],
+  saving = false,
+  onClose,
+  onSubmit,
+}) => (
+  <Modal
+    open={open}
+    onClose={onClose}
+    title={title}
+    tone="party"
+    size="sm"
+    footer={
+      <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          className="cursor-pointer rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          onClick={onClose}
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={saving}
+          onClick={onSubmit}
+        >
+          Сохранить
+        </button>
+      </div>
+    }
+  >
+    <div className="grid gap-3 text-sm">
+      <label className="grid gap-1 font-semibold text-slate-700">
+        Название
+        <input
+          type="text"
+          value={draft.title}
+          onChange={(event) =>
+            setDraft((prev) => ({
+              ...prev,
+              title: event.target.value,
+            }))
+          }
+          className="rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+        />
+      </label>
+      <label className="grid gap-1 font-semibold text-slate-700">
+        Дата и время
+        <input
+          type="datetime-local"
+          value={draft.date}
+          onChange={(event) =>
+            setDraft((prev) => ({
+              ...prev,
+              date: event.target.value,
+            }))
+          }
+          className="rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+        />
+      </label>
+      <label className="grid gap-1 font-semibold text-slate-700">
+        Описание
+        <textarea
+          value={draft.description}
+          onChange={(event) =>
+            setDraft((prev) => ({
+              ...prev,
+              description: event.target.value,
+            }))
+          }
+          rows={4}
+          className="resize-y rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+        />
+      </label>
+      <label className="grid gap-1 font-semibold text-slate-700">
+        Ответственный
+        <select
+          value={draft.responsibleStaffId || ''}
+          onChange={(event) =>
+            setDraft((prev) => ({
+              ...prev,
+              responsibleStaffId: event.target.value,
+            }))
+          }
+          className="cursor-pointer rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
+        >
+          <option value="">Как в заказе</option>
+          {adminStaffOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  </Modal>
+)
+
 export default function OrderAdditionalEventsModal({
   open,
   order,
+  staff = [],
   canManage = false,
   saving = false,
   onClose,
@@ -209,7 +340,18 @@ export default function OrderAdditionalEventsModal({
       title: '',
       date: '',
       description: '',
+      responsibleStaffId: '',
     })
+  const adminStaffOptions = useMemo(
+    () =>
+      (Array.isArray(staff) ? staff : [])
+        .filter(isAdminStaff)
+        .map((person) => ({
+          value: String(person._id),
+          label: getStaffLabel(person),
+        })),
+    [staff]
+  )
   const additionalEvents = useMemo(
     () => (Array.isArray(order?.additionalEvents) ? order.additionalEvents : []),
     [order?.additionalEvents]
@@ -259,6 +401,7 @@ export default function OrderAdditionalEventsModal({
       title: target?.title || '',
       date: formatDateTimeLocalValue(target?.date),
       description: target?.description || '',
+      responsibleStaffId: target?.responsibleStaffId || '',
     })
   }
 
@@ -270,6 +413,7 @@ export default function OrderAdditionalEventsModal({
       title: '',
       date: '',
       description: '',
+      responsibleStaffId: '',
     })
   }
 
@@ -279,6 +423,7 @@ export default function OrderAdditionalEventsModal({
       title: '',
       date: '',
       description: '',
+      responsibleStaffId: '',
     })
   }
 
@@ -290,6 +435,7 @@ export default function OrderAdditionalEventsModal({
         ? new Date(editingAdditionalEventDraft.date).toISOString()
         : null,
       description: editingAdditionalEventDraft.description,
+      responsibleStaffId: editingAdditionalEventDraft.responsibleStaffId || '',
       done: false,
       doneAt: null,
     }
@@ -373,6 +519,11 @@ export default function OrderAdditionalEventsModal({
                         index={originalIndex}
                         canManage={canManage}
                         disabled={saving}
+                        responsibleLabel={getResponsibleLabel({
+                          staff,
+                          order,
+                          item,
+                        })}
                         onOpen={openAdditionalEvent}
                         onToggleDone={toggleAdditionalEventDone}
                         onEdit={openAdditionalEventEditor}
@@ -449,86 +600,34 @@ export default function OrderAdditionalEventsModal({
                 </div>
               </DetailBlock>
             ) : null}
+            <DetailBlock label="Ответственный">
+              <div className="font-semibold text-slate-900">
+                {getResponsibleLabel({
+                  staff,
+                  order,
+                  item: activeAdditionalEventItem,
+                })}
+              </div>
+            </DetailBlock>
           </div>
         </Modal>
       ) : null}
 
       {editingAdditionalEvent !== null ? (
-        <Modal
+        <AdditionalEventEditModal
           open={true}
-          onClose={closeAdditionalEventEditor}
           title={
             editingAdditionalEvent === -1
               ? 'Создать доп. событие'
               : 'Редактировать доп. событие'
           }
-          tone="party"
-          size="sm"
-          footer={
-            <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                className="cursor-pointer rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                onClick={closeAdditionalEventEditor}
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={saving}
-                onClick={saveAdditionalEventEdit}
-              >
-                Сохранить
-              </button>
-            </div>
-          }
-        >
-          <div className="grid gap-3 text-sm">
-            <label className="grid gap-1 font-semibold text-slate-700">
-              Название
-              <input
-                type="text"
-                value={editingAdditionalEventDraft.title}
-                onChange={(event) =>
-                  setEditingAdditionalEventDraft((prev) => ({
-                    ...prev,
-                    title: event.target.value,
-                  }))
-                }
-                className="rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
-              />
-            </label>
-            <label className="grid gap-1 font-semibold text-slate-700">
-              Дата и время
-              <input
-                type="datetime-local"
-                value={editingAdditionalEventDraft.date}
-                onChange={(event) =>
-                  setEditingAdditionalEventDraft((prev) => ({
-                    ...prev,
-                    date: event.target.value,
-                  }))
-                }
-                className="rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
-              />
-            </label>
-            <label className="grid gap-1 font-semibold text-slate-700">
-              Описание
-              <textarea
-                value={editingAdditionalEventDraft.description}
-                onChange={(event) =>
-                  setEditingAdditionalEventDraft((prev) => ({
-                    ...prev,
-                    description: event.target.value,
-                  }))
-                }
-                rows={4}
-                className="resize-y rounded border border-sky-100 bg-white px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-sky-400"
-              />
-            </label>
-          </div>
-        </Modal>
+          draft={editingAdditionalEventDraft}
+          setDraft={setEditingAdditionalEventDraft}
+          adminStaffOptions={adminStaffOptions}
+          saving={saving}
+          onClose={closeAdditionalEventEditor}
+          onSubmit={saveAdditionalEventEdit}
+        />
       ) : null}
     </>
   )

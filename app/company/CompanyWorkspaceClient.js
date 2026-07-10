@@ -114,7 +114,10 @@ const normalizeOrderDraft = (order) => ({
   },
   transactions: Array.isArray(order.transactions) ? order.transactions : [],
   additionalEvents: Array.isArray(order.additionalEvents)
-    ? order.additionalEvents
+    ? order.additionalEvents.map((item) => ({
+        ...item,
+        responsibleStaffId: item?.responsibleStaffId || '',
+      }))
     : [],
   otherContacts: Array.isArray(order.otherContacts) ? order.otherContacts : [],
   clientAddress: {
@@ -124,6 +127,7 @@ const normalizeOrderDraft = (order) => ({
     room: order.clientAddress?.room ?? '',
     comment: order.clientAddress?.comment ?? '',
   },
+  responsibleStaffId: order.responsibleStaffId || '',
 })
 
 const getAssignedStaffIds = (order) =>
@@ -289,7 +293,11 @@ const isOrderPast = (order, now = new Date()) => {
 const canClosePastOrder = (order, now = new Date()) =>
   ['draft', 'active'].includes(order?.status) && isOrderPast(order, now)
 
-const createEmptyOrderDraft = (companySettings = {}, locations = []) => ({
+const createEmptyOrderDraft = (
+  companySettings = {},
+  locations = [],
+  responsibleStaffId = ''
+) => ({
   ...EMPTY_ORDER,
   durationMinutes: String(
     Number(companySettings?.defaultOrderDurationMinutes || 60) || 60
@@ -298,6 +306,7 @@ const createEmptyOrderDraft = (companySettings = {}, locations = []) => ({
     locations.length > 0 && EMPTY_ORDER.placeType === 'company_location'
       ? locations[0]._id
       : '',
+  responsibleStaffId: responsibleStaffId || '',
 })
 
 const OrderFilterDropdown = ({
@@ -425,6 +434,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const hasAccess = Boolean(context?.tenantId && context?.staff)
   const canManage = ['owner', 'admin'].includes(context?.role)
   const canUseStatistics = companyAccess?.allowStatistics !== false
+  const currentStaffId = context?.staff?._id ? String(context.staff._id) : ''
 
   // Load workspace data
   const loadWorkspace = useCallback(
@@ -808,7 +818,9 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             return createdOrder
           }
           setActiveModal('')
-          setOrderDraft(createEmptyOrderDraft(companySettings, locations))
+          setOrderDraft(
+            createEmptyOrderDraft(companySettings, locations, currentStaffId)
+          )
           return createdOrder
         }
         return null
@@ -816,7 +828,14 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         setSaving(false)
       }
     },
-    [orderDraft, orders, activeCompanyId, companySettings, locations]
+    [
+      orderDraft,
+      orders,
+      activeCompanyId,
+      companySettings,
+      locations,
+      currentStaffId,
+    ]
   )
 
   const editOrder = useCallback(async () => {
@@ -846,7 +865,9 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )
         setActiveModal('')
         setEditingOrderId('')
-        setOrderDraft(createEmptyOrderDraft(companySettings, locations))
+        setOrderDraft(
+          createEmptyOrderDraft(companySettings, locations, currentStaffId)
+        )
       }
     } finally {
       setSaving(false)
@@ -858,6 +879,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     activeCompanyId,
     companySettings,
     locations,
+    currentStaffId,
   ])
 
   const updateOrder = useCallback(
@@ -1642,7 +1664,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                               setOrderDraft(
                                 createEmptyOrderDraft(
                                   companySettings,
-                                  locations
+                                  locations,
+                                  currentStaffId
                                 )
                               )
                             }
@@ -1766,7 +1789,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                         className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                         onClick={() => {
                           setOrderDraft(
-                            createEmptyOrderDraft(companySettings, locations)
+                            createEmptyOrderDraft(
+                              companySettings,
+                              locations,
+                              currentStaffId
+                            )
                           )
                           setActiveModal('order')
                         }}
@@ -2109,6 +2136,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         <OrderAdditionalEventsModal
           open={true}
           order={orderDraft}
+          staff={staff}
           canManage={canManage}
           saving={saving}
           onClose={() => {
