@@ -82,8 +82,28 @@ const getOrderTransactionTotal = (order, type) =>
 const hasOpenAdditionalEvents = (order) =>
   (order.additionalEvents ?? []).some((item) => !item.done)
 
+const getOrderDurationMinutes = (order) => {
+  const explicit = Number(order?.durationMinutes)
+  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit)
+
+  const start = order?.eventDate ? new Date(order.eventDate) : null
+  const end = order?.dateEnd ? new Date(order.dateEnd) : null
+  if (
+    start &&
+    end &&
+    !Number.isNaN(start.getTime()) &&
+    !Number.isNaN(end.getTime()) &&
+    end > start
+  ) {
+    return Math.max(Math.round((end.getTime() - start.getTime()) / 60000), 1)
+  }
+
+  return 60
+}
+
 const normalizeOrderDraft = (order) => ({
   ...order,
+  durationMinutes: String(getOrderDurationMinutes(order)),
   contractAmount:
     order.contractAmount ?? order.clientPayment?.totalAmount ?? '',
   clientPayment: {
@@ -1490,7 +1510,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   if (accessStatus === 'loading') {
     return (
-      <section className="min-h-screen bg-white">
+      <section className="h-full min-h-full bg-white">
         <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Загрузка...</p>
         </div>
@@ -1500,7 +1520,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   if (accessStatus === 'unauthenticated') {
     return (
-      <section className="min-h-screen bg-white">
+      <section className="h-full min-h-full bg-white">
         <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Необходимо авторизоваться</p>
         </div>
@@ -1510,7 +1530,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   if (accessStatus === 'not_configured') {
     return (
-      <section className="min-h-screen bg-white">
+      <section className="h-full min-h-full bg-white">
         <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Нет доступных компаний</p>
         </div>
@@ -1520,7 +1540,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   if (accessStatus === 'error') {
     return (
-      <section className="min-h-screen bg-white">
+      <section className="h-full min-h-full bg-white">
         <div className="flex h-64 items-center justify-center">
           <p className="text-red-500">{error || 'Ошибка загрузки'}</p>
         </div>
@@ -1529,7 +1549,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   }
 
   return (
-    <section className="min-h-screen bg-white">
+    <section className="h-full min-h-full bg-white">
       {/* Main content */}
       <main className="mx-auto max-w-6xl px-5 py-8">
         {memberships.length > 1 && (
@@ -1716,7 +1736,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                         icon={orderViewMode === 'list' ? faCalendarAlt : faList}
                         className="h-4 w-4 text-sky-600"
                       />
-                      {orderViewMode === 'list' ? 'Список' : 'Месяц'}
+                      {/* {orderViewMode === 'list' ? 'Календарь' : 'Список'} */}
                     </button>
                     {section !== 'orders-past' && (
                       <button

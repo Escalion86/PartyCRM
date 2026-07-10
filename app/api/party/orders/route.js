@@ -24,6 +24,7 @@ import {
   filterPartyOrderPayloadByTariffAccess,
 } from '@helpers/partyTariffAccess'
 import { sendPartyPerformerAssignmentPushes } from '@server/partyPerformerPush'
+import { normalizePartyOrderTiming } from '@server/partyOrderPayload'
 
 const parseDate = (value) => {
   if (!value) return null
@@ -215,6 +216,11 @@ export const normalizeOrderPayload = (body) => {
 
   const clientAddress = normalizeAddress(body.clientAddress)
   const customAddressFallback = formatAddressLine(clientAddress)
+  const timing = normalizePartyOrderTiming({
+    eventDate: body.eventDate,
+    dateEnd: body.dateEnd,
+    durationMinutes: body.durationMinutes,
+  })
 
   return {
     title: typeof body.title === 'string' ? body.title.trim() : '',
@@ -231,8 +237,9 @@ export const normalizeOrderPayload = (body) => {
           ? body.client.email.trim().toLowerCase()
           : '',
     },
-    eventDate: parseDate(body.eventDate),
-    dateEnd: parseDate(body.dateEnd),
+    eventDate: timing.eventDate,
+    dateEnd: timing.dateEnd,
+    durationMinutes: timing.durationMinutes,
     placeType,
     locationId,
     customAddress:

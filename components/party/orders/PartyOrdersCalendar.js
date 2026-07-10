@@ -69,7 +69,8 @@ export default function PartyOrdersCalendar({
     [orders]
   )
   const locationsById = useMemo(
-    () => new Map(locations.map((location) => [String(location._id), location])),
+    () =>
+      new Map(locations.map((location) => [String(location._id), location])),
     [locations]
   )
 
@@ -86,7 +87,7 @@ export default function PartyOrdersCalendar({
   }
 
   return (
-    <div className="flex min-h-[520px] flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <div className="rounded-lg border border-sky-100 bg-sky-50/70 p-3">
         <div className="flex flex-col items-center gap-2">
           <div className="flex items-center justify-center gap-2">
@@ -131,18 +132,17 @@ export default function PartyOrdersCalendar({
             </button>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center">
-            <div className="text-sm font-semibold capitalize text-slate-800">
+            <div className="text-sm font-semibold text-slate-800 capitalize">
               {formatMonthTitle(monthCursor)}
             </div>
             <div className="text-xs text-slate-500">
-              Заказов: {monthMeta.orders} | Доп. событий:{' '}
-              {monthMeta.additional}
+              Заказов: {monthMeta.orders} | Доп. событий: {monthMeta.additional}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="event-month-calendar min-h-0 flex-1 overflow-auto rounded-lg border bg-white">
+      <div className="event-month-calendar h-fit min-h-0 flex-1 overflow-auto rounded-lg border bg-white">
         <div className="event-month-calendar__weekdays sticky top-0 z-10 grid grid-cols-7 border-b shadow-sm backdrop-blur">
           {DAYS_OF_WEEK.map((dayName) => (
             <div
@@ -153,7 +153,7 @@ export default function PartyOrdersCalendar({
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 auto-rows-auto">
+        <div className="grid auto-rows-auto grid-cols-7">
           {monthGridDays.map((day) => {
             const dayItems = itemsByDay.get(day.key) || []
             const hasDayContent = dayItems.length > 0
@@ -197,7 +197,8 @@ export default function PartyOrdersCalendar({
                   {visibleDayItems.map((item, index) => {
                     const order = findOrderById(orders, item.orderId)
                     const location =
-                      order?.locationId && locationsById.get(String(order.locationId))
+                      order?.locationId &&
+                      locationsById.get(String(order.locationId))
                     const time = formatTime(item.startsAt)
                     const title = time ? `${time} ${item.title}` : item.title
 
@@ -207,7 +208,9 @@ export default function PartyOrdersCalendar({
                         type="button"
                         className={`flex w-full cursor-pointer items-center gap-1 truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight ${getOrderToneClassName(item)}`}
                         title={
-                          location?.title ? `${title} · ${location.title}` : title
+                          location?.title
+                            ? `${title} · ${location.title}`
+                            : title
                         }
                         onClick={() => openCalendarItem(item)}
                       >

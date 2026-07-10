@@ -193,6 +193,11 @@ const partyOrdersSchema = {
     type: Date,
     default: null,
   },
+  durationMinutes: {
+    type: Number,
+    default: 60,
+    min: 1,
+  },
   placeType: {
     type: String,
     enum: ['company_location', 'client_address'],

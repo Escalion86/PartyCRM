@@ -62,6 +62,20 @@ const specializationLabels = {
   other: 'Другое',
 }
 
+const normalizeDurationMinutes = (value, fallback = 60) => {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number <= 0) return fallback
+  return Math.floor(number)
+}
+
+const buildDateEnd = (eventDate, durationMinutes) => {
+  if (!eventDate) return ''
+  const start = new Date(eventDate)
+  if (Number.isNaN(start.getTime())) return ''
+  const duration = normalizeDurationMinutes(durationMinutes)
+  return new Date(start.getTime() + duration * 60 * 1000).toISOString()
+}
+
 export default function OrderModal({
   open,
   title = 'Новый заказ',
@@ -122,7 +136,29 @@ export default function OrderModal({
 
   const handleChange = useCallback(
     (field, value) => {
-      setOrderDraft((prev) => ({ ...prev, [field]: value }))
+      setOrderDraft((prev) => {
+        if (field === 'eventDate') {
+          return {
+            ...prev,
+            eventDate: value,
+            dateEnd: buildDateEnd(value, prev.durationMinutes),
+          }
+        }
+
+        if (field === 'durationMinutes') {
+          const durationMinutes = normalizeDurationMinutes(
+            value,
+            normalizeDurationMinutes(prev.durationMinutes)
+          )
+          return {
+            ...prev,
+            durationMinutes,
+            dateEnd: buildDateEnd(prev.eventDate, durationMinutes),
+          }
+        }
+
+        return { ...prev, [field]: value }
+      })
     },
     [setOrderDraft]
   )
@@ -226,7 +262,9 @@ export default function OrderModal({
         }
         return {
           ...prev,
-          assignedStaff: current.filter((s) => s.staffId !== staffId),
+          assignedStaff: current.filter(
+            (s) => String(s.staffId) !== String(staffId)
+          ),
         }
       })
     },
@@ -238,7 +276,9 @@ export default function OrderModal({
       setOrderDraft((prev) => ({
         ...prev,
         assignedStaff: (prev.assignedStaff || []).map((s) =>
-          s.staffId === staffId ? { ...s, payoutAmount: value } : s
+          String(s.staffId) === String(staffId)
+            ? { ...s, payoutAmount: value }
+            : s
         ),
       }))
     },
@@ -250,7 +290,7 @@ export default function OrderModal({
       setOrderDraft((prev) => ({
         ...prev,
         assignedStaff: (prev.assignedStaff || []).map((s) =>
-          s.staffId === staffId
+          String(s.staffId) === String(staffId)
             ? { ...s, payoutStatus: normalizePartyPayoutStatus(value) }
             : s
         ),
@@ -566,6 +606,8 @@ export default function OrderModal({
                 type="number"
                 value={orderDraft.durationMinutes}
                 onChange={(val) => handleChange('durationMinutes', val)}
+                min={1}
+                step={30}
                 tone="party"
               />
             </div>
@@ -732,7 +774,7 @@ export default function OrderModal({
               .filter((p) => p.role !== 'owner')
               .map((person) => {
                 const assigned = (orderDraft.assignedStaff || []).find(
-                  (s) => s.staffId === person._id
+                  (s) => String(s.staffId) === String(person._id)
                 )
                 const displayName =
                   [person.secondName, person.firstName]
