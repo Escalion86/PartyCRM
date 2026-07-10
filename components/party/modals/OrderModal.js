@@ -437,7 +437,10 @@ export default function OrderModal({
   const handleOtherContactAdd = useCallback(() => {
     setOrderDraft((prev) => ({
       ...prev,
-      otherContacts: [...(prev.otherContacts || []), { clientId: '', comment: '' }],
+      otherContacts: [
+        ...(prev.otherContacts || []),
+        { clientId: '', comment: '' },
+      ],
     }))
   }, [setOrderDraft])
 
@@ -470,98 +473,108 @@ export default function OrderModal({
     [setOrderDraft]
   )
 
-  const handleClientCreate = useCallback(async (clientPayload = clientDraft) => {
-    // Проверка дубликата по телефону
-    const normalizedPhone = normalizePhone(clientPayload.phone)
-    if (normalizedPhone) {
-      const existingClient = clients.find(
-        (item) =>
-          item?.phone &&
-          normalizePhone(item.phone) === normalizedPhone &&
-          item._id !== orderDraft.clientId
-      )
-      if (existingClient) {
-        const fullName = getPersonFullName(existingClient, {
-          fallback: 'Без имени',
-        })
-        const confirmed = window.confirm(
-          `Найден клиент: ${fullName}. Выбрать его?`
+  const handleClientCreate = useCallback(
+    async (clientPayload = clientDraft) => {
+      // Проверка дубликата по телефону
+      const normalizedPhone = normalizePhone(clientPayload.phone)
+      if (normalizedPhone) {
+        const existingClient = clients.find(
+          (item) =>
+            item?.phone &&
+            normalizePhone(item.phone) === normalizedPhone &&
+            item._id !== orderDraft.clientId
         )
-        if (confirmed) {
+        if (existingClient) {
+          const fullName = getPersonFullName(existingClient, {
+            fallback: 'Без имени',
+          })
+          const confirmed = window.confirm(
+            `Найден клиент: ${fullName}. Выбрать его?`
+          )
+          if (confirmed) {
+            if (otherContactSelectIndex !== null) {
+              setOrderDraft((prev) => ({
+                ...prev,
+                otherContacts: (prev.otherContacts || []).map(
+                  (contact, index) =>
+                    index === otherContactSelectIndex
+                      ? { ...contact, clientId: existingClient._id }
+                      : contact
+                ),
+              }))
+              setOtherContactSelectIndex(null)
+            } else {
+              setOrderDraft((prev) => ({
+                ...prev,
+                clientId: existingClient._id,
+              }))
+            }
+          }
+          setClientModal('')
+          return
+        }
+      }
+
+      setClientSaving(true)
+      try {
+        const response = await apiJson('/api/party/clients', {
+          method: 'POST',
+          headers: requestHeaders,
+          body: JSON.stringify(clientPayload),
+        })
+        if (response.data) {
           if (otherContactSelectIndex !== null) {
             setOrderDraft((prev) => ({
               ...prev,
               otherContacts: (prev.otherContacts || []).map((contact, index) =>
                 index === otherContactSelectIndex
-                  ? { ...contact, clientId: existingClient._id }
+                  ? { ...contact, clientId: response.data._id }
                   : contact
               ),
             }))
             setOtherContactSelectIndex(null)
           } else {
-            setOrderDraft((prev) => ({ ...prev, clientId: existingClient._id }))
+            setOrderDraft((prev) => ({ ...prev, clientId: response.data._id }))
+          }
+          if (onClientCreated) {
+            onClientCreated(response.data)
           }
         }
-        setClientModal('')
-        return
+      } finally {
+        setClientSaving(false)
+        closeClientModal()
       }
-    }
+    },
+    [
+      clientDraft,
+      clients,
+      orderDraft.clientId,
+      otherContactSelectIndex,
+      requestHeaders,
+      setOrderDraft,
+      onClientCreated,
+      closeClientModal,
+    ]
+  )
 
-    setClientSaving(true)
-    try {
-      const response = await apiJson('/api/party/clients', {
-        method: 'POST',
-        headers: requestHeaders,
-        body: JSON.stringify(clientPayload),
-      })
-      if (response.data) {
-        if (otherContactSelectIndex !== null) {
-          setOrderDraft((prev) => ({
-            ...prev,
-            otherContacts: (prev.otherContacts || []).map((contact, index) =>
-              index === otherContactSelectIndex
-                ? { ...contact, clientId: response.data._id }
-                : contact
-            ),
-          }))
-          setOtherContactSelectIndex(null)
-        } else {
-          setOrderDraft((prev) => ({ ...prev, clientId: response.data._id }))
-        }
-        if (onClientCreated) {
-          onClientCreated(response.data)
-        }
+  const handleClientEdit = useCallback(
+    async (clientPayload = clientDraft) => {
+      const clientId = clientPayload?._id || orderDraft.clientId
+      if (!clientId) return
+      setClientSaving(true)
+      try {
+        await apiJson(`/api/party/clients/${clientId}`, {
+          method: 'PATCH',
+          headers: requestHeaders,
+          body: JSON.stringify(clientPayload),
+        })
+      } finally {
+        setClientSaving(false)
+        closeClientModal()
       }
-    } finally {
-      setClientSaving(false)
-      closeClientModal()
-    }
-  }, [
-    clientDraft,
-    clients,
-    orderDraft.clientId,
-    otherContactSelectIndex,
-    requestHeaders,
-    setOrderDraft,
-    onClientCreated,
-    closeClientModal,
-  ])
-
-  const handleClientEdit = useCallback(async (clientPayload = clientDraft) => {
-    const clientId = clientPayload?._id || orderDraft.clientId
-    if (!clientId) return
-    setClientSaving(true)
-    try {
-      await apiJson(`/api/party/clients/${clientId}`, {
-        method: 'PATCH',
-        headers: requestHeaders,
-        body: JSON.stringify(clientPayload),
-      })
-    } finally {
-      setClientSaving(false)
-      closeClientModal()
-    }
-  }, [clientDraft, orderDraft.clientId, requestHeaders, closeClientModal])
+    },
+    [clientDraft, orderDraft.clientId, requestHeaders, closeClientModal]
+  )
 
   const handleServiceCreate = useCallback(async () => {
     setServiceSaving(true)
@@ -654,23 +667,23 @@ export default function OrderModal({
 
   // Footer with action buttons
   const footerContent = (
-    <div className="flex flex-col w-full gap-1">
+    <div className="flex w-full flex-col gap-1">
       {submitError && (
-        <div className="px-3 py-2 text-sm text-red-600 rounded bg-red-50">
+        <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-600">
           {submitError}
         </div>
       )}
-      <div className="flex items-center justify-end w-full gap-1">
+      <div className="flex w-full items-center justify-end gap-1">
         <button
           type="button"
-          className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+          className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
           onClick={onClose}
         >
           Отмена
         </button>
         <button
           type="button"
-          className="px-4 py-2 text-sm font-semibold text-white transition rounded cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+          className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={handleSubmit}
           disabled={saving}
         >
@@ -764,9 +777,9 @@ export default function OrderModal({
 
             {orderDraft.placeType === 'company_location' ? (
               <InputWrapper label="Точка" tone="party">
-                <div className="relative flex items-center flex-1">
+                <div className="relative flex flex-1 items-center">
                   <select
-                    className="w-full px-1 text-black bg-transparent outline-none appearance-none cursor-pointer peer"
+                    className="peer w-full cursor-pointer appearance-none bg-transparent px-1 text-black outline-none"
                     value={orderDraft.locationId || ''}
                     onChange={(e) => handleChange('locationId', e.target.value)}
                   >
@@ -777,9 +790,9 @@ export default function OrderModal({
                       </option>
                     ))}
                   </select>
-                  <div className="text-gray-400 pointer-events-none shrink-0">
+                  <div className="pointer-events-none shrink-0 text-gray-400">
                     <svg
-                      className="w-4 h-4"
+                      className="h-4 w-4"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -940,9 +953,9 @@ export default function OrderModal({
                         )}
                       </div>
                       {assigned && (
-                        <div className="grid gap-2 sm:grid-cols-[9rem_12rem]">
+                        <div className="grid gap-2 sm:grid-cols-2">
                           <Input
-                            label="Выплата"
+                            label="Гонорар"
                             type="number"
                             value={assigned.payoutAmount}
                             onChange={(val) =>
@@ -953,7 +966,7 @@ export default function OrderModal({
                           />
                           <InputWrapper label="Статус выплаты" tone="party">
                             <select
-                              className="w-full px-1 text-sm text-black bg-transparent outline-none appearance-none cursor-pointer"
+                              className="w-full cursor-pointer appearance-none bg-transparent px-1 text-sm text-black outline-none"
                               value={normalizePartyPayoutStatus(
                                 assigned.payoutStatus
                               )}
@@ -1025,7 +1038,7 @@ export default function OrderModal({
             <hr className="border-t border-gray-200" />
 
             <div className="mt-2">
-              <div className="mb-2 text-xs font-semibold tracking-wide uppercase text-slate-500">
+              <div className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
                 Документы
               </div>
               <PartyOrderDocumentsSection
@@ -1040,7 +1053,7 @@ export default function OrderModal({
             <hr className="border-t border-gray-200" />
 
             <div className="mt-2 grid gap-4">
-              <div className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+              <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
                 Переписки
               </div>
               {orderDraft._id ? (
