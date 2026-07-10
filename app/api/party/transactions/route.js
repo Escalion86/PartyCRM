@@ -9,6 +9,7 @@ import {
   listPartyTransactions,
   normalizePartyTransactionPayload,
   serializePartyTransaction,
+  validatePartyPayoutTransactionStaff,
   validatePartyTransactionOrder,
 } from '@server/partyTransactions'
 import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
@@ -77,6 +78,11 @@ export async function POST(req) {
       'validation'
     )
   }
+  const { error: staffError } = validatePartyPayoutTransactionStaff({
+    order,
+    payload,
+  })
+  if (staffError) return staffError
 
   const PartyTransactions = await getPartyTransactionModel()
   const transaction = await PartyTransactions.create({

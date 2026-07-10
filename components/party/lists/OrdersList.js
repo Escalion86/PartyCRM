@@ -21,7 +21,10 @@ import PartyCard, {
   PartyCardHeader,
 } from '@components/party/PartyCard'
 import getPersonFullName from '@helpers/getPersonFullName'
-import { getOrderPaymentState } from '@helpers/partyOrderTransactions'
+import {
+  getOrderNonPayoutExpenseTotal,
+  getOrderPaymentState,
+} from '@helpers/partyOrderTransactions'
 
 const ORDER_STATUSES = [
   { value: 'draft', label: 'Заявка', color: 'gray', icon: faClock },
@@ -690,7 +693,10 @@ const OrderCard = ({
     transactions,
   })
   const payoutTotal = getOrderPayoutTotal(order)
-  const grossMargin = paymentState.margin - payoutTotal
+  const grossMargin =
+    paymentState.incomeTotal -
+    getOrderNonPayoutExpenseTotal(transactions) -
+    payoutTotal
   const nearestAdditionalEventInfo = getNearestAdditionalEventInfo(order)
   const hiddenAdditionalCount = nearestAdditionalEventInfo?.remainingCount ?? 0
   const additionalStatusClassName = getAdditionalStatusClassName(

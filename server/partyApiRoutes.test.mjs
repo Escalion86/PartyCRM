@@ -271,6 +271,19 @@ test('party closed orders and their transactions are immutable through managemen
   assert.match(transactionSource, /validatePartyTransactionOrder\(\{\s*tenantId:\s*context\.tenantId,\s*orderId:\s*existing\.orderId/)
 })
 
+test('party payout transactions require assigned performer staffId', async () => {
+  const transactionsSource = await route('app/api/party/transactions/route.js')
+  const transactionSource = await route('app/api/party/transactions/[id]/route.js')
+  const coreSource = await route('server/partyTransactions.js')
+
+  assert.match(coreSource, /validatePartyPayoutTransactionStaff/)
+  assert.match(transactionsSource, /validatePartyPayoutTransactionStaff/)
+  assert.match(transactionSource, /validatePartyPayoutTransactionStaff/)
+  assert.match(coreSource, /partycrm_payout_staff_required/)
+  assert.match(coreSource, /assignedStaff/)
+  assert.match(coreSource, /payload\.staffId/)
+})
+
 test('party performer calendar route exports only sanitized performer assignments', async () => {
   const source = await route('app/api/party/performer/calendar/route.js')
 

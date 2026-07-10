@@ -105,6 +105,11 @@ const partyOrderTransactionSchema = new Schema(
       ],
       default: 'deposit',
     },
+    staffId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Staff',
+      default: null,
+    },
     date: {
       type: Date,
       default: null,

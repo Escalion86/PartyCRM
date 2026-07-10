@@ -49,8 +49,8 @@ const order = {
   customAddress: 'Резервный адрес',
   contractAmount: 100000,
   assignedStaff: [
-    { staffId: 'staff-1', role: 'performer', payoutAmount: 20000, payoutStatus: 'paid' },
-    { staffId: 'staff-2', role: 'assistant', payoutAmount: 5000, payoutStatus: 'ready' },
+    { staffId: 'staff-1', role: 'performer', payoutAmount: 20000 },
+    { staffId: 'staff-2', role: 'assistant', payoutAmount: 5000 },
   ],
   additionalEvents: [
     { title: 'Позвонить клиенту', date: '2026-06-30T10:00:00.000Z', done: false },
@@ -62,6 +62,7 @@ const transactions = [
   { type: 'income', category: 'deposit', amount: 30000, date: '2026-06-01', paymentMethod: 'cash', comment: 'аванс' },
   { type: 'income', category: 'final_payment', amount: 70000, date: '2026-06-20', paymentMethod: 'transfer' },
   { type: 'expense', category: 'materials', amount: 10000, date: '2026-06-21' },
+  { type: 'expense', category: 'payout', amount: 20000, staffId: 'staff-1', date: '2026-06-22' },
 ]
 
 const context = {
@@ -82,9 +83,9 @@ test('calculatePartyOrderFinanceSummary uses real transactions and assigned staf
   assert.deepEqual(calculatePartyOrderFinanceSummary({ order, transactions }), {
     contractAmount: 100000,
     incomeTotal: 100000,
-    expenseTotal: 10000,
+    expenseTotal: 30000,
     balanceDue: 0,
-    margin: 90000,
+    margin: 65000,
     hasDeposit: true,
     isFullyPaid: true,
     payoutTotal: 25000,
@@ -212,23 +213,25 @@ test('client title mode respects showClient=false and title components remove co
   assert.doesNotMatch(payload.summary, /Скрытый|[\r\n\u0000-\u001f\u007f]/)
 })
 
-test('finance summary excludes canceled payouts and separates paid from pending', () => {
+test('finance summary separates paid from pending payouts by staff transactions', () => {
   const finance = calculatePartyOrderFinanceSummary({
     order: {
       contractAmount: 0,
       assignedStaff: [
-        { payoutAmount: 1000, payoutStatus: 'canceled' },
-        { payoutAmount: 2000, payoutStatus: 'paid' },
-        { payoutAmount: 3000, payoutStatus: 'planned' },
-        { payoutAmount: 4000, payoutStatus: 'ready' },
+        { staffId: 'staff-1', payoutAmount: 2000 },
+        { staffId: 'staff-2', payoutAmount: 3000 },
+        { staffId: 'staff-3', payoutAmount: 4000 },
       ],
     },
-    transactions: [],
+    transactions: [
+      { type: 'expense', category: 'payout', amount: 2000, staffId: 'staff-1' },
+      { type: 'expense', category: 'payout', amount: 1000, staffId: 'staff-2' },
+    ],
   })
 
   assert.equal(finance.payoutTotal, 9000)
-  assert.equal(finance.paidPayoutTotal, 2000)
-  assert.equal(finance.pendingPayoutTotal, 7000)
+  assert.equal(finance.paidPayoutTotal, 3000)
+  assert.equal(finance.pendingPayoutTotal, 6000)
 })
 
 test('invalid IANA timezone falls back to Europe/Moscow', () => {

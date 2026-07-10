@@ -6,6 +6,8 @@ import {
   getPartyTransactionCategoryOptions,
   getOrderPaymentStatusLabel,
   getPartyPayoutStatusLabel,
+  getPartyAssignmentPayoutState,
+  getPartyOrderPayoutSummary,
   getOrderPaymentState,
   getOrderTransactionAction,
   getOrderTransactionTotals,
@@ -131,6 +133,80 @@ test('payout status helpers expose stable labels and fallback', () => {
   ])
   assert.equal(getPartyPayoutStatusLabel('ready'), 'Готово к выплате')
   assert.equal(normalizePartyPayoutStatus('unknown'), 'planned')
+})
+
+test('getPartyAssignmentPayoutState derives performer payout status from linked transactions', () => {
+  const assignment = {
+    staffId: '507f1f77bcf86cd799439011',
+    payoutAmount: 10000,
+  }
+  const transactions = [
+    {
+      type: 'expense',
+      category: 'payout',
+      amount: 4000,
+      staffId: '507f1f77bcf86cd799439011',
+    },
+    {
+      type: 'expense',
+      category: 'payout',
+      amount: 9000,
+      staffId: '507f1f77bcf86cd799439012',
+    },
+    {
+      type: 'expense',
+      category: 'materials',
+      amount: 1000,
+      staffId: '507f1f77bcf86cd799439011',
+    },
+  ]
+
+  assert.deepEqual(
+    getPartyAssignmentPayoutState({ assignment, transactions }),
+    {
+      staffId: '507f1f77bcf86cd799439011',
+      payoutAmount: 10000,
+      paidAmount: 4000,
+      unpaidAmount: 6000,
+      status: 'partial',
+    }
+  )
+})
+
+test('getPartyOrderPayoutSummary aggregates derived payout statuses', () => {
+  const summary = getPartyOrderPayoutSummary({
+    order: {
+      assignedStaff: [
+        { staffId: '507f1f77bcf86cd799439011', payoutAmount: 10000 },
+        { staffId: '507f1f77bcf86cd799439012', payoutAmount: 5000 },
+        { staffId: '507f1f77bcf86cd799439013', payoutAmount: 0 },
+      ],
+    },
+    transactions: [
+      {
+        type: 'expense',
+        category: 'payout',
+        amount: 10000,
+        staffId: '507f1f77bcf86cd799439011',
+      },
+      {
+        type: 'expense',
+        category: 'payout',
+        amount: 2000,
+        staffId: '507f1f77bcf86cd799439012',
+      },
+    ],
+  })
+
+  assert.equal(summary.payoutTotal, 15000)
+  assert.equal(summary.paidPayoutTotal, 12000)
+  assert.equal(summary.unpaidPayoutTotal, 3000)
+  assert.equal(summary.unpaidPayoutCount, 1)
+  assert.equal(summary.payoutStatus, 'partial')
+  assert.deepEqual(
+    summary.items.map((item) => item.status),
+    ['paid', 'partial', 'none']
+  )
 })
 
 test('getOrderPaymentStatusLabel returns readable payment status', () => {

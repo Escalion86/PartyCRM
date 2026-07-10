@@ -47,6 +47,7 @@ import {
   getPartyCompanyOnboardingSteps,
 } from '@helpers/partyOnboarding'
 import { matchesPartyOrderFinanceFilter } from '@helpers/partyOrderFinanceFilters'
+import { getOrderNonPayoutExpenseTotal } from '@helpers/partyOrderTransactions'
 
 const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
 
@@ -175,6 +176,9 @@ const buildFinanceSummary = (orders) =>
       const contractAmount = getOrderContractAmount(order)
       const incomeAmount = getOrderTransactionTotal(order, 'income')
       const expenseAmount = getOrderTransactionTotal(order, 'expense')
+      const nonPayoutExpenseAmount = getOrderNonPayoutExpenseTotal(
+        order.transactions ?? []
+      )
       const payoutAmount = getOrderPayoutTotal(order)
 
       return {
@@ -186,7 +190,10 @@ const buildFinanceSummary = (orders) =>
           summary.balanceAmount + Math.max(contractAmount - incomeAmount, 0),
         payoutAmount: summary.payoutAmount + payoutAmount,
         grossMargin:
-          summary.grossMargin + incomeAmount - expenseAmount - payoutAmount,
+          summary.grossMargin +
+          incomeAmount -
+          nonPayoutExpenseAmount -
+          payoutAmount,
       }
     },
     {

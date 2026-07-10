@@ -9,7 +9,9 @@ import {
 test('getPartyOrderFinanceFlags detects prepayment, debt, unpaid payouts and negative margin', () => {
   const flags = getPartyOrderFinanceFlags({
     contractAmount: 20000,
-    assignedStaff: [{ payoutAmount: 8000, payoutStatus: 'ready' }],
+    assignedStaff: [
+      { staffId: '507f1f77bcf86cd799439011', payoutAmount: 8000 },
+    ],
     transactions: [
       { type: 'income', amount: 5000, category: 'deposit' },
       { type: 'expense', amount: 9000, category: 'materials' },
@@ -38,8 +40,18 @@ test('getPartyOrderFinanceFlags detects order waiting for prepayment', () => {
 test('matchesPartyOrderFinanceFilter maps filter names to finance flags', () => {
   const order = {
     contractAmount: 10000,
-    assignedStaff: [{ payoutAmount: 3000, payoutStatus: 'paid' }],
-    transactions: [{ type: 'income', amount: 10000 }],
+    assignedStaff: [
+      { staffId: '507f1f77bcf86cd799439011', payoutAmount: 3000 },
+    ],
+    transactions: [
+      { type: 'income', amount: 10000 },
+      {
+        type: 'expense',
+        category: 'payout',
+        amount: 3000,
+        staffId: '507f1f77bcf86cd799439011',
+      },
+    ],
   }
 
   assert.equal(matchesPartyOrderFinanceFilter(order, 'finance_debt'), false)

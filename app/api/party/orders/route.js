@@ -153,6 +153,12 @@ const normalizeTransactions = (items) => {
         : item?.type === 'expense'
           ? 'other'
           : 'deposit',
+      staffId:
+        item?.type === 'expense' &&
+        item?.category === 'payout' &&
+        isValidObjectId(item?.staffId)
+          ? String(item.staffId)
+          : null,
       date: parseOptionalDate(item?.date),
       comment:
         typeof item?.comment === 'string'

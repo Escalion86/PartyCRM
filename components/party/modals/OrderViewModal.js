@@ -13,9 +13,10 @@ import {
   isAdminStaff,
 } from '@components/party/modals/OrderAdditionalEventsModal'
 import {
+  getOrderNonPayoutExpenseTotal,
   getOrderPaymentState,
-  getPartyPayoutStatusLabel,
-  normalizePartyPayoutStatus,
+  getPartyAssignmentPayoutState,
+  getPartyDerivedPayoutStatusLabel,
 } from '@helpers/partyOrderTransactions'
 
 const ORDER_STATUS_LABELS = {
@@ -219,7 +220,10 @@ export default function OrderViewModal({
     : []
   const paymentState = getOrderPaymentState({ contractAmount, transactions })
   const payoutTotal = getOrderPayoutTotal(order)
-  const grossMargin = paymentState.margin - payoutTotal
+  const grossMargin =
+    paymentState.incomeTotal -
+    getOrderNonPayoutExpenseTotal(transactions) -
+    payoutTotal
   const isClosed = order?.status === 'closed'
   const assignedStaff = Array.isArray(order?.assignedStaff)
     ? order.assignedStaff
@@ -438,6 +442,10 @@ export default function OrderViewModal({
                 const staffMember = staff.find(
                   (item) => String(item._id) === String(assignment.staffId)
                 )
+                const payoutState = getPartyAssignmentPayoutState({
+                  assignment,
+                  transactions,
+                })
                 return (
                   <div
                     key={assignment.staffId}
@@ -449,9 +457,12 @@ export default function OrderViewModal({
                     <div className="mt-1 text-slate-600">
                       Выплата: {formatMoney(Number(assignment.payoutAmount || 0))}
                       {' · '}
-                      {getPartyPayoutStatusLabel(
-                        normalizePartyPayoutStatus(assignment.payoutStatus)
-                      )}
+                      {getPartyDerivedPayoutStatusLabel(payoutState.status)}
+                      {payoutState.payoutAmount > 0
+                        ? ` (${formatMoney(payoutState.paidAmount)} из ${formatMoney(
+                            payoutState.payoutAmount
+                          )})`
+                        : ''}
                     </div>
                   </div>
                 )

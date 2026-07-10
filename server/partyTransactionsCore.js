@@ -49,6 +49,12 @@ export const normalizePartyTransactionPayload = (body = {}) => {
   return {
     orderId: isValidObjectIdValue(body.orderId) ? String(body.orderId) : '',
     clientId: isValidObjectIdValue(body.clientId) ? String(body.clientId) : null,
+    staffId:
+      type === 'expense' &&
+      normalizeCategory({ type, category: body.category }) === 'payout' &&
+      isValidObjectIdValue(body.staffId)
+        ? String(body.staffId)
+        : null,
     amount: parseMoney(body.amount),
     type,
     category: normalizeCategory({ type, category: body.category }),
@@ -69,6 +75,7 @@ export const serializePartyTransaction = (doc) => {
     tenantId: String(item.tenantId),
     orderId: String(item.orderId),
     clientId: item.clientId ? String(item.clientId) : null,
+    staffId: item.staffId ? String(item.staffId) : null,
     amount: Number(item.amount || 0),
     type: item.type || 'income',
     category: item.category || 'deposit',

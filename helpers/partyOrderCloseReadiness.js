@@ -1,35 +1,17 @@
-import { getOrderPaymentState } from './partyOrderTransactions.js'
-
-const hasAmount = (value) => Number(value || 0) > 0
-
-const getPayoutItems = (order = {}) =>
-  (order.assignedStaff ?? []).filter((item) => hasAmount(item?.payoutAmount))
-
-const sumPayoutAmount = (items = []) =>
-  items.reduce((sum, item) => sum + Number(item?.payoutAmount || 0), 0)
+import {
+  getOrderPaymentState,
+  getOrderNonPayoutExpenseTotal,
+  getPartyOrderPayoutSummary,
+} from './partyOrderTransactions.js'
 
 const getPartyOrderCloseSummary = ({ order = {}, paymentState } = {}) => {
-  const payoutItems = getPayoutItems(order)
-  const payablePayouts = payoutItems.filter(
-    (item) => item?.payoutStatus !== 'canceled'
+  const payoutSummary = getPartyOrderPayoutSummary({
+    order,
+    transactions: paymentState.transactions,
+  })
+  const nonPayoutExpenseTotal = getOrderNonPayoutExpenseTotal(
+    paymentState.transactions
   )
-  const paidPayouts = payablePayouts.filter(
-    (item) => item?.payoutStatus === 'paid'
-  )
-  const unpaidPayouts = payablePayouts.filter(
-    (item) => item?.payoutStatus !== 'paid'
-  )
-  const payoutTotal = sumPayoutAmount(payablePayouts)
-  const paidPayoutTotal = sumPayoutAmount(paidPayouts)
-  const unpaidPayoutTotal = sumPayoutAmount(unpaidPayouts)
-  const payoutStatus =
-    payoutTotal <= 0
-      ? 'none'
-      : unpaidPayouts.length <= 0
-        ? 'paid'
-        : paidPayoutTotal > 0
-          ? 'partial'
-          : 'unpaid'
 
   return {
     contractAmount: paymentState.contractAmount,
@@ -37,13 +19,15 @@ const getPartyOrderCloseSummary = ({ order = {}, paymentState } = {}) => {
     expenseTotal: paymentState.expenseTotal,
     balanceDue: paymentState.balanceDue,
     paymentStatus: paymentState.status,
-    payoutTotal,
-    paidPayoutTotal,
-    unpaidPayoutTotal,
-    unpaidPayoutCount: unpaidPayouts.length,
-    payoutStatus,
+    payoutTotal: payoutSummary.payoutTotal,
+    paidPayoutTotal: payoutSummary.paidPayoutTotal,
+    unpaidPayoutTotal: payoutSummary.unpaidPayoutTotal,
+    unpaidPayoutCount: payoutSummary.unpaidPayoutCount,
+    payoutStatus: payoutSummary.payoutStatus,
     grossMargin:
-      paymentState.incomeTotal - paymentState.expenseTotal - payoutTotal,
+      paymentState.incomeTotal -
+      nonPayoutExpenseTotal -
+      payoutSummary.payoutTotal,
   }
 }
 
@@ -55,11 +39,11 @@ export const getPartyOrderCloseReadiness = ({
     contractAmount: order.contractAmount ?? order.clientPayment?.totalAmount,
     transactions: Array.isArray(transactions) ? transactions : [],
   })
-  const unpaidPayouts = (order.assignedStaff ?? []).filter(
-    (item) =>
-      hasAmount(item?.payoutAmount) &&
-      !['paid', 'canceled'].includes(item?.payoutStatus)
-  )
+  const sourceTransactions = Array.isArray(transactions) ? transactions : []
+  const payoutSummary = getPartyOrderPayoutSummary({
+    order,
+    transactions: sourceTransactions,
+  })
   const openTasks = (order.additionalEvents ?? []).filter((item) => !item?.done)
   const blockers = []
 
@@ -70,10 +54,10 @@ export const getPartyOrderCloseReadiness = ({
     })
   }
 
-  if (unpaidPayouts.length > 0) {
+  if (payoutSummary.unpaidPayoutCount > 0) {
     blockers.push({
       code: 'unpaid_payouts',
-      message: `Невыплаченные исполнители: ${unpaidPayouts.length}`,
+      message: `Невыплаченные исполнители: ${payoutSummary.unpaidPayoutCount}`,
     })
   }
 
@@ -87,6 +71,9 @@ export const getPartyOrderCloseReadiness = ({
   return {
     ok: blockers.length === 0,
     blockers,
-    summary: getPartyOrderCloseSummary({ order, paymentState }),
+    summary: getPartyOrderCloseSummary({
+      order,
+      paymentState: { ...paymentState, transactions: sourceTransactions },
+    }),
   }
 }

@@ -7,12 +7,20 @@ test('getPartyOrderCloseReadiness allows fully paid order with paid payouts and 
   const readiness = getPartyOrderCloseReadiness({
     order: {
       contractAmount: 10000,
-      assignedStaff: [{ payoutAmount: 3000, payoutStatus: 'paid' }],
+      assignedStaff: [
+        { staffId: '507f1f77bcf86cd799439011', payoutAmount: 3000 },
+      ],
       additionalEvents: [{ title: 'Позвонить', done: true }],
     },
     transactions: [
       { type: 'income', amount: 10000 },
       { type: 'expense', category: 'materials', amount: 1000 },
+      {
+        type: 'expense',
+        category: 'payout',
+        amount: 3000,
+        staffId: '507f1f77bcf86cd799439011',
+      },
     ],
   })
 
@@ -21,7 +29,7 @@ test('getPartyOrderCloseReadiness allows fully paid order with paid payouts and 
   assert.deepEqual(readiness.summary, {
     contractAmount: 10000,
     incomeTotal: 10000,
-    expenseTotal: 1000,
+    expenseTotal: 4000,
     balanceDue: 0,
     paymentStatus: 'paid',
     payoutTotal: 3000,
@@ -38,8 +46,8 @@ test('getPartyOrderCloseReadiness blocks debt, unpaid payouts and open tasks', (
     order: {
       contractAmount: 15000,
       assignedStaff: [
-        { payoutAmount: 4000, payoutStatus: 'ready' },
-        { payoutAmount: 0, payoutStatus: 'planned' },
+        { staffId: '507f1f77bcf86cd799439011', payoutAmount: 4000 },
+        { staffId: '507f1f77bcf86cd799439012', payoutAmount: 0 },
       ],
       additionalEvents: [
         { title: 'Подготовить реквизит', done: false },

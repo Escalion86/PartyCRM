@@ -39,6 +39,39 @@ export const validatePartyTransactionOrder = async ({ tenantId, orderId }) => {
   return { order, error: null }
 }
 
+export const validatePartyPayoutTransactionStaff = ({ order, payload }) => {
+  if (payload.type !== 'expense' || payload.category !== 'payout') {
+    return { error: null }
+  }
+
+  if (!isValidObjectId(payload.staffId)) {
+    return {
+      error: partyError(
+        400,
+        'partycrm_payout_staff_required',
+        'Выберите исполнителя для выплаты',
+        'validation'
+      ),
+    }
+  }
+
+  const assigned = (order.assignedStaff ?? []).some(
+    (item) => String(item?.staffId) === String(payload.staffId)
+  )
+  if (!assigned) {
+    return {
+      error: partyError(
+        400,
+        'partycrm_payout_staff_not_assigned',
+        'Выбранный исполнитель не назначен на заказ',
+        'validation'
+      ),
+    }
+  }
+
+  return { error: null }
+}
+
 export const listPartyTransactions = async ({ tenantId, orderId }) => {
   const PartyTransactions = await getPartyTransactionModel()
   const query = { tenantId }

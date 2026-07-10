@@ -1,29 +1,28 @@
-import { getOrderPaymentState } from './partyOrderTransactions.js'
-
-const getPayoutTotal = (order = {}) =>
-  (order.assignedStaff ?? []).reduce(
-    (sum, item) => sum + Number(item?.payoutAmount || 0),
-    0
-  )
-
-const hasUnpaidPayouts = (order = {}) =>
-  (order.assignedStaff ?? []).some(
-    (item) =>
-      Number(item?.payoutAmount || 0) > 0 &&
-      !['paid', 'canceled'].includes(item?.payoutStatus)
-  )
+import {
+  getOrderPaymentState,
+  getOrderNonPayoutExpenseTotal,
+  getPartyOrderPayoutSummary,
+} from './partyOrderTransactions.js'
 
 export const getPartyOrderFinanceFlags = (order = {}) => {
   const paymentState = getOrderPaymentState({
     contractAmount: order.contractAmount ?? order.clientPayment?.totalAmount,
     transactions: Array.isArray(order.transactions) ? order.transactions : [],
   })
-  const grossMargin = paymentState.margin - getPayoutTotal(order)
+  const payoutSummary = getPartyOrderPayoutSummary({
+    order,
+    transactions: Array.isArray(order.transactions) ? order.transactions : [],
+  })
+  const transactions = Array.isArray(order.transactions) ? order.transactions : []
+  const grossMargin =
+    paymentState.incomeTotal -
+    getOrderNonPayoutExpenseTotal(transactions) -
+    payoutSummary.payoutTotal
 
   return {
     waitsPrepayment: paymentState.status === 'wait_prepayment',
     hasClientDebt: paymentState.balanceDue > 0 && paymentState.incomeTotal > 0,
-    hasUnpaidPayouts: hasUnpaidPayouts(order),
+    hasUnpaidPayouts: payoutSummary.unpaidPayoutCount > 0,
     hasNegativeMargin: grossMargin < 0,
   }
 }

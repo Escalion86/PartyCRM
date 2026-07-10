@@ -9,6 +9,7 @@ import {
 import {
   normalizePartyTransactionPayload,
   serializePartyTransaction,
+  validatePartyPayoutTransactionStaff,
   validatePartyTransactionOrder,
 } from '@server/partyTransactions'
 import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
@@ -92,6 +93,11 @@ export async function PATCH(req, { params }) {
       'validation'
     )
   }
+  const { error: staffError } = validatePartyPayoutTransactionStaff({
+    order,
+    payload,
+  })
+  if (staffError) return staffError
 
   const transaction = await PartyTransactions.findOneAndUpdate(
     { _id: id, tenantId: context.tenantId },

@@ -42,10 +42,10 @@ import {
 import { normalizeCompanyDictionary } from '@helpers/companySettings'
 import { getAdditionalEventsDisplayGroups } from '@helpers/additionalEvents'
 import {
-  PARTY_ORDER_PAYOUT_STATUSES,
-  getPartyPayoutStatusLabel,
-  normalizePartyPayoutStatus,
+  getPartyAssignmentPayoutState,
+  getPartyDerivedPayoutStatusLabel,
 } from '@helpers/partyOrderTransactions'
+import { usePartyTransactionsQuery } from '@helpers/usePartyTransactionsQuery'
 import getPersonFullName from '@helpers/getPersonFullName'
 
 // Нормализация телефона: цифры 11 символов, 8xxx → 7xxx
@@ -91,6 +91,14 @@ const getStaffLabel = (staffMember) =>
 const isAdminStaff = (staffMember) =>
   ['owner', 'admin'].includes(String(staffMember?.role || '')) &&
   staffMember?.status !== 'archived'
+
+const getPayoutStatusClassName = (status) => {
+  if (status === 'paid')
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (status === 'partial') return 'border-amber-200 bg-amber-50 text-amber-700'
+  if (status === 'none') return 'border-gray-200 bg-gray-50 text-gray-500'
+  return 'border-red-200 bg-red-50 text-red-600'
+}
 
 export default function OrderModal({
   open,
@@ -180,6 +188,19 @@ export default function OrderModal({
 
   // Определяем, является ли заказ новым (без _id) — для блокировки транзакций
   const isNewOrder = !orderDraft._id
+  const partyTransactionsQuery = usePartyTransactionsQuery(
+    { orderId: orderDraft._id || '' },
+    { enabled: Boolean(orderDraft._id) }
+  )
+  const orderTransactions = useMemo(
+    () =>
+      Array.isArray(partyTransactionsQuery.data)
+        ? partyTransactionsQuery.data
+        : Array.isArray(orderDraft.transactions)
+          ? orderDraft.transactions
+          : [],
+    [orderDraft.transactions, partyTransactionsQuery.data]
+  )
 
   const handleChange = useCallback(
     (field, value) => {
@@ -394,20 +415,6 @@ export default function OrderModal({
         assignedStaff: (prev.assignedStaff || []).map((s) =>
           String(s.staffId) === String(staffId)
             ? { ...s, payoutAmount: value }
-            : s
-        ),
-      }))
-    },
-    [setOrderDraft]
-  )
-
-  const handlePayoutStatusChange = useCallback(
-    (staffId, value) => {
-      setOrderDraft((prev) => ({
-        ...prev,
-        assignedStaff: (prev.assignedStaff || []).map((s) =>
-          String(s.staffId) === String(staffId)
-            ? { ...s, payoutStatus: normalizePartyPayoutStatus(value) }
             : s
         ),
       }))
@@ -920,6 +927,12 @@ export default function OrderModal({
                 const assigned = (orderDraft.assignedStaff || []).find(
                   (s) => String(s.staffId) === String(person._id)
                 )
+                const payoutState = assigned
+                  ? getPartyAssignmentPayoutState({
+                      assignment: assigned,
+                      transactions: orderTransactions,
+                    })
+                  : null
                 const displayName =
                   [person.secondName, person.firstName]
                     .filter(Boolean)
@@ -944,7 +957,9 @@ export default function OrderModal({
                         className="cursor-pointer"
                       />
                       <div className="flex-1">
-                        <p className="text-sm font-medium">{displayName}</p>
+                        <p className="text-sm font-medium whitespace-nowrap">
+                          {displayName}
+                        </p>
                         {person.specialization && (
                           <span className="inline-block rounded bg-sky-100 px-2 py-0.5 text-xs text-sky-700">
                             {specializationLabels[person.specialization] ||
@@ -953,7 +968,7 @@ export default function OrderModal({
                         )}
                       </div>
                       {assigned && (
-                        <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="flex flex-wrap items-center justify-end gap-x-2">
                           <Input
                             label="Гонорар"
                             type="number"
@@ -964,26 +979,28 @@ export default function OrderModal({
                             tone="party"
                             postfix="₽"
                           />
-                          <InputWrapper label="Статус выплаты" tone="party">
-                            <select
-                              className="w-full cursor-pointer appearance-none bg-transparent px-1 text-sm text-black outline-none"
-                              value={normalizePartyPayoutStatus(
-                                assigned.payoutStatus
-                              )}
-                              onChange={(e) =>
-                                handlePayoutStatusChange(
-                                  person._id,
-                                  e.target.value
-                                )
-                              }
-                            >
-                              {PARTY_ORDER_PAYOUT_STATUSES.map((status) => (
-                                <option key={status} value={status}>
-                                  {getPartyPayoutStatusLabel(status)}
-                                </option>
-                              ))}
-                            </select>
-                          </InputWrapper>
+                          <div
+                            className={`mt-2 h-7 rounded-md border px-2 py-1 text-sm font-semibold ${getPayoutStatusClassName(
+                              payoutState?.status
+                            )}`}
+                          >
+                            {getPartyDerivedPayoutStatusLabel(
+                              payoutState?.status
+                            )}
+                            {payoutState?.payoutAmount > 0 &&
+                            payoutState?.paidAmount > 0 ? (
+                              <span className="ml-1 font-normal">
+                                {Number(
+                                  payoutState.paidAmount || 0
+                                ).toLocaleString('ru-RU')}
+                                /
+                                {Number(
+                                  payoutState.payoutAmount || 0
+                                ).toLocaleString('ru-RU')}{' '}
+                                ₽
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1030,6 +1047,8 @@ export default function OrderModal({
                 orderDraft.contractAmount ??
                 0
               }
+              assignedStaff={orderDraft.assignedStaff || []}
+              staff={staff}
               isDraft={orderDraft.status === 'draft'}
               isClosed={orderDraft.status === 'closed'}
               onRequestAutosave={handleAutosaveBeforeTransaction}

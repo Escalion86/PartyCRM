@@ -1,8 +1,11 @@
 import {
   PARTY_ORDER_PAYMENT_METHOD_LABELS,
+  PARTY_ORDER_DERIVED_PAYOUT_STATUS_LABELS,
   PARTY_ORDER_PAYOUT_STATUS_LABELS,
   PARTY_ORDER_TRANSACTION_CATEGORY_LABELS,
   getOrderPaymentState,
+  getOrderNonPayoutExpenseTotal,
+  getPartyOrderPayoutSummary,
   normalizeOrderTransactions,
 } from '../helpers/partyOrderTransactions.js'
 
@@ -147,24 +150,24 @@ const addBlock = (blocks, title, lines) => {
 export const calculatePartyOrderFinanceSummary = ({ order = {}, transactions } = {}) => {
   const source = normalizeOrderTransactions(transactions ?? order.transactions)
   const payment = getOrderPaymentState({ contractAmount: order.contractAmount, transactions: source })
-  const payouts = asArray(order.assignedStaff).filter(
-    (item) => item?.payoutStatus !== 'canceled'
-  )
-  const payoutTotal = payouts.reduce((sum, item) => sum + number(item?.payoutAmount), 0)
-  const paidPayoutTotal = payouts
-    .filter((item) => item?.payoutStatus === 'paid')
-    .reduce((sum, item) => sum + number(item?.payoutAmount), 0)
+  const payoutSummary = getPartyOrderPayoutSummary({
+    order,
+    transactions: source,
+  })
   return {
     contractAmount: payment.contractAmount,
     incomeTotal: payment.incomeTotal,
     expenseTotal: payment.expenseTotal,
     balanceDue: payment.balanceDue,
-    margin: payment.margin,
+    margin:
+      payment.incomeTotal -
+      getOrderNonPayoutExpenseTotal(source) -
+      payoutSummary.payoutTotal,
     hasDeposit: payment.hasDeposit,
     isFullyPaid: payment.status === 'paid',
-    payoutTotal,
-    paidPayoutTotal,
-    pendingPayoutTotal: Math.max(payoutTotal - paidPayoutTotal, 0),
+    payoutTotal: payoutSummary.payoutTotal,
+    paidPayoutTotal: payoutSummary.paidPayoutTotal,
+    pendingPayoutTotal: payoutSummary.unpaidPayoutTotal,
   }
 }
 
@@ -261,15 +264,26 @@ export const buildPartyOrderCalendarPayload = ({
   }
   if (syncSettings.showPayouts) {
     const staffById = new Map(asArray(staff).map((item) => [idOf(item), item]))
+    const payoutSummary = getPartyOrderPayoutSummary({
+      order,
+      transactions: sourceTransactions,
+    })
+    const payoutByStaffId = new Map(
+      payoutSummary.items.map((item) => [item.staffId, item])
+    )
     addBlock(
       blocks,
       'Выплаты',
       asArray(order.assignedStaff)
-        .filter((item) => item?.payoutStatus !== 'canceled')
+        .filter((item) => number(item?.payoutAmount) > 0)
         .map((item) => {
         const person = staffById.get(idOf(item?.staffId)) || item?.staff || item
         const name = plainText(person?.name || person?.title) || 'Исполнитель'
-        const status = PARTY_ORDER_PAYOUT_STATUS_LABELS[item?.payoutStatus] || plainText(item?.payoutStatus)
+        const payoutState = payoutByStaffId.get(idOf(item?.staffId))
+        const status =
+          PARTY_ORDER_DERIVED_PAYOUT_STATUS_LABELS[payoutState?.status] ||
+          PARTY_ORDER_PAYOUT_STATUS_LABELS[payoutState?.status] ||
+          plainText(payoutState?.status)
         return `${name}: ${money(item?.payoutAmount)} ₽ (${status})`
         })
     )

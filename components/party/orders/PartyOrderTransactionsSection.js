@@ -32,6 +32,7 @@ const emptyDraft = (orderId) => ({
   amount: '',
   type: 'income',
   category: 'deposit',
+  staffId: '',
   paymentMethod: 'transfer',
   date: new Date().toISOString().slice(0, 10),
   comment: '',
@@ -41,9 +42,17 @@ const normalizeDraftForSubmit = (draft) => ({
   ...draft,
   amount: Number(draft.amount || 0),
   date: draft.date ? new Date(draft.date).toISOString() : new Date().toISOString(),
+  staffId: draft.category === 'payout' ? draft.staffId || null : null,
 })
 
-const TransactionList = ({ title, items, isClosed, onEdit, onDelete }) => (
+const TransactionList = ({
+  title,
+  items,
+  isClosed,
+  staffById,
+  onEdit,
+  onDelete,
+}) => (
   <div className="rounded-md border border-gray-200 bg-white">
     <div className="border-b border-gray-100 px-3 py-2 text-sm font-semibold text-gray-800">
       {title}
@@ -64,6 +73,9 @@ const TransactionList = ({ title, items, isClosed, onEdit, onDelete }) => (
               <div className="text-xs text-gray-500">
                 {PARTY_ORDER_TRANSACTION_CATEGORY_LABELS[item.category] ||
                   item.category}
+                {item.staffId && staffById.get(String(item.staffId))
+                  ? ` · ${staffById.get(String(item.staffId))}`
+                  : ''}
                 {item.date ? ` · ${new Date(item.date).toLocaleDateString('ru-RU')}` : ''}
                 {item.comment ? ` · ${item.comment}` : ''}
               </div>
@@ -100,6 +112,8 @@ export default function PartyOrderTransactionsSection({
   isClone = false,
   isFormChanged = false,
   isClosed = false,
+  assignedStaff = [],
+  staff = [],
   onRequestAutosave,
 }) {
   const [financeError, setFinanceError] = useState('')
@@ -127,6 +141,33 @@ export default function PartyOrderTransactionsSection({
   const categoryOptions = useMemo(
     () => getPartyTransactionCategoryOptions(draft?.type || 'income'),
     [draft?.type]
+  )
+  const staffById = useMemo(
+    () =>
+      new Map(
+        (Array.isArray(staff) ? staff : []).map((person) => [
+          String(person._id),
+          [person.secondName, person.firstName].filter(Boolean).join(' ') ||
+            person.phone ||
+            person.email ||
+            'Без имени',
+        ])
+      ),
+    [staff]
+  )
+  const staffOptions = useMemo(
+    () =>
+      (Array.isArray(assignedStaff) ? assignedStaff : [])
+        .map((assignment) => {
+          const staffId = String(assignment?.staffId || '')
+          if (!staffId) return null
+          return {
+            value: staffId,
+            label: staffById.get(staffId) || 'Исполнитель',
+          }
+        })
+        .filter(Boolean),
+    [assignedStaff, staffById]
   )
 
   const startCreate = async () => {
@@ -172,6 +213,14 @@ export default function PartyOrderTransactionsSection({
     }
     if (Number(draft.amount || 0) <= 0) {
       setFinanceError('Укажите сумму транзакции')
+      return
+    }
+    if (
+      draft.type === 'expense' &&
+      draft.category === 'payout' &&
+      !draft.staffId
+    ) {
+      setFinanceError('Выберите исполнителя')
       return
     }
     setFinanceError('')
@@ -242,6 +291,7 @@ export default function PartyOrderTransactionsSection({
                 category: getPartyTransactionCategoryOptions(
                   e.target.value
                 )[0]?.value,
+                staffId: '',
               }))
             }
           >
@@ -256,7 +306,11 @@ export default function PartyOrderTransactionsSection({
             className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
             value={draft.category}
             onChange={(e) =>
-              setDraft((prev) => ({ ...prev, category: e.target.value }))
+              setDraft((prev) => ({
+                ...prev,
+                category: e.target.value,
+                staffId: e.target.value === 'payout' ? prev.staffId : '',
+              }))
             }
           >
             {categoryOptions.map((category) => (
@@ -265,6 +319,22 @@ export default function PartyOrderTransactionsSection({
               </option>
             ))}
           </select>
+          {draft.type === 'expense' && draft.category === 'payout' ? (
+            <select
+              className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
+              value={draft.staffId || ''}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, staffId: e.target.value }))
+              }
+            >
+              <option value="">Выберите исполнителя</option>
+              {staffOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <input
             className="rounded border border-gray-200 bg-white px-2 py-2 text-sm"
             type="number"
@@ -331,6 +401,7 @@ export default function PartyOrderTransactionsSection({
           title={`Поступления · ${money(viewModel.incomeTotal)}`}
           items={viewModel.income}
           isClosed={isClosed}
+          staffById={staffById}
           onEdit={(item) =>
             setDraft({
               ...item,
@@ -343,6 +414,7 @@ export default function PartyOrderTransactionsSection({
           title={`Расходы · ${money(viewModel.expenseTotal)}`}
           items={viewModel.expense}
           isClosed={isClosed}
+          staffById={staffById}
           onEdit={(item) =>
             setDraft({
               ...item,

@@ -79,11 +79,22 @@ export const PARTY_ORDER_PAYOUT_STATUS_LABELS = Object.freeze({
   canceled: 'Отменено',
 })
 
+export const PARTY_ORDER_DERIVED_PAYOUT_STATUS_LABELS = Object.freeze({
+  none: 'Нет выплаты',
+  unpaid: 'Не выплачено',
+  partial: 'Частично выплачено',
+  paid: 'Выплачено',
+})
+
 export const normalizePartyPayoutStatus = (status) =>
   PARTY_ORDER_PAYOUT_STATUSES.includes(status) ? status : 'planned'
 
 export const getPartyPayoutStatusLabel = (status) =>
   PARTY_ORDER_PAYOUT_STATUS_LABELS[normalizePartyPayoutStatus(status)]
+
+export const getPartyDerivedPayoutStatusLabel = (status) =>
+  PARTY_ORDER_DERIVED_PAYOUT_STATUS_LABELS[status] ||
+  PARTY_ORDER_DERIVED_PAYOUT_STATUS_LABELS.unpaid
 
 export const getOrderPaymentStatusLabel = (status) =>
   PARTY_ORDER_PAYMENT_STATUS_LABELS[status] || String(status || '')
@@ -125,6 +136,101 @@ export const getOrderTransactionTotals = (items = []) => {
     incomeTotal,
     expenseTotal,
     margin: incomeTotal - expenseTotal,
+  }
+}
+
+export const getOrderPayoutTransactionTotal = (items = []) =>
+  sumAmounts(
+    normalizeOrderTransactions(items).filter(
+      (item) => item?.type === 'expense' && item?.category === 'payout'
+    )
+  )
+
+export const getOrderNonPayoutExpenseTotal = (items = []) =>
+  sumAmounts(
+    normalizeOrderTransactions(items).filter(
+      (item) => item?.type === 'expense' && item?.category !== 'payout'
+    )
+  )
+
+const idOf = (value) => String(value?._id ?? value?.id ?? value ?? '').trim()
+
+const getPayoutTransactionsForStaff = ({ staffId, transactions = [] }) => {
+  const targetStaffId = idOf(staffId)
+  if (!targetStaffId) return []
+  return normalizeOrderTransactions(transactions).filter(
+    (item) =>
+      item?.type === 'expense' &&
+      item?.category === 'payout' &&
+      idOf(item?.staffId) === targetStaffId
+  )
+}
+
+export const getPartyAssignmentPayoutState = ({
+  assignment = {},
+  transactions = [],
+} = {}) => {
+  const staffId = idOf(assignment?.staffId)
+  const payoutAmount = Math.max(Number(assignment?.payoutAmount || 0), 0)
+  const paidAmount = sumAmounts(
+    getPayoutTransactionsForStaff({ staffId, transactions })
+  )
+  const unpaidAmount = Math.max(payoutAmount - paidAmount, 0)
+  const status =
+    payoutAmount <= 0
+      ? 'none'
+      : paidAmount <= 0
+        ? 'unpaid'
+        : paidAmount >= payoutAmount
+          ? 'paid'
+          : 'partial'
+
+  return {
+    staffId,
+    payoutAmount,
+    paidAmount,
+    unpaidAmount,
+    status,
+  }
+}
+
+export const getPartyOrderPayoutSummary = ({
+  order = {},
+  transactions = [],
+} = {}) => {
+  const assignments = Array.isArray(order.assignedStaff)
+    ? order.assignedStaff
+    : []
+  const items = assignments.map((assignment) =>
+    getPartyAssignmentPayoutState({ assignment, transactions })
+  )
+  const payableItems = items.filter((item) => item.payoutAmount > 0)
+  const payoutTotal = sumAmounts(
+    payableItems.map((item) => ({ amount: item.payoutAmount }))
+  )
+  const paidPayoutTotal = sumAmounts(
+    payableItems.map((item) => ({ amount: item.paidAmount }))
+  )
+  const unpaidItems = payableItems.filter((item) => item.status !== 'paid')
+  const unpaidPayoutTotal = sumAmounts(
+    unpaidItems.map((item) => ({ amount: item.unpaidAmount }))
+  )
+  const payoutStatus =
+    payoutTotal <= 0
+      ? 'none'
+      : unpaidItems.length <= 0
+        ? 'paid'
+        : paidPayoutTotal > 0
+          ? 'partial'
+          : 'unpaid'
+
+  return {
+    items,
+    payoutTotal,
+    paidPayoutTotal,
+    unpaidPayoutTotal,
+    unpaidPayoutCount: unpaidItems.length,
+    payoutStatus,
   }
 }
 

@@ -41,12 +41,33 @@ test('normalizePartyTransactionPayload defaults invalid expense category', () =>
   assert.equal(payload.paymentMethod, 'transfer')
 })
 
+test('normalizePartyTransactionPayload keeps staffId only for payout expenses', () => {
+  const payoutPayload = normalizePartyTransactionPayload({
+    orderId: '507f1f77bcf86cd799439011',
+    staffId: '507f1f77bcf86cd799439012',
+    amount: 1000,
+    type: 'expense',
+    category: 'payout',
+  })
+  const materialPayload = normalizePartyTransactionPayload({
+    orderId: '507f1f77bcf86cd799439011',
+    staffId: '507f1f77bcf86cd799439012',
+    amount: 1000,
+    type: 'expense',
+    category: 'materials',
+  })
+
+  assert.equal(payoutPayload.staffId, '507f1f77bcf86cd799439012')
+  assert.equal(materialPayload.staffId, null)
+})
+
 test('serializePartyTransaction returns stable string ids', () => {
   const serialized = serializePartyTransaction({
     _id: { toString: () => 'tx-1' },
     tenantId: { toString: () => 'company-1' },
     orderId: { toString: () => 'order-1' },
     clientId: null,
+    staffId: { toString: () => 'staff-1' },
     amount: 1000,
     type: 'income',
     category: 'deposit',
@@ -60,5 +81,6 @@ test('serializePartyTransaction returns stable string ids', () => {
   assert.equal(serialized._id, 'tx-1')
   assert.equal(serialized.tenantId, 'company-1')
   assert.equal(serialized.orderId, 'order-1')
+  assert.equal(serialized.staffId, 'staff-1')
   assert.equal(serialized.date, '2026-01-02T10:00:00.000Z')
 })

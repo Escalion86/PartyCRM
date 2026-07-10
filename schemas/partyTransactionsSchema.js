@@ -16,6 +16,11 @@ const partyTransactionsSchema = {
     ref: 'Client',
     default: null,
   },
+  staffId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Staff',
+    default: null,
+  },
   amount: {
     type: Number,
     required: [true, 'Укажите сумму транзакции'],

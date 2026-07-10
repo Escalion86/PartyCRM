@@ -90,3 +90,19 @@ test('closed party orders hide edit and transaction controls in UI', async () =>
   assert.match(transactions, /Закрытый заказ: транзакции доступны только для просмотра/)
   assert.match(transactions, /disabled=\{busy \|\| isClosed\}/)
 })
+
+test('party order payout status is read-only and payout transaction selects performer', async () => {
+  const orderModal = await source('components/party/modals/OrderModal.js')
+  const transactions = await source(
+    'components/party/orders/PartyOrderTransactionsSection.js'
+  )
+
+  assert.match(orderModal, /getPartyAssignmentPayoutState/)
+  assert.match(orderModal, /Статус выплаты/)
+  assert.doesNotMatch(orderModal, /handlePayoutStatusChange/)
+  assert.doesNotMatch(orderModal, /PARTY_ORDER_PAYOUT_STATUSES\.map/)
+  assert.match(transactions, /assignedStaff = \[\]/)
+  assert.match(transactions, /staffOptions/)
+  assert.match(transactions, /draft\.category === 'payout'/)
+  assert.match(transactions, /Выберите исполнителя/)
+})
