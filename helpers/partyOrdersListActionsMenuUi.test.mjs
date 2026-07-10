@@ -16,3 +16,21 @@ test('party order card actions are collapsed into dropdown menu', async () => {
   assert.match(component, /label="Удалить"/)
   assert.doesNotMatch(component, /<CardButton/)
 })
+
+test('party order card shows nearest additional event instead of task counters', async () => {
+  const component = await source('components/party/lists/OrdersList.js')
+
+  assert.match(component, /const getNearestAdditionalEventInfo =/)
+  assert.match(component, /nearestAdditionalEventInfo/)
+  assert.match(component, /\+{hiddenAdditionalCount}/)
+  assert.doesNotMatch(component, /Сегодня: \{additionalEventsBadges\.today\}/)
+  assert.doesNotMatch(component, /Задачи: \{additionalEventsBadges\.open\}/)
+})
+
+test('party order action menu opens additional events modal', async () => {
+  const component = await source('components/party/lists/OrdersList.js')
+
+  assert.match(component, /faCalendarAlt/)
+  assert.match(component, /onAdditionalEvents/)
+  assert.match(component, /label="Доп\. события"/)
+})

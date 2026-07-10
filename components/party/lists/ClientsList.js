@@ -14,11 +14,12 @@ const ClientCard = ({ client, canManage, onDelete, onEdit, onView }) => {
   return (
     <PartyCard onClick={() => onView?.(client)}>
       <PartyCardHeader>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold truncate">{displayName}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">{displayName}</p>
           <p className="mt-1 text-sm text-black/60">
-            {[client.phone ? `+${client.phone}` : '', client.email].filter(Boolean).join(' · ') ||
-              'контакты не указаны'}
+            {[client.phone ? `+${client.phone}` : '', client.email]
+              .filter(Boolean)
+              .join(' · ') || 'контакты не указаны'}
           </p>
           {client.leadSource && (
             <p className="mt-1 text-sm text-black/60">
@@ -26,7 +27,7 @@ const ClientCard = ({ client, canManage, onDelete, onEdit, onView }) => {
             </p>
           )}
           {client.comment && (
-            <p className="mt-2 text-sm leading-6 text-slate-500 line-clamp-2">
+            <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
               {client.comment}
             </p>
           )}
@@ -36,7 +37,7 @@ const ClientCard = ({ client, canManage, onDelete, onEdit, onView }) => {
             <CardButton
               icon={faPencilAlt}
               onClick={() => onEdit && onEdit(client)}
-              color="blue"
+              color="orange"
               tooltipText="Редактировать"
             />
             <CardButton
@@ -71,7 +72,7 @@ export default function ClientsList({
             <button
               type="button"
               onClick={onCreateClick}
-              className="grid h-10 w-10 place-items-center rounded-md bg-sky-600 text-2xl font-semibold leading-none text-white transition-colors hover:bg-sky-700"
+              className="grid h-10 w-10 place-items-center rounded-md bg-sky-600 text-2xl leading-none font-semibold text-white transition-colors hover:bg-sky-700"
               aria-label="Добавить клиента"
               title="Добавить клиента"
             >
@@ -81,7 +82,7 @@ export default function ClientsList({
         </div>
       </div>
 
-      <div className="grid gap-3 mt-5">
+      <div className="mt-5 grid gap-3">
         {clients.length === 0 && (
           <p className="text-sm text-black/55">Клиенты еще не добавлены.</p>
         )}

@@ -117,13 +117,13 @@ const StaffCard = ({
             </div>
           )}
           {!person.authUserId &&
-            ['admin', 'performer'].includes(person.role) &&
-            activeCompanyId ? (
-              <PartyStaffInvitePanel
-                staffId={person._id}
-                activeCompanyId={activeCompanyId}
-              />
-            ) : null}
+          ['admin', 'performer'].includes(person.role) &&
+          activeCompanyId ? (
+            <PartyStaffInvitePanel
+              staffId={person._id}
+              activeCompanyId={activeCompanyId}
+            />
+          ) : null}
           {person.description && (
             <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">
               {person.description}
@@ -136,7 +136,7 @@ const StaffCard = ({
               <CardButton
                 icon={faPencilAlt}
                 onClick={() => onEdit(person)}
-                color="blue"
+                color="orange"
                 tooltipText="Редактировать"
               />
             )}

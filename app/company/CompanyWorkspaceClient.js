@@ -26,6 +26,7 @@ import LocationsList from '@components/party/lists/LocationsList'
 import ServicesList from '@components/party/lists/ServicesList'
 import OrderModal from '@components/party/modals/OrderModal'
 import OrderViewModal from '@components/party/modals/OrderViewModal'
+import OrderAdditionalEventsModal from '@components/party/modals/OrderAdditionalEventsModal'
 import {
   ClientFormModal,
   ClientViewModal,
@@ -1798,6 +1799,11 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                   setEditingOrderId(order._id)
                   setActiveModal('order-edit')
                 }}
+                onAdditionalEvents={(order) => {
+                  setOrderDraft(normalizeOrderDraft(order))
+                  setEditingOrderId(order._id)
+                  setActiveModal('order-additional-events')
+                }}
                 onCancel={cancelOrder}
                 onStatusChange={changeOrderStatus}
                 onDelete={deleteOrder}
@@ -2090,6 +2096,25 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           }}
           onEdit={() => setActiveModal('order-edit')}
           onReviewReport={reviewPerformerReport}
+          onUpdateOrder={(nextOrder) =>
+            updateOrder(nextOrder).then((updatedOrder) => {
+              if (updatedOrder) setOrderDraft(normalizeOrderDraft(updatedOrder))
+              return updatedOrder
+            })
+          }
+        />
+      )}
+
+      {activeModal === 'order-additional-events' && (
+        <OrderAdditionalEventsModal
+          open={true}
+          order={orderDraft}
+          canManage={canManage}
+          saving={saving}
+          onClose={() => {
+            setActiveModal('')
+            setEditingOrderId('')
+          }}
           onUpdateOrder={(nextOrder) =>
             updateOrder(nextOrder).then((updatedOrder) => {
               if (updatedOrder) setOrderDraft(normalizeOrderDraft(updatedOrder))

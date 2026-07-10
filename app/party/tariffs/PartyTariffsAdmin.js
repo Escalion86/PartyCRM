@@ -51,9 +51,7 @@ function TariffForm({
         <input
           type="text"
           value={form.subtitle}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, subtitle: e.target.value }))
-          }
+          onChange={(e) => setForm((f) => ({ ...f, subtitle: e.target.value }))}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-transparent focus:ring-2 focus:ring-sky-400 focus:outline-none"
           placeholder="Для небольших агентств"
         />
@@ -372,7 +370,7 @@ export default function PartyTariffsAdmin({ embedded = false }) {
   if (loading) {
     return (
       <div className="flex min-h-40 items-center justify-center bg-[#eaf6ff]">
-        <p className="text-gray-500 text-sm">Загрузка...</p>
+        <p className="text-sm text-gray-500">Загрузка...</p>
       </div>
     )
   }
@@ -380,7 +378,7 @@ export default function PartyTariffsAdmin({ embedded = false }) {
   if (error && !user) {
     return (
       <div className="flex min-h-40 items-center justify-center bg-[#eaf6ff]">
-        <p className="text-red-500 text-sm">{error}</p>
+        <p className="text-sm text-red-500">{error}</p>
       </div>
     )
   }
@@ -388,8 +386,8 @@ export default function PartyTariffsAdmin({ embedded = false }) {
   return (
     <div className="bg-[#eaf6ff] text-slate-950">
       {!embedded ? (
-        <header className="bg-white border-b border-sky-100">
-          <div className="flex items-center justify-between max-w-6xl px-5 py-4 mx-auto">
+        <header className="border-b border-sky-100 bg-white">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
             <div className="flex items-center gap-4">
               <span className="text-lg font-semibold text-sky-700">
                 PartyCRM
@@ -397,29 +395,29 @@ export default function PartyTariffsAdmin({ embedded = false }) {
               <nav className="flex items-center gap-3 text-sm">
                 <Link
                   href="/company"
-                  className="text-gray-500 hover:text-sky-700 transition-colors"
+                  className="text-gray-500 transition-colors hover:text-sky-700"
                 >
                   Кабинет
                 </Link>
                 <span className="text-gray-300">/</span>
                 <Link
                   href="/party/site-settings/tariffs"
-                  className="text-gray-500 hover:text-sky-700 transition-colors"
+                  className="text-gray-500 transition-colors hover:text-sky-700"
                 >
                   Настройка сайта
                 </Link>
                 <span className="text-gray-300">/</span>
-                <span className="text-sky-700 font-semibold">Тарифы</span>
+                <span className="font-semibold text-sky-700">Тарифы</span>
               </nav>
             </div>
           </div>
         </header>
       ) : null}
 
-      <div className={embedded ? '' : 'max-w-6xl px-5 py-8 mx-auto'}>
+      <div className={embedded ? '' : 'mx-auto max-w-6xl px-5 py-8'}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold font-futuraPT text-black">
+            <h1 className="font-futuraPT text-2xl font-semibold text-black">
               Управление тарифами
             </h1>
             <p className="mt-1 text-sm text-gray-500">
@@ -436,7 +434,7 @@ export default function PartyTariffsAdmin({ embedded = false }) {
         </div>
 
         {error && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
           </div>
         )}
@@ -444,25 +442,27 @@ export default function PartyTariffsAdmin({ embedded = false }) {
         {/* Список тарифов */}
         <div className="mt-6 space-y-3">
           {tariffs.length === 0 ? (
-            <div className="p-8 text-center text-gray-400 bg-white border border-gray-200/70 rounded-2xl">
+            <div className="rounded-2xl border border-gray-200/70 bg-white p-8 text-center text-gray-400">
               Тарифы не найдены. Создайте первый тариф.
             </div>
           ) : (
             tariffs.map((tariff) => (
               <div
                 key={tariff._id}
-                className={`p-5 bg-white border rounded-2xl shadow-sm ${
-                  tariff.hidden ? 'border-gray-200/50 opacity-70' : 'border-gray-200/70'
+                className={`rounded-2xl border bg-white p-5 shadow-sm ${
+                  tariff.hidden
+                    ? 'border-gray-200/50 opacity-70'
+                    : 'border-gray-200/70'
                 }`}
               >
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold text-black font-futuraPT">
+                      <h3 className="font-futuraPT text-lg font-semibold text-black">
                         {tariff.title}
                       </h3>
                       {tariff.hidden && (
-                        <span className="px-2 py-0.5 text-xs font-semibold text-gray-500 bg-gray-100 rounded-full">
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500">
                           скрыт
                         </span>
                       )}
@@ -495,11 +495,11 @@ export default function PartyTariffsAdmin({ embedded = false }) {
                       </p>
                     )}
                     {tariff.features && tariff.features.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2">
+                      <div className="mt-2 flex flex-wrap gap-2">
                         {tariff.features.map((feat, i) => (
                           <span
                             key={i}
-                            className="px-2 py-0.5 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-full"
+                            className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-600"
                           >
                             {feat}
                           </span>
@@ -507,16 +507,16 @@ export default function PartyTariffsAdmin({ embedded = false }) {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2 shrink-0">
+                  <div className="flex shrink-0 gap-2">
                     <button
                       onClick={() => handleEdit(tariff)}
-                      className="px-3 py-1.5 text-xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded-lg hover:bg-sky-100 transition-colors"
+                      className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-1.5 text-xs font-semibold text-sky-700 transition-colors hover:bg-sky-100"
                     >
                       Редактировать
                     </button>
                     <button
                       onClick={() => handleDelete(tariff._id, tariff.title)}
-                      className="px-3 py-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100"
                     >
                       Удалить
                     </button>

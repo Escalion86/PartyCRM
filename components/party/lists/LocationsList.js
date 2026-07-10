@@ -2,7 +2,10 @@
 
 import { faBoxArchive, faPencilAlt } from '@fortawesome/free-solid-svg-icons'
 import CardButton from '@components/CardButton'
-import PartyCard, { PartyCardActions, PartyCardHeader } from '@components/party/PartyCard'
+import PartyCard, {
+  PartyCardActions,
+  PartyCardHeader,
+} from '@components/party/PartyCard'
 
 const LocationCard = ({ location, canManage, onEdit, onArchive }) => {
   const addressParts = [
@@ -15,8 +18,8 @@ const LocationCard = ({ location, canManage, onEdit, onArchive }) => {
   return (
     <PartyCard onClick={() => onEdit(location)}>
       <PartyCardHeader>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold truncate">{location.title}</p>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">{location.title}</p>
           <p className="mt-1 text-sm text-black/60">
             {addressParts.join(', ') || 'Адрес не указан'}
           </p>
@@ -26,7 +29,7 @@ const LocationCard = ({ location, canManage, onEdit, onArchive }) => {
             <CardButton
               icon={faPencilAlt}
               onClick={() => onEdit && onEdit(location)}
-              color="blue"
+              color="orange"
               tooltipText="Редактировать"
             />
             <CardButton
@@ -40,7 +43,9 @@ const LocationCard = ({ location, canManage, onEdit, onArchive }) => {
       </PartyCardHeader>
       {location.address?.comment ? (
         <div className="px-4 pb-4">
-          <p className="text-sm text-black/55 line-clamp-2">{location.address.comment}</p>
+          <p className="line-clamp-2 text-sm text-black/55">
+            {location.address.comment}
+          </p>
         </div>
       ) : null}
     </PartyCard>
@@ -76,7 +81,7 @@ export default function LocationsList({
             <button
               type="button"
               onClick={onCreateClick}
-              className="grid h-10 w-10 place-items-center rounded-md bg-sky-600 text-2xl font-semibold leading-none text-white transition-colors hover:bg-sky-700"
+              className="grid h-10 w-10 place-items-center rounded-md bg-sky-600 text-2xl leading-none font-semibold text-white transition-colors hover:bg-sky-700"
               aria-label="Добавить точку"
               title="Добавить точку"
             >
@@ -86,7 +91,7 @@ export default function LocationsList({
         </div>
       </div>
 
-      <div className="grid gap-3 mt-5">
+      <div className="mt-5 grid gap-3">
         {locations.length === 0 && (
           <p className="text-sm text-black/55">Точки еще не добавлены.</p>
         )}

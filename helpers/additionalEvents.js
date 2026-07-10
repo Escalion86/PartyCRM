@@ -29,6 +29,34 @@ const startOfDay = (date) =>
 const endOfDay = (date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999)
 
+const ADDITIONAL_EVENTS_DISPLAY_GROUPS = Object.freeze([
+  { key: 'overdue', label: 'Просрочено' },
+  { key: 'today', label: 'Сегодня' },
+  { key: 'tomorrow', label: 'Завтра' },
+  { key: 'later', label: 'Позднее' },
+  { key: 'withoutDate', label: 'Без даты' },
+  { key: 'completed', label: 'Выполненные' },
+])
+
+const getAdditionalEventDisplayGroupKey = (item, now = new Date()) => {
+  if (item?.done) return 'completed'
+  const dateValue = item?.date
+  const date = toDate(dateValue)
+  if (!date) return 'withoutDate'
+
+  const nowMs = now.getTime()
+  const todayStart = startOfDay(now).getTime()
+  const tomorrowStart = todayStart + 24 * 60 * 60 * 1000
+  const dayAfterTomorrowStart = tomorrowStart + 24 * 60 * 60 * 1000
+  const dateMs = date.getTime()
+
+  if (dateMs < nowMs) return 'overdue'
+  if (dateMs >= todayStart && dateMs < tomorrowStart) return 'today'
+  if (dateMs >= tomorrowStart && dateMs < dayAfterTomorrowStart)
+    return 'tomorrow'
+  return 'later'
+}
+
 export const getAdditionalEventSegment = (dateValue, now = new Date()) => {
   const date = toDate(dateValue)
   if (!date) return null
@@ -163,6 +191,43 @@ export const getAdditionalEventsListBySegments = (events, now = new Date()) => {
   })
 
   return segments
+}
+
+export const getAdditionalEventsDisplayGroups = (
+  additionalEvents,
+  now = new Date()
+) => {
+  const grouped = ADDITIONAL_EVENTS_DISPLAY_GROUPS.reduce((acc, group) => {
+    acc[group.key] = []
+    return acc
+  }, {})
+
+  ;(Array.isArray(additionalEvents) ? additionalEvents : []).forEach(
+    (item, originalIndex) => {
+      const key = getAdditionalEventDisplayGroupKey(item, now)
+      const isDone = Boolean(item?.done)
+      const displayDate = isDone
+        ? item?.doneAt ?? item?.date ?? null
+        : item?.date ?? null
+      grouped[key].push({
+        ...item,
+        displayDate,
+        displayDateLabel: isDone ? 'Выполнено' : '',
+        originalIndex,
+      })
+    }
+  )
+
+  return ADDITIONAL_EVENTS_DISPLAY_GROUPS.map((group) => ({
+    ...group,
+    items: grouped[group.key].sort((a, b) => {
+      const dateA =
+        toDate(a?.displayDate)?.getTime() ?? Number.MAX_SAFE_INTEGER
+      const dateB =
+        toDate(b?.displayDate)?.getTime() ?? Number.MAX_SAFE_INTEGER
+      return dateA - dateB
+    }),
+  })).filter((group) => group.items.length > 0)
 }
 
 export const isAdditionalEventOverdue = (item, now = new Date()) => {

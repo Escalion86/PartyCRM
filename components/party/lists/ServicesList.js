@@ -45,11 +45,11 @@ const ServiceCard = ({ service, canManage, onEdit, onDelete }) => {
   return (
     <PartyCard onClick={() => onEdit && onEdit(service)}>
       <PartyCardHeader>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold truncate">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold">
             {service.title || 'Без названия'}
           </p>
-          <div className="flex flex-wrap items-center gap-3 mt-1">
+          <div className="mt-1 flex flex-wrap items-center gap-3">
             {service.specialization && (
               <span className="rounded bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
                 {specializationLabels[service.specialization] ||
@@ -63,7 +63,7 @@ const ServiceCard = ({ service, canManage, onEdit, onDelete }) => {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-4 shrink-0">
+        <div className="flex shrink-0 items-center gap-4">
           {service.price > 0 && (
             <span className="text-lg font-bold text-emerald-700">
               {formatMoney(service.price)}
@@ -74,7 +74,7 @@ const ServiceCard = ({ service, canManage, onEdit, onDelete }) => {
               <CardButton
                 icon={faPencilAlt}
                 onClick={() => onEdit && onEdit(service)}
-                color="blue"
+                color="orange"
                 tooltipText="Редактировать"
               />
               <CardButton
@@ -155,7 +155,7 @@ export default function ServicesList({
               </span>
             </button>
             {expandedGroups['__without_group'] !== false && (
-              <div className="flex flex-col gap-2 pl-5 mt-2">
+              <div className="mt-2 flex flex-col gap-2 pl-5">
                 {withoutGroup.map((service) => (
                   <ServiceCard
                     key={service._id}
@@ -191,7 +191,7 @@ export default function ServicesList({
               </button>
 
               {isExpanded && (
-                <div className="flex flex-col gap-2 pl-5 mt-2">
+                <div className="mt-2 flex flex-col gap-2 pl-5">
                   {servicesInGroup.map((service) => (
                     <ServiceCard
                       key={service._id}
@@ -211,7 +211,7 @@ export default function ServicesList({
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="mx-auto max-w-6xl">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">Услуги</h2>
         <div className="flex items-center gap-3">
@@ -222,7 +222,7 @@ export default function ServicesList({
             <button
               type="button"
               onClick={onCreateClick}
-              className="grid w-10 h-10 text-2xl font-semibold leading-none text-white transition-colors rounded-md place-items-center bg-sky-600 hover:bg-sky-700"
+              className="grid h-10 w-10 place-items-center rounded-md bg-sky-600 text-2xl leading-none font-semibold text-white transition-colors hover:bg-sky-700"
               aria-label="Добавить услугу"
               title="Добавить услугу"
             >
@@ -232,7 +232,7 @@ export default function ServicesList({
         </div>
       </div>
 
-      <div className="grid gap-3 mt-5">{renderServices()}</div>
+      <div className="mt-5 grid gap-3">{renderServices()}</div>
     </div>
   )
 }
