@@ -6,6 +6,7 @@ import {
   partyError,
 } from '@server/partyApi'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
+import { syncPartyOrderToPerformerCalendars } from '@server/partyPerformerGoogleCalendarSync'
 
 const ALLOWED_STATUSES = new Set(['confirmed', 'declined', 'done'])
 
@@ -83,6 +84,11 @@ export async function PATCH(req, { params }) {
   const assignment = (order.assignedStaff ?? []).find(
     (item) => String(item.staffId) === staffId
   )
+
+  await syncPartyOrderToPerformerCalendars({
+    tenantId: String(membership.tenantId),
+    orderId: String(order._id),
+  })
 
   return NextResponse.json({
     success: true,

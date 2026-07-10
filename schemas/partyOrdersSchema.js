@@ -74,6 +74,14 @@ const assignedStaffSchema = new Schema(
       type: partyPerformerReportSchema,
       default: () => ({}),
     },
+    performerGoogleCalendarEventId: { type: String, default: '' },
+    performerGoogleCalendarCalendarId: { type: String, default: '' },
+    performerCalendarSyncedAt: { type: Date, default: null },
+    performerCalendarSyncError: {
+      type: String,
+      enum: ['', 'calendar_sync_unavailable', 'calendar_sync_failed'],
+      default: '',
+    },
   },
   { _id: false }
 )
@@ -289,6 +297,12 @@ const partyOrdersSchema = {
     index: true,
   },
   adminComment: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 2000,
+  },
+  performerComment: {
     type: String,
     trim: true,
     default: '',

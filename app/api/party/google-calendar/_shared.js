@@ -42,3 +42,17 @@ export const createCore = () => createPartyGoogleCalendarApiCore({
 export const authorizeCallback = async ({ companyId, userId }) => Boolean(await (await getPartyStaffModel()).exists({ tenantId: companyId, authUserId: userId, role: { $in: ['owner', 'admin'] }, status: { $ne: 'archived' } }))
 export const jsonResult = (result) => NextResponse.json(result.error ? { success: false, error: result.error } : { success: true, data: result.data }, { status: result.status })
 export const nonceCookieOptions = { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/api/party/google-calendar/callback', maxAge: 600 }
+export const verifyStatePayload = verifyPartyGoogleCalendarOAuthState
+export const createGoogleCalendarAuthUrl = ({ state }) => oauth().generateAuthUrl({
+  access_type: 'offline',
+  prompt: 'consent',
+  state,
+  scope: PARTY_GOOGLE_CALENDAR_OAUTH_SCOPES,
+})
+export const exchangeGoogleCalendarCode = async (code) => {
+  const client = oauth()
+  const { tokens } = await client.getToken(code)
+  client.setCredentials(tokens)
+  const user = await google.oauth2({ version: 'v2', auth: client }).userinfo.get()
+  return { tokens, email: user.data?.email || '' }
+}

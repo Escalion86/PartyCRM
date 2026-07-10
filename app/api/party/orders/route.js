@@ -268,6 +268,10 @@ export const normalizeOrderPayload = (
     ),
     adminComment:
       typeof body.adminComment === 'string' ? body.adminComment.trim() : '',
+    performerComment:
+      typeof body.performerComment === 'string'
+        ? body.performerComment.trim()
+        : '',
   }
 }
 

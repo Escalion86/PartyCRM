@@ -189,6 +189,7 @@ export const EMPTY_ORDER = {
   assignedStaff: [],
   responsibleStaffId: '',
   adminComment: '',
+  performerComment: '',
 }
 
 export const EMPTY_COMPANY = {

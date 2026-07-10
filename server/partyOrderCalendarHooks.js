@@ -1,5 +1,9 @@
 import { createPartyGoogleCalendarClient } from './partyGoogleCalendarClient.js'
 import { syncPartyOrderToCompanyCalendar } from './partyGoogleCalendarSync.js'
+import {
+  deletePartyOrderPerformerCalendarEventsAfterCrud,
+  syncPartyOrderToPerformerCalendars,
+} from './partyPerformerGoogleCalendarSync.js'
 
 const asArray = (value) => (Array.isArray(value) ? value : [])
 const ids = (values) => [...new Set(values.map(String).filter(Boolean))]
@@ -116,7 +120,7 @@ export const syncPartyOrderCalendarAfterCrud = async ({
         deps.persistCredentials || persistCredentialsWith(Company, tenantId),
     })
     const syncOrder = deps.syncOrder || syncPartyOrderToCompanyCalendar
-    return await syncOrder({
+    const companyResult = await syncOrder({
       company,
       order,
       previousOrder,
@@ -134,6 +138,12 @@ export const syncPartyOrderCalendarAfterCrud = async ({
           deps.persistCompanySyncState || persistCompanyStateWith(Company),
       },
     })
+    await (deps.syncPerformerCalendars || syncPartyOrderToPerformerCalendars)({
+      tenantId,
+      orderId,
+      dependencies: deps.performerDependencies || {},
+    })
+    return companyResult
   } catch {
     return { ok: false, status: 'hook_failed' }
   }
@@ -164,8 +174,20 @@ export const deletePartyOrderCalendarEventsAfterCrud = async ({
           }),
       }
     )
+    const cleanupPerformerCalendars = () =>
+      (
+        dependencies.deletePerformerCalendarEvents ||
+        deletePartyOrderPerformerCalendarEventsAfterCrud
+      )({
+        tenantId,
+        orderSnapshot,
+        dependencies: dependencies.performerDependencies || {},
+      })
     const calendarId = String(orderSnapshot.googleCalendarCalendarId || '')
-    if (!client || !calendarId) return { ok: true, deletedCount: 0 }
+    if (!client || !calendarId) {
+      await cleanupPerformerCalendars()
+      return { ok: true, deletedCount: 0 }
+    }
 
     const eventIds = ids([
       orderSnapshot.googleCalendarEventId,
@@ -180,6 +202,7 @@ export const deletePartyOrderCalendarEventsAfterCrud = async ({
     if (deleteResults.some((result) => result.status === 'rejected')) {
       return { ok: false, status: 'hook_failed' }
     }
+    await cleanupPerformerCalendars()
     return { ok: true, deletedCount: eventIds.length }
   } catch {
     return { ok: false, status: 'hook_failed' }

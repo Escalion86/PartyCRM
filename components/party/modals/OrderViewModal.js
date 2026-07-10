@@ -443,6 +443,11 @@ export default function OrderViewModal({
             {order?.adminComment ? (
               <InfoLine label="Комментарий">{order.adminComment}</InfoLine>
             ) : null}
+            {order?.performerComment ? (
+              <InfoLine label="Для исполнителя">
+                {order.performerComment}
+              </InfoLine>
+            ) : null}
           </div>
         </Section>
 

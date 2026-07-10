@@ -8,11 +8,19 @@ const source = (path) => readFile(join(process.cwd(), path), 'utf8')
 test('party order editor exposes admin comment in the main tab', async () => {
   const modal = await source('components/party/modals/OrderModal.js')
   const helpers = await source('helpers/partyHelpers.js')
+  const schema = await source('schemas/partyOrdersSchema.js')
+  const route = await source('app/api/party/orders/route.js')
 
   assert.match(helpers, /adminComment:\s*''/)
-  assert.match(modal, /label="Комментарий"/)
+  assert.match(modal, /label="Комментарий для администратора"/)
   assert.match(modal, /value=\{orderDraft\.adminComment \|\| ''\}/)
   assert.match(modal, /handleChange\('adminComment', val\)/)
+  assert.match(helpers, /performerComment:\s*''/)
+  assert.match(schema, /performerComment/)
+  assert.match(route, /performerComment/)
+  assert.match(modal, /label="Комментарий для исполнителя"/)
+  assert.match(modal, /value=\{orderDraft\.performerComment \|\| ''\}/)
+  assert.match(modal, /handleChange\('performerComment', val\)/)
 })
 
 test('party orders list truncates overflowing admin comment and shows tooltip trigger', async () => {
@@ -32,5 +40,6 @@ test('party orders list truncates overflowing admin comment and shows tooltip tr
   assert.match(component, /position:\s*'fixed'/)
   assert.match(component, /tooltipPosition/)
   assert.match(component, /role="tooltip"/)
-  assert.match(component, /whitespace-pre-wrap break-words/)
+  assert.match(component, /whitespace-pre-wrap/)
+  assert.match(component, /break-words/)
 })

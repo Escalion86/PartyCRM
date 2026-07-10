@@ -21,6 +21,7 @@ import {
   COMPANY_SETTINGS_ACCESS,
   getVisibleCompanySettingsTabs,
 } from '../../app/company/settings/companySettingsTabs'
+import { PERFORMER_SETTINGS_TABS } from '../../app/performer/settings/performerSettingsTabs'
 import {
   PARTY_SITE_SETTINGS_TABS,
   canAccessPartySiteSettings,
@@ -78,6 +79,9 @@ const getDisplayName = (user) =>
 
 const isCompanySettingsPath = (pathname = '') =>
   pathname === '/company/settings' || pathname.startsWith('/company/settings/')
+
+const isPerformerSettingsPath = (pathname = '') =>
+  pathname === '/performer/settings' || pathname.startsWith('/performer/settings/')
 
 const MenuLink = ({ item, active, onClick }) => (
   <Link
@@ -137,6 +141,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [companySettingsExpanded, setCompanySettingsExpanded] = useState(null)
+  const [performerSettingsExpanded, setPerformerSettingsExpanded] =
+    useState(null)
   const [siteSettingsExpanded, setSiteSettingsExpanded] = useState(null)
   const [ordersExpanded, setOrdersExpanded] = useState(null)
   const [currentHash, setCurrentHash] = useState('')
@@ -163,6 +169,9 @@ export default function PartyAppShell({ variant = 'company', children }) {
     null
   const companySettingsActive = isCompanySettingsPath(pathname || '')
   const companySettingsOpen = companySettingsExpanded ?? companySettingsActive
+  const performerSettingsActive = isPerformerSettingsPath(pathname || '')
+  const performerSettingsOpen =
+    performerSettingsExpanded ?? performerSettingsActive
   const siteSettingsActive = isPartySiteSettingsPath(pathname || '')
   const siteSettingsOpen = siteSettingsExpanded ?? siteSettingsActive
   const ordersActive =
@@ -293,6 +302,10 @@ export default function PartyAppShell({ variant = 'company', children }) {
       if (pathname === '/company/settings') return true
       if (pathname?.startsWith('/company/settings/')) return true
     }
+    if (href === '/performer/settings') {
+      if (pathname === '/performer/settings') return true
+      if (pathname?.startsWith('/performer/settings/')) return true
+    }
     if (href === '/company/orders') {
       if (pathname === '/company/orders' || pathname === '/company/orders-past')
         return true
@@ -323,6 +336,9 @@ export default function PartyAppShell({ variant = 'company', children }) {
                 isCompanyVariant && item.href === '/company/orders'
               const isSettingsGroup =
                 isCompanyVariant && item.href === '/company/settings'
+              const isPerformerSettingsGroup =
+                effectiveVariant === 'performer' &&
+                item.href === '/performer/settings'
 
               return (
                 <div key={item.href} className="grid gap-1">
@@ -340,6 +356,15 @@ export default function PartyAppShell({ variant = 'company', children }) {
                       open={companySettingsOpen}
                       onClick={() =>
                         setCompanySettingsExpanded(!companySettingsOpen)
+                      }
+                    />
+                  ) : isPerformerSettingsGroup ? (
+                    <MenuGroupButton
+                      item={item}
+                      active={performerSettingsActive}
+                      open={performerSettingsOpen}
+                      onClick={() =>
+                        setPerformerSettingsExpanded(!performerSettingsOpen)
                       }
                     />
                   ) : (
@@ -362,6 +387,19 @@ export default function PartyAppShell({ variant = 'company', children }) {
                     <div className="mt-1">
                       <div className="grid gap-1">
                         {visibleCompanySettingsMenu.map((subItem) => (
+                          <SubMenuLink
+                            key={subItem.href}
+                            item={subItem}
+                            active={pathname === subItem.href}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {isPerformerSettingsGroup && performerSettingsOpen ? (
+                    <div className="mt-1">
+                      <div className="grid gap-1">
+                        {PERFORMER_SETTINGS_TABS.map((subItem) => (
                           <SubMenuLink
                             key={subItem.href}
                             item={subItem}
@@ -457,6 +495,9 @@ export default function PartyAppShell({ variant = 'company', children }) {
                     isCompanyVariant && item.href === '/company/orders'
                   const isSettingsGroup =
                     isCompanyVariant && item.href === '/company/settings'
+                  const isPerformerSettingsGroup =
+                    effectiveVariant === 'performer' &&
+                    item.href === '/performer/settings'
 
                   return (
                     <div key={item.href} className="grid gap-1">
@@ -474,6 +515,15 @@ export default function PartyAppShell({ variant = 'company', children }) {
                           open={companySettingsOpen}
                           onClick={() =>
                             setCompanySettingsExpanded(!companySettingsOpen)
+                          }
+                        />
+                      ) : isPerformerSettingsGroup ? (
+                        <MenuGroupButton
+                          item={item}
+                          active={performerSettingsActive}
+                          open={performerSettingsOpen}
+                          onClick={() =>
+                            setPerformerSettingsExpanded(!performerSettingsOpen)
                           }
                         />
                       ) : (
@@ -511,6 +561,23 @@ export default function PartyAppShell({ variant = 'company', children }) {
                         <div className="mt-1">
                           <div className="grid gap-1">
                             {visibleCompanySettingsMenu.map((subItem) => (
+                              <SubMenuLink
+                                key={subItem.href}
+                                item={subItem}
+                                active={pathname === subItem.href}
+                                onClick={() => {
+                                  setCurrentHash('')
+                                  setMobileMenuOpen(false)
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      {isPerformerSettingsGroup && performerSettingsOpen ? (
+                        <div className="mt-1">
+                          <div className="grid gap-1">
+                            {PERFORMER_SETTINGS_TABS.map((subItem) => (
                               <SubMenuLink
                                 key={subItem.href}
                                 item={subItem}

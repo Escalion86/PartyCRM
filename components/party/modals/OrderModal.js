@@ -844,9 +844,17 @@ export default function OrderModal({
               />
             )}
             <Textarea
-              label="Комментарий"
+              label="Комментарий для администратора"
               value={orderDraft.adminComment || ''}
               onChange={(val) => handleChange('adminComment', val)}
+              rows={3}
+              fullWidth
+              tone="party"
+            />
+            <Textarea
+              label="Комментарий для исполнителя"
+              value={orderDraft.performerComment || ''}
+              onChange={(val) => handleChange('performerComment', val)}
               rows={3}
               fullWidth
               tone="party"

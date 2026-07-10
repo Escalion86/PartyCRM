@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import PerformerSettingsClient from './PerformerSettingsClient'
+import PerformerSettingsPageContent from './PerformerSettingsPageContent'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { getPartyEntryState } from '@server/partyEntry'
 
@@ -35,5 +35,5 @@ export default async function PerformerSettingsPage() {
     redirect('/performer/master')
   }
 
-  return <PerformerSettingsClient />
+  return <PerformerSettingsPageContent activeTab="profile" />
 }

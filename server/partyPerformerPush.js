@@ -1,4 +1,4 @@
-import { getPartyStaffModel } from './partyModels'
+import { getPartyStaffModel, getPartyUserModel } from './partyModels'
 import { collectPartyPerformerAssignmentPushTargets } from './partyPerformerPushCore'
 import {
   buildPartyPerformerAssignmentPushPayload,
@@ -33,6 +33,26 @@ const loadStaffByIds = async ({ tenantId, staffIds }) => {
   return new Map(staff.map((item) => [idOf(item), item]))
 }
 
+const loadPerformerPushEnabledByUserId = async (userIds = []) => {
+  const ids = [...new Set(userIds.map(idOf).filter(Boolean))]
+  if (ids.length === 0) return new Map()
+
+  const PartyUsers = await getPartyUserModel()
+  const users = await PartyUsers.find({
+    _id: { $in: ids },
+    status: { $ne: 'archived' },
+  })
+    .select('_id performerSettings.notifications')
+    .lean()
+
+  return new Map(
+    users.map((user) => [
+      idOf(user),
+      user?.performerSettings?.notifications?.pushEnabled !== false,
+    ])
+  )
+}
+
 export const sendPartyPerformerAssignmentPushes = async ({
   tenantId,
   company = null,
@@ -55,10 +75,16 @@ export const sendPartyPerformerAssignmentPushes = async ({
       nextOrder,
       staffById,
     })
+    const pushEnabledByUserId = await loadPerformerPushEnabledByUserId(
+      targets.map((target) => target.userId)
+    )
+    const enabledTargets = targets.filter(
+      (target) => pushEnabledByUserId.get(idOf(target.userId)) !== false
+    )
     let sent = 0
     let failed = 0
 
-    for (const target of targets) {
+    for (const target of enabledTargets) {
       try {
         const result = await sendPushToTenant({
           tenantId,
@@ -89,7 +115,7 @@ export const sendPartyPerformerAssignmentPushes = async ({
       }
     }
 
-    return { attempted: targets.length, sent, failed }
+    return { attempted: enabledTargets.length, sent, failed }
   } catch (error) {
     console.warn('party performer assignment push lookup failed', {
       companyId: String(tenantId),
@@ -121,6 +147,16 @@ export const sendPartyPerformerLinkRequestPush = async ({
   }
 
   try {
+    const pushEnabledByUserId = await loadPerformerPushEnabledByUserId([userId])
+    if (pushEnabledByUserId.get(userId) === false) {
+      return {
+        attempted: 0,
+        sent: 0,
+        failed: 0,
+        skipped: 'performer_push_disabled',
+      }
+    }
+
     const result = await sendPushToTenant({
       tenantId,
       product: 'partycrm',

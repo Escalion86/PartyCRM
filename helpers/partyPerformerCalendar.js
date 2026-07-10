@@ -31,12 +31,72 @@ const buildEventDescription = (order) =>
     order.serviceTitle ? `Услуга: ${order.serviceTitle}` : '',
     order.companyTitle ? `Компания: ${order.companyTitle}` : '',
     order.client?.name ? `Клиент: ${order.client.name}` : '',
+    order.performerComment ? `Комментарий: ${order.performerComment}` : '',
     order.assignment?.confirmationStatus
       ? `Статус участия: ${order.assignment.confirmationStatus}`
       : '',
   ]
     .filter(Boolean)
     .join('\n')
+
+const validDate = (value) => {
+  if (!value) return null
+  const date = value instanceof Date ? new Date(value) : new Date(value)
+  return Number.isFinite(date.getTime()) ? date : null
+}
+
+const normalizeReminders = (settings) => {
+  const source = settings?.reminders || {}
+  if (source.useDefault === true) return { useDefault: true }
+  const overrides = Array.isArray(source.overrides)
+    ? source.overrides
+        .filter(
+          (item) =>
+            ['popup', 'email'].includes(item?.method) &&
+            Number.isFinite(Number(item?.minutes)) &&
+            Number(item.minutes) > 0
+        )
+        .map((item) => ({ method: item.method, minutes: Number(item.minutes) }))
+    : []
+  return { useDefault: false, overrides }
+}
+
+const getTimeZone = (settings) => {
+  const candidate = normalizeText(settings?.timeZone)
+  if (!candidate) return 'Europe/Moscow'
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: candidate }).format()
+    return candidate
+  } catch {
+    return 'Europe/Moscow'
+  }
+}
+
+export const buildPartyPerformerGoogleCalendarPayload = ({
+  order,
+  settings = {},
+} = {}) => {
+  const start = validDate(order?.eventDate)
+  if (!start) return null
+  const providedEnd = validDate(order?.dateEnd)
+  const end =
+    providedEnd && providedEnd > start
+      ? providedEnd
+      : new Date(start.getTime() + MS_PER_HOUR)
+  const title = [order?.companyTitle, order?.title || order?.serviceTitle || 'Заказ']
+    .filter(Boolean)
+    .join(' - ')
+  const address = getAddressText(order)
+  return {
+    summary: normalizeText(title) || 'Заказ PartyCRM',
+    description: buildEventDescription(order),
+    location: address,
+    start: { dateTime: start.toISOString(), timeZone: getTimeZone(settings) },
+    end: { dateTime: end.toISOString(), timeZone: getTimeZone(settings) },
+    reminders: normalizeReminders(settings),
+    visibility: 'private',
+  }
+}
 
 export const buildPartyPerformerCalendarIcs = ({
   orders = [],

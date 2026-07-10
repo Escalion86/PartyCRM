@@ -1,6 +1,11 @@
 const crypto = require('node:crypto')
 
-const ALLOWED_REDIRECT_PATH = '/company/settings/integrations'
+const ALLOWED_REDIRECT_PATHS = new Set([
+  '/company/settings/integrations',
+  '/performer',
+  '/performer/settings',
+  '/performer/settings/integrations',
+])
 const DEFAULT_TTL_MS = 10 * 60 * 1000
 const MAX_STATE_LENGTH = 4096
 const STATE_ERROR_MESSAGE = 'Invalid OAuth state'
@@ -43,14 +48,21 @@ const validatePayload = (payload) => {
     throw createStateError()
   }
 
-  for (const field of ['companyId', 'userId', 'nonce']) {
+  const subjectType = getNonEmptyString(payload.subjectType) || 'company'
+  if (!['company', 'performer'].includes(subjectType)) throw createStateError()
+
+  for (const field of ['userId', 'nonce']) {
     if (!getNonEmptyString(payload[field])) throw createStateError()
   }
-  if (payload.redirectPath !== ALLOWED_REDIRECT_PATH) throw createStateError()
+  if (subjectType === 'company' && !getNonEmptyString(payload.companyId)) {
+    throw createStateError()
+  }
+  if (!ALLOWED_REDIRECT_PATHS.has(payload.redirectPath)) throw createStateError()
   if (!Number.isFinite(payload.expiresAt)) throw createStateError()
 
   return {
-    companyId: payload.companyId,
+    ...(payload.subjectType ? { subjectType } : {}),
+    companyId: getNonEmptyString(payload.companyId) || '',
     userId: payload.userId,
     redirectPath: payload.redirectPath,
     nonce: payload.nonce,

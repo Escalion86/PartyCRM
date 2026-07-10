@@ -35,6 +35,18 @@ export const buildPartyTestPushPayload = ({
   },
 })
 
+export const buildPartyPerformerTestPushPayload = () => ({
+  title: 'PartyCRM',
+  body: 'Тест push-уведомлений для кабинета исполнителя',
+  icon: '/icons/icon-192.png',
+  badge: '/icons/icon-192.png',
+  tag: 'party-performer-test',
+  data: {
+    type: 'party_performer_test',
+    url: '/performer/settings/notifications',
+  },
+})
+
 export const buildPartyInviteAcceptedPushPayload = ({
   companyId = '',
   companyTitle = '',

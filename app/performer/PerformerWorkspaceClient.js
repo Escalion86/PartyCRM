@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import ContactsIconsButtons from '@components/ContactsIconsButtons'
+import Modal from '@components/Modal'
 import { apiJson } from '@helpers/apiClient'
 import getPersonFullName from '@helpers/getPersonFullName'
 import { isPushSupported, syncPushSubscription } from '@helpers/pushClient'
@@ -72,6 +73,320 @@ const isOrderStarted = (order) => {
 const getClientName = (client) =>
   getPersonFullName(client, { fallback: client?.name || 'не указан' })
 
+const getContactName = (person, fallback = 'не указан') =>
+  getPersonFullName(person, { fallback: person?.name || fallback })
+
+const reportStatusLabels = {
+  draft: 'Черновик',
+  submitted: 'На проверке',
+  revision_requested: 'Нужны правки',
+  accepted: 'Принят',
+}
+
+const canEditReport = (order) => isOrderStarted(order)
+
+const getReportAccessMessage = (order) => {
+  if (canEditReport(order)) return ''
+  return 'Отчет будет доступен после начала заказа.'
+}
+
+const DetailSection = ({ title, children }) => (
+  <section className="rounded-lg border border-sky-100 bg-white p-3">
+    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      {title}
+    </div>
+    {children}
+  </section>
+)
+
+const DetailLine = ({ label, children }) => (
+  <div className="grid gap-1 text-sm sm:grid-cols-[9rem_1fr]">
+    <div className="font-semibold text-slate-500">{label}</div>
+    <div className="min-w-0 break-words text-slate-900">{children || '-'}</div>
+  </div>
+)
+
+const PerformerReportEditor = ({
+  report,
+  reportDraft,
+  canSubmitReport,
+  reportAccessMessage,
+  isSavingReport,
+  onDraftChange,
+  onSubmit,
+}) => {
+  const reportFiles = Array.isArray(report?.files) ? report.files : []
+
+  return (
+    <div className="grid gap-3 rounded-lg border border-sky-100 bg-sky-50/60 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-800">Отчет по заказу</p>
+        <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-slate-600">
+          {reportStatusLabels[report?.status] || 'Черновик'}
+        </span>
+      </div>
+      {report?.reviewComment ? (
+        <p className="rounded bg-white p-2 text-xs text-orange-700">
+          Комментарий: {report.reviewComment}
+        </p>
+      ) : null}
+      {!canSubmitReport ? (
+        <p className="rounded bg-white p-2 text-sm text-slate-600">
+          {reportAccessMessage}
+        </p>
+      ) : (
+        <>
+          <textarea
+            value={reportDraft.text}
+            onChange={(event) => onDraftChange({ text: event.target.value })}
+            rows={4}
+            className="w-full resize-y rounded-md border border-sky-100 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500"
+            placeholder="Напишите, как прошло мероприятие, что выполнено и что важно знать менеджеру."
+            disabled={report?.status === 'accepted'}
+          />
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              value={reportDraft.fileName}
+              onChange={(event) =>
+                onDraftChange({ fileName: event.target.value })
+              }
+              className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
+              placeholder="Название файла"
+              disabled={report?.status === 'accepted'}
+            />
+            <input
+              value={reportDraft.fileUrl}
+              onChange={(event) => onDraftChange({ fileUrl: event.target.value })}
+              className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
+              placeholder="Ссылка на файл"
+              disabled={report?.status === 'accepted'}
+            />
+          </div>
+        </>
+      )}
+      {reportFiles.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {reportFiles.map((file) => (
+            <a
+              key={file._id || file.url || file.name}
+              href={file.url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded border border-sky-200 bg-white px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50"
+            >
+              {file.name || 'Файл отчета'}
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {canSubmitReport && report?.status !== 'accepted' ? (
+        <button
+          type="button"
+          disabled={isSavingReport}
+          onClick={onSubmit}
+          className={primaryButtonClass}
+        >
+          {isSavingReport ? 'Отправляем...' : 'Отправить отчет'}
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
+const PerformerOrderViewModal = ({ order, onClose }) => {
+  if (!order) return null
+
+  const confirmationStatus = order.assignment?.confirmationStatus || 'pending'
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Просмотр заказа"
+      tone="party"
+      size="full"
+      footer={
+        <button
+          type="button"
+          className={secondaryButtonClass}
+          onClick={onClose}
+        >
+          Закрыть
+        </button>
+      }
+    >
+      <div className="grid gap-3">
+        <DetailSection title="Заказ">
+          <div className="grid gap-2">
+            <div>
+              <p className="text-sm font-semibold text-sky-700">
+                {formatCompanyTitle(order.companyTitle)}
+              </p>
+              <h3 className="mt-1 text-xl font-semibold text-slate-950">
+                {order.title || order.serviceTitle || 'Заказ'}
+              </h3>
+            </div>
+            <DetailLine label="Дата и время">
+              {formatDateTime(order.eventDate)}
+            </DetailLine>
+            <DetailLine label="Окончание">
+              {order.dateEnd ? formatDateTime(order.dateEnd) : 'Не указано'}
+            </DetailLine>
+            <DetailLine label="Место">{getAddressText(order)}</DetailLine>
+            <DetailLine label="Услуги">
+              {order.serviceTitles?.length > 0
+                ? order.serviceTitles.join(', ')
+                : order.serviceTitle || 'Не указаны'}
+            </DetailLine>
+            {order.performerComment ? (
+              <DetailLine label="Комментарий">
+                {order.performerComment}
+              </DetailLine>
+            ) : null}
+          </div>
+        </DetailSection>
+
+        <DetailSection title="Клиент">
+          <div className="grid gap-2 text-sm">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-semibold text-slate-500">Клиент:</span>
+              <span className="font-semibold text-slate-900">
+                {getClientName(order.client)}
+              </span>
+              <ContactsIconsButtons
+                user={order.client}
+                showChat
+                className="my-0 shrink-0"
+              />
+            </div>
+            {order.client?.phone ? (
+              <div className="text-slate-600">Телефон: {order.client.phone}</div>
+            ) : null}
+            {order.client?.email ? (
+              <div className="text-slate-600">Email: {order.client.email}</div>
+            ) : null}
+          </div>
+        </DetailSection>
+
+        {order.responsibleStaff ? (
+          <DetailSection title="Ответственный">
+            <div className="grid gap-2 text-sm">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-semibold text-slate-900">
+                  {getContactName(order.responsibleStaff, 'Администратор')}
+                </span>
+                <ContactsIconsButtons
+                  user={order.responsibleStaff}
+                  className="my-0 shrink-0"
+                />
+              </div>
+              {order.responsibleStaff?.phone ? (
+                <div className="text-slate-600">
+                  Телефон: {order.responsibleStaff.phone}
+                </div>
+              ) : null}
+              {order.responsibleStaff?.email ? (
+                <div className="text-slate-600">
+                  Email: {order.responsibleStaff.email}
+                </div>
+              ) : null}
+            </div>
+          </DetailSection>
+        ) : null}
+
+        <DetailSection title="Участие">
+          <div className="grid gap-2">
+            <DetailLine label="Статус">
+              {confirmationLabels[confirmationStatus] || confirmationStatus}
+            </DetailLine>
+            <DetailLine label="Выплата">
+              {formatMoney(order.assignment?.payoutAmount)}
+            </DetailLine>
+          </div>
+        </DetailSection>
+      </div>
+    </Modal>
+  )
+}
+
+const PerformerReportModal = ({
+  order,
+  onClose,
+  reportDraft,
+  onReportDraftChange,
+  onSaveReport,
+  isSavingReport,
+  canSubmitReport,
+  reportAccessMessage,
+}) => {
+  if (!order) return null
+
+  const report = order.assignment?.report || {}
+
+  return (
+    <Modal
+      open={true}
+      onClose={onClose}
+      title="Отчет по заказу"
+      tone="party"
+      size="lg"
+      footer={
+        <button
+          type="button"
+          className={secondaryButtonClass}
+          onClick={onClose}
+        >
+          Закрыть
+        </button>
+      }
+    >
+      <div className="grid gap-3">
+        <DetailSection title="Заказ">
+          <div className="grid gap-2">
+            <div>
+              <p className="text-sm font-semibold text-sky-700">
+                {formatCompanyTitle(order.companyTitle)}
+              </p>
+              <h3 className="mt-1 text-xl font-semibold text-slate-950">
+                {order.title || order.serviceTitle || 'Заказ'}
+              </h3>
+            </div>
+            <DetailLine label="Дата и время">
+              {formatDateTime(order.eventDate)}
+            </DetailLine>
+            <DetailLine label="Окончание">
+              {order.dateEnd ? formatDateTime(order.dateEnd) : 'Не указано'}
+            </DetailLine>
+            <DetailLine label="Место">{getAddressText(order)}</DetailLine>
+            <DetailLine label="Услуги">
+              {order.serviceTitles?.length > 0
+                ? order.serviceTitles.join(', ')
+                : order.serviceTitle || 'Не указаны'}
+            </DetailLine>
+            {order.performerComment ? (
+              <DetailLine label="Комментарий">
+                {order.performerComment}
+              </DetailLine>
+            ) : null}
+          </div>
+        </DetailSection>
+
+        <DetailSection title="Отчет">
+          <PerformerReportEditor
+            report={report}
+            reportDraft={reportDraft}
+            canSubmitReport={canSubmitReport}
+            reportAccessMessage={reportAccessMessage}
+            isSavingReport={isSavingReport}
+            onDraftChange={onReportDraftChange}
+            onSubmit={onSaveReport}
+          />
+        </DetailSection>
+      </div>
+    </Modal>
+  )
+}
+
 export default function PerformerWorkspaceClient() {
   const [orders, setOrders] = useState([])
   const [linkRequests, setLinkRequests] = useState([])
@@ -87,6 +402,8 @@ export default function PerformerWorkspaceClient() {
   const [pushPermission, setPushPermission] = useState('default')
   const [pushBusy, setPushBusy] = useState(false)
   const [pushMessage, setPushMessage] = useState('')
+  const [viewingOrderKey, setViewingOrderKey] = useState('')
+  const [reportOrderKey, setReportOrderKey] = useState('')
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -139,6 +456,11 @@ export default function PerformerWorkspaceClient() {
       if (!result?.ok) {
         throw new Error('Не удалось создать push-подписку')
       }
+      await fetch('/api/party/performer/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications: { pushEnabled: true } }),
+      })
       setPushMessage('Push-уведомления по назначениям подключены')
     } catch (pushError) {
       setError(pushError.message || 'Не удалось подключить push-уведомления')
@@ -192,6 +514,21 @@ export default function PerformerWorkspaceClient() {
         0
       ),
     [filteredOrders]
+  )
+
+  const viewingOrder = useMemo(
+    () =>
+      orders.find(
+        (order) => `${order._id}:${order.staffId}` === viewingOrderKey
+      ) || null,
+    [orders, viewingOrderKey]
+  )
+
+  const reportOrder = useMemo(
+    () =>
+      orders.find((order) => `${order._id}:${order.staffId}` === reportOrderKey) ||
+      null,
+    [orders, reportOrderKey]
   )
 
   const updateConfirmationStatus = async ({
@@ -319,6 +656,17 @@ export default function PerformerWorkspaceClient() {
     }
   }
 
+  const reportOrderReportDraft = reportOrder
+    ? getReportDraft(reportOrder)
+    : { text: '', fileName: '', fileUrl: '' }
+  const reportOrderCanSubmitReport = reportOrder && canEditReport(reportOrder)
+  const reportOrderReportAccessMessage = reportOrder
+    ? getReportAccessMessage(reportOrder)
+    : ''
+  const reportOrderIsSavingReport = reportOrder
+    ? savingReportKey === `${reportOrder._id}:${reportOrder.staffId}`
+    : false
+
   if (loading) {
     return (
       <section className="max-w-5xl px-5 py-10 mx-auto">
@@ -339,16 +687,6 @@ export default function PerformerWorkspaceClient() {
         Видны только назначенные заказы и сумма выплаты исполнителю. Полная
         клиентская смета здесь не показывается.
       </p>
-      <div className="flex flex-wrap gap-2 mt-5">
-        <a
-          href="/api/party/performer/calendar"
-          download="partycrm-performer-calendar.ics"
-          className={secondaryButtonClass}
-        >
-          Скачать календарь
-        </a>
-      </div>
-
       {error && (
         <div className="p-3 mt-5 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
           {error}
@@ -520,12 +858,7 @@ export default function PerformerWorkspaceClient() {
             order.assignment?.confirmationStatus || 'pending'
           const orderKey = `${order._id}:${order.staffId}`
           const isSaving = savingOrderId === orderKey
-          const report = order.assignment?.report || {}
-          const reportDraft = getReportDraft(order)
-          const canSubmitReport =
-            confirmationStatus === 'done' ||
-            ['submitted', 'revision_requested', 'accepted'].includes(report.status)
-          const isSavingReport = savingReportKey === orderKey
+          const hasStarted = isOrderStarted(order)
           return (
             <div
               key={orderKey}
@@ -543,6 +876,11 @@ export default function PerformerWorkspaceClient() {
                   <p className="mt-1 text-sm text-black/60">
                     {getAddressText(order)}
                   </p>
+                  {order.performerComment ? (
+                    <p className="mt-2 max-w-2xl whitespace-pre-wrap rounded bg-sky-50 p-2 text-sm text-slate-700">
+                      {order.performerComment}
+                    </p>
+                  ) : null}
                   {order.serviceTitles?.length > 0 ? (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium text-black/65">
@@ -569,6 +907,20 @@ export default function PerformerWorkspaceClient() {
                       className="my-0 shrink-0"
                     />
                   </div>
+                  {order.responsibleStaff ? (
+                    <div className="mt-2 flex min-h-[25px] flex-wrap items-center gap-x-2 gap-y-1 text-sm text-black/60">
+                      <span className="font-medium text-black/70">
+                        Ответственный:
+                      </span>
+                      <span className="min-w-0 truncate">
+                        {getContactName(order.responsibleStaff, 'Администратор')}
+                      </span>
+                      <ContactsIconsButtons
+                        user={order.responsibleStaff}
+                        className="my-0 shrink-0"
+                      />
+                    </div>
+                  ) : null}
                 </div>
                 <div className="sm:text-right">
                   <p className="text-sm text-black/55">Выплата</p>
@@ -579,6 +931,22 @@ export default function PerformerWorkspaceClient() {
                     {confirmationLabels[confirmationStatus] || confirmationStatus}
                   </p>
                   <div className="flex flex-col gap-2 mt-4 sm:items-end">
+                    <button
+                      type="button"
+                      onClick={() => setViewingOrderKey(orderKey)}
+                      className={secondaryButtonClass}
+                    >
+                      Подробнее
+                    </button>
+                    {hasStarted ? (
+                      <button
+                        type="button"
+                        onClick={() => setReportOrderKey(orderKey)}
+                        className={secondaryButtonClass}
+                      >
+                        Отчет
+                      </button>
+                    ) : null}
                     {confirmationStatus === 'pending' && (
                       <button
                         type="button"
@@ -595,7 +963,7 @@ export default function PerformerWorkspaceClient() {
                         Подтвердить участие
                       </button>
                     )}
-                    {confirmationStatus === 'confirmed' && isOrderStarted(order) && (
+                    {confirmationStatus === 'confirmed' && hasStarted && (
                       <button
                         type="button"
                         disabled={isSaving}
@@ -614,88 +982,30 @@ export default function PerformerWorkspaceClient() {
                   </div>
                 </div>
               </div>
-              {canSubmitReport && (
-                <div className="mt-4 grid gap-3 rounded-lg border border-sky-100 bg-sky-50/60 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-slate-800">
-                      Отчет по заказу
-                    </p>
-                    <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-slate-600">
-                      {report.status === 'accepted'
-                        ? 'Принят'
-                        : report.status === 'revision_requested'
-                          ? 'Нужны правки'
-                          : report.status === 'submitted'
-                            ? 'На проверке'
-                            : 'Черновик'}
-                    </span>
-                  </div>
-                  {report.reviewComment ? (
-                    <p className="rounded bg-white p-2 text-xs text-orange-700">
-                      Комментарий: {report.reviewComment}
-                    </p>
-                  ) : null}
-                  <textarea
-                    value={reportDraft.text}
-                    onChange={(event) =>
-                      updateReportDraft(orderKey, { text: event.target.value })
-                    }
-                    rows={4}
-                    className="w-full resize-y rounded-md border border-sky-100 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500"
-                    placeholder="Напишите, как прошло мероприятие, что выполнено и что важно знать менеджеру."
-                    disabled={report.status === 'accepted'}
-                  />
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <input
-                      value={reportDraft.fileName}
-                      onChange={(event) =>
-                        updateReportDraft(orderKey, { fileName: event.target.value })
-                      }
-                      className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
-                      placeholder="Название файла"
-                      disabled={report.status === 'accepted'}
-                    />
-                    <input
-                      value={reportDraft.fileUrl}
-                      onChange={(event) =>
-                        updateReportDraft(orderKey, { fileUrl: event.target.value })
-                      }
-                      className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
-                      placeholder="Ссылка на файл"
-                      disabled={report.status === 'accepted'}
-                    />
-                  </div>
-                  {Array.isArray(report.files) && report.files.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {report.files.map((file) => (
-                        <a
-                          key={file._id || file.url || file.name}
-                          href={file.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded border border-sky-200 bg-white px-2 py-1 text-xs font-semibold text-sky-700"
-                        >
-                          {file.name || 'Файл отчета'}
-                        </a>
-                      ))}
-                    </div>
-                  ) : null}
-                  {report.status !== 'accepted' && (
-                    <button
-                      type="button"
-                      disabled={isSavingReport}
-                      onClick={() => savePerformerReport(order)}
-                      className={primaryButtonClass}
-                    >
-                      {isSavingReport ? 'Отправляем...' : 'Отправить отчет'}
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
           )
         })}
       </div>
+      <PerformerOrderViewModal
+        order={viewingOrder}
+        onClose={() => setViewingOrderKey('')}
+      />
+      <PerformerReportModal
+        order={reportOrder}
+        onClose={() => setReportOrderKey('')}
+        reportDraft={reportOrderReportDraft}
+        onReportDraftChange={(patch) => {
+          if (!reportOrder) return
+          updateReportDraft(`${reportOrder._id}:${reportOrder.staffId}`, patch)
+        }}
+        onSaveReport={() => {
+          if (!reportOrder) return
+          savePerformerReport(reportOrder)
+        }}
+        isSavingReport={reportOrderIsSavingReport}
+        canSubmitReport={Boolean(reportOrderCanSubmitReport)}
+        reportAccessMessage={reportOrderReportAccessMessage}
+      />
     </section>
   )
 }

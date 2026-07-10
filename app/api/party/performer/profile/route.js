@@ -5,11 +5,6 @@ import {
   getPartyUserModel,
 } from '@server/partyModels'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
-import { specializationOptions } from '@helpers/partyHelpers'
-
-const allowedSpecializations = new Set(
-  specializationOptions.map((option) => option.value)
-)
 
 const sanitizeText = (value, maxLength = 100) =>
   typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
@@ -113,9 +108,7 @@ export async function PATCH(req) {
 
   const body = await req.json().catch(() => ({}))
   const userPatch = body.user && typeof body.user === 'object' ? body.user : {}
-  const staffPatchItems = Array.isArray(body.staff) ? body.staff : []
   const PartyUsers = await getPartyUserModel()
-  const PartyStaff = await getPartyStaffModel()
 
   const userUpdate = {}
   if (Object.prototype.hasOwnProperty.call(userPatch, 'firstName')) {
@@ -136,38 +129,6 @@ export async function PATCH(req) {
       }
     )
   }
-
-  const allowedStaffIds = new Set(
-    memberships
-      .filter((membership) => !membership.isDeveloperAccess)
-      .map((membership) => String(membership.staffId))
-  )
-  await Promise.all(
-    staffPatchItems
-      .filter((item) => allowedStaffIds.has(String(item?._id || item?.staffId)))
-      .map((item) => {
-        const specialization = allowedSpecializations.has(item.specialization)
-          ? item.specialization
-          : ''
-        return PartyStaff.updateOne(
-          {
-            _id: String(item._id || item.staffId),
-            authUserId: String(sessionUser._id),
-            status: { $ne: 'archived' },
-          },
-          {
-            $set: {
-              firstName: sanitizeText(item.firstName, 100),
-              secondName: sanitizeText(item.secondName, 100),
-              phone: sanitizeText(item.phone, 40),
-              email: sanitizeText(item.email, 160).toLowerCase(),
-              specialization,
-              description: sanitizeText(item.description, 1000),
-            },
-          }
-        )
-      })
-  )
 
   const updatedUser = await PartyUsers.findById(sessionUser._id).lean()
   const { staffItems, companiesById } = await loadProfileData({

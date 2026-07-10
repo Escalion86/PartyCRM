@@ -20,6 +20,8 @@ test('party order click opens a read-only order view modal', async () => {
   assert.match(viewModal, /Редактировать/)
   assert.match(viewModal, /\{order\?\.adminComment \? \(/)
   assert.match(viewModal, /<InfoLine label="Комментарий">\{order\.adminComment\}<\/InfoLine>/)
+  assert.match(viewModal, /order\?\.performerComment/)
+  assert.match(viewModal, /<InfoLine label="Для исполнителя">/)
   assert.match(viewModal, /Финансы/)
   assert.match(viewModal, /Доп\. события/)
 })

@@ -17,8 +17,10 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
       servicesIds: ['service-1'],
       serviceTitle: 'Анимация',
       clientId: 'client-1',
+      responsibleStaffId: 'admin-1',
       client: { name: 'Снапшот', phone: '79990000000' },
       adminComment: 'Взять костюм',
+      performerComment: 'Вход через служебный вход',
       internalNotes: 'Клиент просил скидку, не показывать',
       contractAmount: 30000,
       clientPayment: { totalAmount: 30000, status: 'paid' },
@@ -73,6 +75,20 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
         },
       ],
     ]),
+    staffById: new Map([
+      [
+        'company-1:admin-1',
+        {
+          _id: 'admin-1',
+          tenantId: 'company-1',
+          firstName: 'Анна',
+          secondName: 'Админова',
+          phone: '79991112233',
+          email: 'admin@example.com',
+          role: 'admin',
+        },
+      ],
+    ]),
   })
 
   assert.equal(result.assignment.payoutAmount, 5000)
@@ -81,6 +97,10 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
   assert.equal(result.client.telegram, 'client_handle')
   assert.equal(result.client.email, 'client@example.com')
   assert.deepEqual(result.serviceTitles, ['Бумажное шоу', 'Анимация'])
+  assert.equal(result.performerComment, 'Вход через служебный вход')
+  assert.equal(result.responsibleStaff.name, 'Админова Анна')
+  assert.equal(result.responsibleStaff.phone, '79991112233')
+  assert.equal(result.responsibleStaff.email, 'admin@example.com')
   assert.equal(Object.hasOwn(result, 'contractAmount'), false)
   assert.equal(Object.hasOwn(result, 'clientPayment'), false)
   assert.equal(Object.hasOwn(result, 'transactions'), false)

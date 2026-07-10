@@ -1,3 +1,5 @@
+import { Schema } from 'mongoose'
+
 const partyUsersSchema = {
   phone: {
     type: String,
@@ -47,6 +49,18 @@ const partyUsersSchema = {
   performerOnboardingCompletedAt: {
     type: Date,
     default: null,
+  },
+  performerSettings: {
+    googleCalendar: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
+    notifications: {
+      pushEnabled: {
+        type: Boolean,
+        default: true,
+      },
+    },
   },
   status: {
     type: String,

@@ -4,6 +4,7 @@ export const sanitizePartyOrderForPerformer = ({
   locationsById,
   clientsById,
   servicesById = new Map(),
+  staffById = new Map(),
 }) => {
   const staffId = String(membership.staffId)
   const assignment = (order.assignedStaff ?? []).find(
@@ -14,6 +15,12 @@ export const sanitizePartyOrderForPerformer = ({
     : ''
   const location = locationKey ? locationsById.get(locationKey) : null
   const client = order.clientId ? clientsById.get(String(order.clientId)) : null
+  const responsibleStaffKey = order.responsibleStaffId
+    ? `${String(order.tenantId)}:${String(order.responsibleStaffId)}`
+    : ''
+  const responsibleStaff = responsibleStaffKey
+    ? staffById.get(responsibleStaffKey)
+    : null
   const serviceTitles = Array.isArray(order.servicesIds)
     ? order.servicesIds
         .map((serviceId) => servicesById.get(String(serviceId))?.title)
@@ -45,6 +52,24 @@ export const sanitizePartyOrderForPerformer = ({
     customAddress: order.customAddress || '',
     serviceTitle: order.serviceTitle || '',
     serviceTitles,
+    performerComment: order.performerComment || '',
+    responsibleStaff: responsibleStaff
+      ? {
+          _id: String(responsibleStaff._id),
+          firstName: responsibleStaff.firstName || '',
+          secondName: responsibleStaff.secondName || '',
+          name:
+            [responsibleStaff.secondName, responsibleStaff.firstName]
+              .filter(Boolean)
+              .join(' ') ||
+            responsibleStaff.phone ||
+            responsibleStaff.email ||
+            'Администратор',
+          phone: responsibleStaff.phone || '',
+          email: responsibleStaff.email || '',
+          role: responsibleStaff.role || 'admin',
+        }
+      : null,
     client: {
       _id: client?._id ? String(client._id) : '',
       firstName: client?.firstName || order.client?.name || '',

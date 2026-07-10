@@ -4,6 +4,7 @@ import {
   getPartyLocationModel,
   getPartyOrderModel,
   getPartyServiceModel,
+  getPartyStaffModel,
 } from '@server/partyModels'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { isValidObjectId } from '@server/partyApi'
@@ -66,6 +67,7 @@ export async function GET() {
   const PartyLocations = await getPartyLocationModel()
   const PartyClients = await getPartyClientModel()
   const PartyServices = await getPartyServiceModel()
+  const PartyStaff = await getPartyStaffModel()
   const locations = locationFilters.length
     ? await PartyLocations.find({
         $or: locationFilters.map((pair) => ({
@@ -111,6 +113,29 @@ export async function GET() {
         .select('_id title')
         .lean()
     : []
+  const responsibleStaffFilters = [
+    ...new Map(
+      orders
+        .map((order) => ({
+          tenantId: String(order.tenantId),
+          staffId: String(order.responsibleStaffId || ''),
+        }))
+        .filter((pair) => pair.staffId)
+        .map((pair) => [`${pair.tenantId}:${pair.staffId}`, pair])
+    ).values(),
+  ]
+  const responsibleStaff = responsibleStaffFilters.length
+    ? await PartyStaff.find({
+        $or: responsibleStaffFilters.map((pair) => ({
+          _id: pair.staffId,
+          tenantId: pair.tenantId,
+          role: { $in: ['owner', 'admin'] },
+          status: { $ne: 'archived' },
+        })),
+      })
+        .select('_id tenantId firstName secondName phone email role')
+        .lean()
+    : []
   const locationsById = new Map(
     locations.map((location) => [
       `${String(location.tenantId)}:${String(location._id)}`,
@@ -122,6 +147,12 @@ export async function GET() {
   )
   const servicesById = new Map(
     services.map((service) => [String(service._id), service])
+  )
+  const staffById = new Map(
+    responsibleStaff.map((person) => [
+      `${String(person.tenantId)}:${String(person._id)}`,
+      person,
+    ])
   )
   const membershipsByStaffId = new Map(
     activeMemberships.map((membership) => [
@@ -147,6 +178,7 @@ export async function GET() {
           locationsById,
           clientsById,
           servicesById,
+          staffById,
         })
       })
       .filter(Boolean),
