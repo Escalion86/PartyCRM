@@ -49,6 +49,7 @@ import {
 } from '@helpers/partyOnboarding'
 import { matchesPartyOrderFinanceFilter } from '@helpers/partyOrderFinanceFilters'
 import { getOrderNonPayoutExpenseTotal } from '@helpers/partyOrderTransactions'
+import PartyStatisticsDashboard from '@components/party/statistics/PartyStatisticsDashboard'
 
 const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
 
@@ -1601,7 +1602,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   return (
     <section className="h-full min-h-full bg-white">
       {/* Main content */}
-      <main className="mx-auto max-w-6xl px-5 py-8">
+      <main className="mx-auto w-full min-w-0 max-w-6xl px-5 py-8">
         {companySelectMemberships.length > 1 && (
           <div className="mb-6 flex flex-col gap-2 rounded-lg border border-sky-100 bg-sky-50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -2039,6 +2040,16 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
               </div>
             </div>
           </div>
+        )}
+
+        {section === 'statistics' && !canUseStatistics && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
+            Статистика недоступна на текущем тарифе компании.
+          </div>
+        )}
+
+        {section === 'statistics' && canUseStatistics && (
+          <PartyStatisticsDashboard orders={orders} services={services} clients={clients} companyId={activeCompanyId} />
         )}
 
         {section === 'locations' && (

@@ -48,12 +48,16 @@ export async function GET() {
         .map((pair) => [`${pair.tenantId}:${pair.locationId}`, pair])
     ).values(),
   ]
-  const clientIds = [
-    ...new Set(
+  const clientFilters = [
+    ...new Map(
       orders
-        .map((order) => String(order.clientId || ''))
-        .filter(Boolean)
-    ),
+        .map((order) => ({
+          tenantId: String(order.tenantId || ''),
+          clientId: String(order.clientId || ''),
+        }))
+        .filter((pair) => pair.tenantId && pair.clientId)
+        .map((pair) => [`${pair.tenantId}:${pair.clientId}`, pair])
+    ).values(),
   ]
 
   const PartyLocations = await getPartyLocationModel()
@@ -67,10 +71,13 @@ export async function GET() {
           })),
         }).lean()
       : [],
-    clientIds.length
+    clientFilters.length
       ? PartyClients.find({
-          _id: { $in: clientIds },
-          status: { $ne: 'archived' },
+          $or: clientFilters.map((pair) => ({
+            _id: pair.clientId,
+            tenantId: pair.tenantId,
+            status: { $ne: 'archived' },
+          })),
         }).lean()
       : [],
   ])
@@ -82,7 +89,10 @@ export async function GET() {
     ])
   )
   const clientsById = new Map(
-    clients.map((client) => [String(client._id), client])
+    clients.map((client) => [
+      `${String(client.tenantId)}:${String(client._id)}`,
+      client,
+    ])
   )
   const membershipsByStaffId = new Map(
     activeMemberships.map((membership) => [

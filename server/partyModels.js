@@ -75,6 +75,8 @@ export const getPartyStaffModel = () =>
       schema.index({ tenantId: 1, email: 1 })
       schema.index({ tenantId: 1, specialization: 1, status: 1 })
       schema.index({ tenantId: 1, linkStatus: 1 })
+      schema.index({ authUserId: 1, status: 1, role: 1, createdAt: 1 })
+      schema.index({ linkedAuthUserId: 1, status: 1 })
     },
   })
 
@@ -146,6 +148,7 @@ export const getPartyOrderModel = () =>
       schema.index({ tenantId: 1, status: 1, eventDate: -1 })
       schema.index({ tenantId: 1, locationId: 1, eventDate: 1 })
       schema.index({ tenantId: 1, 'assignedStaff.staffId': 1, eventDate: 1 })
+      schema.index({ tenantId: 1, status: 1, 'additionalEvents.date': 1 })
     },
   })
 
@@ -201,6 +204,7 @@ export const getPartyTransactionModel = () =>
       schema.index({ tenantId: 1, date: -1 })
       schema.index({ tenantId: 1, orderId: 1, date: -1 })
       schema.index({ tenantId: 1, clientId: 1, date: -1 })
+      schema.index({ tenantId: 1, staffId: 1, date: -1 })
       schema.index({ tenantId: 1, type: 1, date: -1 })
     },
   })

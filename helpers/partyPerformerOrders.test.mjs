@@ -55,8 +55,9 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
     ]),
     clientsById: new Map([
       [
-        'client-1',
+        'company-1:client-1',
         {
+          tenantId: 'company-1',
           firstName: 'Иван',
           secondName: 'Клиент',
           phone: '78880000000',

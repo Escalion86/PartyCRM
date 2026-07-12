@@ -12,6 +12,7 @@ import {
   buildPartyOrderCalendarItems,
   toPartyOrderCalendarMonthStart,
 } from './partyOrderCalendarViewModel'
+import PartyCalendarDayModal from './PartyCalendarDayModal'
 
 const getOrderToneClassName = (item) => {
   if (item.type === 'additional') {
@@ -59,6 +60,7 @@ export default function PartyOrdersCalendar({
   const [monthCursor, setMonthCursor] = useState(() =>
     toPartyOrderCalendarMonthStart(new Date())
   )
+  const [selectedDay, setSelectedDay] = useState(null)
 
   const monthGridDays = useMemo(
     () => buildPartyOrderCalendarGrid(monthCursor),
@@ -73,6 +75,10 @@ export default function PartyOrdersCalendar({
       new Map(locations.map((location) => [String(location._id), location])),
     [locations]
   )
+  const ordersById = useMemo(
+    () => new Map(orders.map((order) => [String(order._id), order])),
+    [orders]
+  )
 
   const today = new Date()
   const todayStart = new Date(
@@ -81,9 +87,14 @@ export default function PartyOrdersCalendar({
     today.getDate()
   ).getTime()
 
-  const openCalendarItem = (item) => {
-    const order = findOrderById(orders, item.orderId)
-    if (order) onView?.(order)
+  const openCalendarDay = (day, items) => {
+    if (items.length === 0) return
+    setSelectedDay({ ...day, items })
+  }
+
+  const openOrder = (order) => {
+    setSelectedDay(null)
+    onView?.(order)
   }
 
   return (
@@ -170,6 +181,13 @@ export default function PartyOrdersCalendar({
             return (
               <div
                 key={day.key}
+                role={hasDayContent ? 'button' : undefined}
+                tabIndex={hasDayContent ? 0 : undefined}
+                aria-label={
+                  hasDayContent
+                    ? `Открыть события за ${day.date.toLocaleDateString('ru-RU')}`
+                    : undefined
+                }
                 className={`event-month-calendar__day min-h-[72px] border-r border-b p-1 ${
                   day.inCurrentMonth
                     ? isPastDay
@@ -179,6 +197,13 @@ export default function PartyOrdersCalendar({
                         : 'event-month-calendar__day--current'
                     : 'event-month-calendar__day--outside'
                 } ${hasDayContent ? 'event-month-calendar__day--interactive' : ''}`}
+                onClick={() => openCalendarDay(day, dayItems)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    openCalendarDay(day, dayItems)
+                  }
+                }}
               >
                 <div
                   className={`event-month-calendar__day-number mb-1 inline-flex h-5 min-w-5 items-center justify-center rounded px-1 text-xs font-semibold ${
@@ -203,16 +228,14 @@ export default function PartyOrdersCalendar({
                     const title = time ? `${time} ${item.title}` : item.title
 
                     return (
-                      <button
+                      <div
                         key={`${day.key}-${item.type}-${item.orderId}-${index}`}
-                        type="button"
                         className={`flex w-full cursor-pointer items-center gap-1 truncate rounded border px-1 py-0.5 text-left text-[10px] leading-tight ${getOrderToneClassName(item)}`}
                         title={
                           location?.title
                             ? `${title} · ${location.title}`
                             : title
                         }
-                        onClick={() => openCalendarItem(item)}
                       >
                         <span
                           className={`h-1.5 w-1.5 shrink-0 rounded-full ${
@@ -222,7 +245,7 @@ export default function PartyOrdersCalendar({
                           }`}
                         />
                         <span className="min-w-0 truncate">{title}</span>
-                      </button>
+                      </div>
                     )
                   })}
                   {extraCount > 0 ? (
@@ -236,6 +259,15 @@ export default function PartyOrdersCalendar({
           })}
         </div>
       </div>
+
+      <PartyCalendarDayModal
+        day={selectedDay}
+        items={selectedDay?.items}
+        ordersById={ordersById}
+        locationsById={locationsById}
+        onClose={() => setSelectedDay(null)}
+        onOpenOrder={openOrder}
+      />
     </div>
   )
 }

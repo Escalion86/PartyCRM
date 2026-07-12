@@ -324,6 +324,8 @@ test('party performer routes expose assignments and allow confirming and complet
   assert.match(listSource, /isValidObjectId\(membership\.staffId\)/)
   assert.match(listSource, /sanitizePartyOrderForPerformer/)
   assert.match(listSource, /'assignedStaff\.staffId':\s*String\(membership\.staffId\)/)
+  assert.match(listSource, /tenantId:\s*pair\.tenantId/)
+  assert.match(listSource, /String\(client\.tenantId\)/)
   assert.match(statusSource, /ALLOWED_STATUSES\s*=\s*new Set\(\['confirmed', 'declined', 'done'\]\)/)
   assert.match(statusSource, /getPartyMembershipContext/)
   assert.match(statusSource, /partycrm_performer_staff_access_denied/)
@@ -332,4 +334,12 @@ test('party performer routes expose assignments and allow confirming and complet
   assert.match(workspaceSource, /Отметить выполненным/)
   assert.match(workspaceSource, /confirmationStatus:\s*'confirmed'/)
   assert.match(workspaceSource, /confirmationStatus:\s*'done'/)
+})
+
+test('party model indexes cover membership, reminders and performer payouts', async () => {
+  const source = await route('server/partyModels.js')
+
+  assert.match(source, /authUserId:\s*1,\s*status:\s*1,\s*role:\s*1,\s*createdAt:\s*1/)
+  assert.match(source, /tenantId:\s*1,\s*status:\s*1,\s*'additionalEvents\.date':\s*1/)
+  assert.match(source, /tenantId:\s*1,\s*staffId:\s*1,\s*date:\s*-1/)
 })

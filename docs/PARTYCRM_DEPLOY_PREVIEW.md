@@ -58,6 +58,7 @@ PARTYCRM_SHARED_RUNTIME=true
 PARTYCRM_MONGODB_URI=...
 PARTYCRM_MONGODB_DBNAME=...
 AUTH_SECRET=...
+PARTYCRM_HEALTH_SECRET=...
 ```
 
 Для отдельного PartyCRM process допустим fallback на обычные
@@ -139,6 +140,8 @@ https://partycrm.ru/api/party/health
 
 - `200`, если PartyCRM DB настроена и доступна;
 - `503 partycrm_db_unavailable`, если env/БД не настроены.
+- публичный ответ не раскрывает имя БД и размеры коллекций;
+- расширенный ответ для внутреннего мониторинга доступен с заголовком `x-health-secret: <PARTYCRM_HEALTH_SECRET>`.
 
 5. PartyCRM текущий доступ:
 

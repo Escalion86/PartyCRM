@@ -6,6 +6,7 @@ import {
   faBriefcase,
   faCalendarCheck,
   faChartLine,
+  faChartColumn,
   faGear,
   faHome,
   faLocationDot,
@@ -42,6 +43,7 @@ const companyMenu = [
   { href: '/company/calls', label: 'Звонки', icon: faPhone },
   { href: '/company/clients', label: 'Клиенты', icon: faAddressBook },
   { href: '/company/finance', label: 'Финансы', icon: faChartLine },
+  { href: '/company/statistics', label: 'Статистика', icon: faChartColumn },
   { href: '/company/services', label: 'Услуги', icon: faStar },
   { href: '/company/locations', label: 'Точки', icon: faLocationDot },
   { href: '/company/staff', label: 'Сотрудники', icon: faUserGroup },
@@ -465,7 +467,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
         </nav>
       </aside>
 
-      <section className="grid min-h-0 grid-rows-[auto_1fr]">
+      <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
         <div>
           <header className="relative z-20 flex h-16 items-center justify-between gap-3 border-b border-sky-100 bg-white px-4 md:bg-slate-950 md:text-white">
             <div className="flex min-w-0 items-center gap-3">
@@ -657,7 +659,9 @@ export default function PartyAppShell({ variant = 'company', children }) {
           )}
         </div>
 
-        <div className="min-h-0 overflow-y-auto">{children}</div>
+        <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
+          {children}
+        </div>
       </section>
     </main>
   )

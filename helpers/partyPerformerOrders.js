@@ -14,7 +14,9 @@ export const sanitizePartyOrderForPerformer = ({
     ? `${String(order.tenantId)}:${String(order.locationId)}`
     : ''
   const location = locationKey ? locationsById.get(locationKey) : null
-  const client = order.clientId ? clientsById.get(String(order.clientId)) : null
+  const client = order.clientId
+    ? clientsById.get(`${String(order.tenantId)}:${String(order.clientId)}`)
+    : null
   const responsibleStaffKey = order.responsibleStaffId
     ? `${String(order.tenantId)}:${String(order.responsibleStaffId)}`
     : ''

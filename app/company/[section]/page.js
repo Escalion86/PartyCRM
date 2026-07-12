@@ -9,6 +9,7 @@ const sectionTitles = {
   calls: 'Звонки',
   clients: 'Клиенты',
   finance: 'Финансы',
+  statistics: 'Статистика',
   services: 'Услуги',
   locations: 'Точки',
   staff: 'Сотрудники',
