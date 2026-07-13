@@ -1,141 +1,132 @@
-﻿'use client'
+'use client'
 
 import { apiJson } from '@helpers/apiClient'
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
+import { Icon } from './PartyLandingPreview'
 
 const formatPrice = (price) => {
   if (!price || Number(price) === 0) return 'Бесплатно'
-  return `${Number(price).toLocaleString('ru-RU')} ₽/мес`
+  return Number(price).toLocaleString('ru-RU')
 }
 
-export default function PartyPricingSection() {
+const normalizePlan = (plan) => ({
+  ...plan,
+  id: plan.id || plan._id,
+  subtitle: plan.subtitle || plan.description || '',
+  features: Array.isArray(plan.features) ? plan.features : [],
+})
+
+export default function PartyPricingSection({ fallbackPlans = [] }) {
   const [tariffs, setTariffs] = useState(null)
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let active = true
+
     const fetchTariffs = async () => {
       try {
-        const res = await apiJson('/api/party/tariffs')
-        if (res?.success && Array.isArray(res.data)) {
-          setTariffs(res.data.filter((t) => !t.hidden))
+        const response = await apiJson('/api/party/tariffs')
+        if (active && response?.success && Array.isArray(response.data)) {
+          setTariffs(response.data.filter((tariff) => !tariff.hidden))
         }
-      } catch (err) {
-        console.error('Ошибка загрузки тарифов', err)
+      } catch (error) {
+        console.error('Ошибка загрузки тарифов', error)
       }
-      setLoading(false)
     }
+
     fetchTariffs()
+
+    return () => {
+      active = false
+    }
   }, [])
+
+  const plans = useMemo(() => {
+    const source = tariffs?.length ? tariffs : fallbackPlans
+    return source.map(normalizePlan)
+  }, [fallbackPlans, tariffs])
 
   return (
     <>
-      <div className="flex flex-col items-start gap-6 landing-reveal sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sky-600 text-sm font-semibold tracking-[0.3em] uppercase">
-            Тарифы
-          </p>
-          <h2 className="mt-4 text-3xl font-semibold text-black font-futuraPT">
-            Выберите формат работы
-          </h2>
-          <p className="mt-3 text-sm text-gray-600">
-            Подберите вариант под масштаб вашего агентства. При оплате за
-            год - скидка 25%.
-          </p>
-        </div>
-        <Link
-          href="/party/login?callbackUrl=/party/entry"
-          className="cursor-pointer ui-btn party-cta-primary"
-        >
-          Попробовать бесплатно
-        </Link>
+      <div className="mx-auto max-w-3xl text-center">
+        <p className="party-section-label">Тарифы</p>
+        <h2 className="party-section-title mt-3">Начните с нужного масштаба</h2>
+        <p className="party-section-copy mt-4">
+          14 дней бесплатно. При оплате за год — скидка 25%.
+        </p>
       </div>
 
-      <div className="grid gap-6 mt-8 lg:grid-cols-3">
-        {loading ? (
-          <>
-            {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="rounded-3xl border border-gray-200/70 bg-white p-8 shadow-lg animate-pulse"
-              >
-                <div className="h-6 bg-gray-200 rounded w-1/2" />
-                <div className="h-4 mt-2 bg-gray-100 rounded w-3/4" />
-                <div className="h-8 mt-4 bg-gray-200 rounded w-1/3" />
-                <div className="mt-6 space-y-3">
-                  {[1, 2, 3].map((j) => (
-                    <div key={j} className="flex items-center gap-3">
-                      <div className="w-2 h-2 rounded-full bg-gray-200" />
-                      <div className="h-4 bg-gray-100 rounded w-2/3" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </>
-        ) : tariffs && tariffs.length > 0 ? (
-          tariffs.map((tariff, index) => {
-            const isPopular =
-              index === Math.floor(tariffs.length / 2) && tariffs.length === 3
-            return (
-              <div
-                key={tariff._id}
-                className={`landing-reveal rounded-3xl border p-8 shadow-lg ${
-                  isPopular
-                    ? 'home-panel border-sky-300/50 from-sky-50 bg-gradient-to-br via-white to-white'
-                    : 'home-panel border-gray-200/70 bg-white'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-2xl font-semibold text-black font-futuraPT">
-                    {tariff.title}
-                  </h3>
-                  {isPopular && (
-                    <span className="px-3 py-1 text-xs font-semibold text-white rounded-full bg-sky-600">
-                      Популярный
-                    </span>
-                  )}
-                </div>
-                {tariff.subtitle && (
-                  <p className="mt-1 text-sm text-gray-500">{tariff.subtitle}</p>
-                )}
-                {tariff.description && (
-                  <p className="mt-1 text-xs text-gray-400">{tariff.description}</p>
-                )}
-                <div className="mt-4">
-                  <span className="text-3xl font-bold text-black">
-                    {formatPrice(tariff.price)}
+      <div className="mt-12 grid gap-5 lg:grid-cols-3">
+        {plans.map((plan, index) => {
+          const isPopular =
+            plans.length === 3
+              ? index === 1
+              : String(plan.title).toLowerCase().includes('проф')
+
+          return (
+            <article
+              key={plan.id || plan.title}
+              className={`party-pricing-card ${
+                isPopular ? 'party-pricing-card--popular' : ''
+              }`}
+            >
+              <div className="flex min-h-7 items-center justify-between gap-3">
+                <h3 className="text-2xl font-bold tracking-[-0.03em] text-[#102338]">
+                  {plan.title}
+                </h3>
+                {isPopular && (
+                  <span className="rounded-md bg-[#e5f4fc] px-2.5 py-1 text-[11px] font-semibold text-[#087fbd]">
+                    Чаще выбирают
                   </span>
-                  {tariff.price > 0 && (
-                    <span className="ml-2 text-sm text-gray-500">
-                      {Math.round(
-                        Number(tariff.price) * 12 * 0.75
-                      ).toLocaleString('ru-RU')}{' '}
-                      ₽/год
-                    </span>
-                  )}
-                </div>
-                {tariff.features && tariff.features.length > 0 && (
-                  <ul className="mt-6 space-y-3 text-sm text-gray-700">
-                    {tariff.features.map((name) => (
-                      <li key={name} className="flex items-start gap-3">
-                        <span className="w-2 h-2 mt-1 rounded-full bg-sky-500" />
-                        <span className="font-medium text-gray-900">
-                          {name}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
                 )}
               </div>
-            )
-          })
-        ) : (
-          <div className="col-span-full p-8 text-center text-gray-400 bg-white border border-gray-200/70 rounded-3xl">
-            Тарифы скоро появятся
-          </div>
-        )}
+
+              <div className="mt-5 flex items-end gap-2 text-[#102338]">
+                <span className="text-4xl font-bold tracking-[-0.04em] sm:text-5xl">
+                  {formatPrice(plan.price)}
+                </span>
+                {Number(plan.price) > 0 && (
+                  <span className="pb-1 text-base font-semibold text-[#64748a]">
+                    ₽/мес
+                  </span>
+                )}
+              </div>
+              <p className="mt-3 min-h-6 text-sm text-[#607089]">
+                {plan.subtitle || 'Для вашей команды'}
+              </p>
+
+              <div className="my-6 h-px bg-[#dfe7ed]" />
+
+              <ul className="min-h-44 space-y-4 text-sm text-[#33465e]">
+                {plan.features.slice(0, 6).map((feature) => (
+                  <li key={feature} className="flex items-start gap-3">
+                    <Icon
+                      name="check"
+                      className="mt-0.5 h-4 w-4 shrink-0 text-[#0b94d4]"
+                    />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Link
+                href="/party/login?callbackUrl=/party/entry"
+                className="party-button party-button--primary mt-7 w-full cursor-pointer"
+              >
+                Попробовать бесплатно
+              </Link>
+            </article>
+          )
+        })}
       </div>
+
+      <p className="mt-8 flex items-center justify-center gap-2 text-center text-sm text-[#52627a]">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full border border-[#b9ddf0] text-[#0b94d4]">
+          <Icon name="check" className="h-4 w-4" />
+        </span>
+        Можно начать без карты. Данные останутся доступны после тестового периода.
+      </p>
     </>
   )
 }
