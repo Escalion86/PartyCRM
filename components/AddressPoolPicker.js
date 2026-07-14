@@ -38,10 +38,10 @@ const AddressPoolPicker = ({
   saveButtonLabel = 'Сохранить в пул',
   savedLabel = '✓ В пуле',
   manualToggleTitles,
+  openManualInputWhenPoolEmpty = false,
 }) => {
   const isParty = tone === 'party'
   const [siteSettings, setSiteSettings] = useAtom(siteSettingsAtom)
-  const [showManualInput, setShowManualInput] = useState(false)
 
   const poolAddresses = useMemo(
     () =>
@@ -49,6 +49,10 @@ const AddressPoolPicker = ({
         ? controlledPoolAddresses
         : siteSettings?.addresses ?? [],
     [controlledPoolAddresses, siteSettings?.addresses]
+  )
+
+  const [showManualInput, setShowManualInput] = useState(
+    openManualInputWhenPoolEmpty && poolAddresses.length === 0
   )
 
   const poolOptions = useMemo(
@@ -183,6 +187,7 @@ const AddressPoolPicker = ({
                       name={saveButtonLabel}
                       onClick={handleSaveToPool}
                       thin
+                      style={{ color: isParty ? '#0369a1' : '#15803d' }}
                       className={
                         isParty
                           ? 'border border-sky-200 bg-white text-sky-700 hover:bg-sky-100'

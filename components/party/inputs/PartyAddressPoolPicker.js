@@ -120,6 +120,7 @@ export default function PartyAddressPoolPicker({
       label="Адрес клиента"
       comboBoxLabel="Сохраненные адреса"
       emptyComboBoxPlaceholder="Не выбран"
+      openManualInputWhenPoolEmpty
       saveButtonLabel={saving ? 'Сохранение...' : 'Сохранить адрес'}
       savedLabel="✓ Уже в пуле"
     />
