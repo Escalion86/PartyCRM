@@ -4,6 +4,7 @@ import PhoneInput from '@components/PhoneInput'
 import Input from '@components/Input'
 import Select from '@components/Select'
 import Modal from '@components/Modal'
+import useUnsavedChanges from '@helpers/useUnsavedChanges'
 
 const ALL_ROLE_OPTIONS = [
   { value: 'performer', label: 'Исполнитель' },
@@ -43,16 +44,17 @@ export default function StaffModal({
   isEdit,
   contextRole = '',
 }) {
+  const hasUnsavedChanges = useUnsavedChanges(staffDraft, open)
   const handleChange = (field) => (value) => {
     setStaffDraft((prev) => ({ ...prev, [field]: value }))
   }
 
-  const footerContent = (
+  const footerContent = ({ requestClose }) => (
     <div className="flex gap-2">
       <button
         type="button"
         className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-        onClick={onClose}
+        onClick={requestClose}
       >
         Отмена
       </button>
@@ -75,6 +77,7 @@ export default function StaffModal({
     <Modal
       open={open}
       onClose={onClose}
+      hasUnsavedChanges={hasUnsavedChanges}
       title={title}
       tone="party"
       size="full"

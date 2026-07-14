@@ -10,6 +10,7 @@ import {
   normalizeAddressPoolString,
   normalizeTownList,
 } from '@helpers/addressPool'
+import useUnsavedChanges from '@helpers/useUnsavedChanges'
 
 export default function LocationModal({
   open,
@@ -24,6 +25,7 @@ export default function LocationModal({
   activeCompanyId,
   onCompanySettingsChange,
 }) {
+  const hasUnsavedChanges = useUnsavedChanges(locationDraft, open)
   const handleChange = (field) => (value) => {
     if (field.includes('.')) {
       const [parent, child] = field.split('.')
@@ -61,13 +63,13 @@ export default function LocationModal({
     }
   }
 
-  const footerContent = (
+  const footerContent = ({ requestClose }) => (
     <div className="flex gap-2">
       {isEdit && (
         <button
           type="button"
           className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-          onClick={onClose}
+          onClick={requestClose}
         >
           Отмена
         </button>
@@ -87,6 +89,7 @@ export default function LocationModal({
     <Modal
       open={open}
       onClose={onClose}
+      hasUnsavedChanges={hasUnsavedChanges}
       title={title}
       tone="party"
       size="full"

@@ -18,6 +18,7 @@ import PartyAddressBlock from '@components/party/inputs/PartyAddressBlock'
 import PartyDictionaryPicker from '@components/party/inputs/PartyDictionaryPicker'
 import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
 import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
+import useUnsavedChanges from '@helpers/useUnsavedChanges'
 
 const similarReasonLabels = {
   phone: 'телефон',
@@ -83,14 +84,14 @@ export function ClientViewModal({
     : []
   const hasLegalRequisites = Boolean(
     client?.legalName ||
-      client?.legalAddress ||
-      client?.inn ||
-      client?.kpp ||
-      client?.ogrn ||
-      client?.bankName ||
-      client?.bik ||
-      client?.checkingAccount ||
-      client?.correspondentAccount
+    client?.legalAddress ||
+    client?.inn ||
+    client?.kpp ||
+    client?.ogrn ||
+    client?.bankName ||
+    client?.bik ||
+    client?.checkingAccount ||
+    client?.correspondentAccount
   )
 
   return (
@@ -340,6 +341,7 @@ export function ClientFormModal({
   onSimilarClientSelect,
   onMergeSimilarClient,
 }) {
+  const hasUnsavedChanges = useUnsavedChanges(clientDraft, open)
   const preferredChannelOptions = [
     { value: '', label: 'Не выбран' },
     { value: 'phone', label: 'Телефон' },
@@ -364,14 +366,14 @@ export function ClientFormModal({
 
   const hasLegalRequisites = Boolean(
     clientDraft.legalName ||
-      clientDraft.legalAddress ||
-      clientDraft.inn ||
-      clientDraft.kpp ||
-      clientDraft.ogrn ||
-      clientDraft.bankName ||
-      clientDraft.bik ||
-      clientDraft.checkingAccount ||
-      clientDraft.correspondentAccount
+    clientDraft.legalAddress ||
+    clientDraft.inn ||
+    clientDraft.kpp ||
+    clientDraft.ogrn ||
+    clientDraft.bankName ||
+    clientDraft.bik ||
+    clientDraft.checkingAccount ||
+    clientDraft.correspondentAccount
   )
   const isLegalEntity = clientDraft.isLegalEntity ?? hasLegalRequisites
 
@@ -477,12 +479,12 @@ export function ClientFormModal({
     onSubmit(getNormalizedDraft())
   }
 
-  const footerContent = (
+  const footerContent = ({ requestClose }) => (
     <div className="flex gap-2">
       <button
         type="button"
         className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
-        onClick={onClose}
+        onClick={requestClose}
       >
         Отмена
       </button>
@@ -501,6 +503,7 @@ export function ClientFormModal({
     <Modal
       open={open}
       onClose={onClose}
+      hasUnsavedChanges={hasUnsavedChanges}
       title={title}
       tone="party"
       size="full"

@@ -45,6 +45,7 @@ import {
 } from '@helpers/partyOrderTransactions'
 import { usePartyTransactionsQuery } from '@helpers/usePartyTransactionsQuery'
 import getPersonFullName from '@helpers/getPersonFullName'
+import useUnsavedChanges from '@helpers/useUnsavedChanges'
 
 // Нормализация телефона: цифры 11 символов, 8xxx → 7xxx
 const normalizePhone = (value) => {
@@ -145,6 +146,11 @@ export default function OrderModal({
 
   // Ошибка отправки формы (показывается внизу модального окна)
   const [submitError, setSubmitError] = useState('')
+  const hasUnsavedChanges = useUnsavedChanges(orderDraft, open)
+  const hasUnsavedAdditionalEventChanges = useUnsavedChanges(
+    editingAdditionalEventDraft,
+    editingAdditionalEvent !== null
+  )
 
   const selectedClient = orderDraft.clientId
     ? (clientsById.get(String(orderDraft.clientId)) ?? null)
@@ -671,7 +677,7 @@ export default function OrderModal({
   }, [orderDraft.clientId, orderDraft.servicesIds, onSubmit])
 
   // Footer with action buttons
-  const footerContent = (
+  const footerContent = ({ requestClose }) => (
     <div className="flex w-full flex-col gap-1">
       {submitError && (
         <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-600">
@@ -682,7 +688,7 @@ export default function OrderModal({
         <button
           type="button"
           className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-          onClick={onClose}
+          onClick={requestClose}
         >
           Отмена
         </button>
@@ -702,6 +708,7 @@ export default function OrderModal({
     <Modal
       open={open}
       onClose={onClose}
+      hasUnsavedChanges={hasUnsavedChanges}
       title={title}
       tone="party"
       size="full"
@@ -1207,6 +1214,7 @@ export default function OrderModal({
           setDraft={setEditingAdditionalEventDraft}
           adminStaffOptions={adminStaffOptions}
           saving={saving}
+          hasUnsavedChanges={hasUnsavedAdditionalEventChanges}
           onClose={closeAdditionalEventEditor}
           onSubmit={saveAdditionalEventEdit}
         />

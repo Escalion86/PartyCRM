@@ -11,6 +11,7 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import DropDown from '@components/DropDown'
 import Modal from '@components/Modal'
+import useUnsavedChanges from '@helpers/useUnsavedChanges'
 import { getAdditionalEventsDisplayGroups } from '@helpers/additionalEvents'
 
 const formatDateTime = (value) => {
@@ -230,19 +231,21 @@ export const AdditionalEventEditModal = ({
   saving = false,
   onClose,
   onSubmit,
+  hasUnsavedChanges = false,
 }) => (
   <Modal
     open={open}
     onClose={onClose}
+    hasUnsavedChanges={hasUnsavedChanges}
     title={title}
     tone="party"
     size="sm"
-    footer={
+    footer={({ requestClose }) => (
       <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-end">
         <button
           type="button"
           className="cursor-pointer rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          onClick={onClose}
+          onClick={requestClose}
         >
           Отмена
         </button>
@@ -255,7 +258,7 @@ export const AdditionalEventEditModal = ({
           Сохранить
         </button>
       </div>
-    }
+    )}
   >
     <div className="grid gap-3 text-sm">
       <label className="grid gap-1 font-semibold text-slate-700">
@@ -342,6 +345,10 @@ export default function OrderAdditionalEventsModal({
       description: '',
       responsibleStaffId: '',
     })
+  const hasUnsavedAdditionalEventChanges = useUnsavedChanges(
+    editingAdditionalEventDraft,
+    editingAdditionalEvent !== null
+  )
   const adminStaffOptions = useMemo(
     () =>
       (Array.isArray(staff) ? staff : [])
@@ -625,6 +632,7 @@ export default function OrderAdditionalEventsModal({
           setDraft={setEditingAdditionalEventDraft}
           adminStaffOptions={adminStaffOptions}
           saving={saving}
+          hasUnsavedChanges={hasUnsavedAdditionalEventChanges}
           onClose={closeAdditionalEventEditor}
           onSubmit={saveAdditionalEventEdit}
         />

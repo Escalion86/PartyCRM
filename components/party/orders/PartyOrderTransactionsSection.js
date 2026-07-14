@@ -21,6 +21,7 @@ import Modal from '@components/Modal'
 import Input from '@components/Input'
 import Select from '@components/Select'
 import { buildPartyOrderTransactionsViewModel } from './partyOrderTransactionViewModel'
+import useUnsavedChanges from '@helpers/useUnsavedChanges'
 
 const money = (value) =>
   new Intl.NumberFormat('ru-RU', {
@@ -142,6 +143,7 @@ export default function PartyOrderTransactionsSection({
 }) {
   const [financeError, setFinanceError] = useState('')
   const [draft, setDraft] = useState(null)
+  const hasUnsavedChanges = useUnsavedChanges(draft, Boolean(draft))
   const transactionsQuery = usePartyTransactionsQuery(
     { orderId, activeCompanyId },
     { enabled: Boolean(orderId) }
@@ -366,12 +368,13 @@ export default function PartyOrderTransactionsSection({
         tone="party"
         size="lg"
         onClose={closeDraftEditor}
-        footer={
+        hasUnsavedChanges={hasUnsavedChanges}
+        footer={({ requestClose }) => (
           <>
             <button
               type="button"
               className="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-              onClick={closeDraftEditor}
+              onClick={requestClose}
             >
               Отмена
             </button>
@@ -384,7 +387,7 @@ export default function PartyOrderTransactionsSection({
               Сохранить
             </button>
           </>
-        }
+        )}
       >
         {draft ? (
           <div className="flex flex-col gap-3">

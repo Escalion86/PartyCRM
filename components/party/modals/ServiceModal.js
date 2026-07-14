@@ -9,6 +9,7 @@ import AddIconButton from '@components/AddIconButton'
 import { useAtomValue, useSetAtom } from 'jotai'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 import { apiJson } from '@helpers/apiClient'
+import useUnsavedChanges from '@helpers/useUnsavedChanges'
 
 const specializationOptions = [
   { value: 'animator', label: 'Аниматор' },
@@ -35,6 +36,8 @@ export function ServiceCreateModal({
   const [groupDraft, setGroupDraft] = useState({ title: '', order: 0 })
   const [groupSaving, setGroupSaving] = useState(false)
   const [submitError, setSubmitError] = useState('')
+  const hasUnsavedChanges = useUnsavedChanges(serviceDraft, open)
+  const hasUnsavedGroupChanges = useUnsavedChanges(groupDraft, groupModalOpen)
 
   const requestHeaders = useMemo(
     () =>
@@ -89,7 +92,7 @@ export function ServiceCreateModal({
     onSubmit()
   }
 
-  const footerContent = (
+  const footerContent = ({ requestClose }) => (
     <div className="flex flex-col w-full gap-1">
       {submitError && (
         <div className="px-3 py-2 text-sm text-red-600 rounded bg-red-50">
@@ -100,7 +103,7 @@ export function ServiceCreateModal({
         <button
           type="button"
           className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
-          onClick={onClose}
+          onClick={requestClose}
         >
           Отмена
         </button>
@@ -121,6 +124,7 @@ export function ServiceCreateModal({
       <Modal
         open={open}
         onClose={onClose}
+        hasUnsavedChanges={hasUnsavedChanges}
         title={title}
         tone="party"
         size="full"
@@ -209,15 +213,16 @@ export function ServiceCreateModal({
       <Modal
         open={groupModalOpen}
         onClose={() => setGroupModalOpen(false)}
+        hasUnsavedChanges={hasUnsavedGroupChanges}
         title="Новая группа услуг"
         tone="party"
         size="sm"
-        footer={
+        footer={({ requestClose }) => (
           <div className="flex gap-2">
             <button
               type="button"
               className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
-              onClick={() => setGroupModalOpen(false)}
+              onClick={requestClose}
             >
               Отмена
             </button>
@@ -230,7 +235,7 @@ export function ServiceCreateModal({
               {groupSaving ? 'Сохранение...' : 'Создать'}
             </button>
           </div>
-        }
+        )}
       >
         <div className="flex flex-col gap-2">
           <Input

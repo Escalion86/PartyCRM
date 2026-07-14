@@ -22,6 +22,7 @@ import PartyCard, {
   PartyCardHeader,
 } from '@components/party/PartyCard'
 import getPersonFullName from '@helpers/getPersonFullName'
+import useUnsavedChanges from '@helpers/useUnsavedChanges'
 import {
   getOrderNonPayoutExpenseTotal,
   getOrderPaymentState,
@@ -167,6 +168,7 @@ const OrderActionMenu = ({
 
 const OrderStatusModal = ({ open, order, onClose, onStatusChange, saving }) => {
   const [selectedStatus, setSelectedStatus] = useState(order?.status || 'draft')
+  const hasUnsavedChanges = useUnsavedChanges(selectedStatus, open)
 
   const handleSubmit = useCallback(async () => {
     if (!order?._id || selectedStatus === order.status) {
@@ -181,15 +183,16 @@ const OrderStatusModal = ({ open, order, onClose, onStatusChange, saving }) => {
     <Modal
       open={open}
       onClose={onClose}
+      hasUnsavedChanges={hasUnsavedChanges}
       title={`Статус заказа: ${order?.title || 'Заказ'}`}
       tone="party"
       size="sm"
-      footer={
+      footer={({ requestClose }) => (
         <div className="flex w-full items-center justify-end gap-1">
           <button
             type="button"
             className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-            onClick={onClose}
+            onClick={requestClose}
           >
             Отмена
           </button>
@@ -202,7 +205,7 @@ const OrderStatusModal = ({ open, order, onClose, onStatusChange, saving }) => {
             {saving ? 'Сохранение...' : 'Применить'}
           </button>
         </div>
-      }
+      )}
     >
       <div className="flex flex-col gap-2">
         <p className="text-sm text-black/60">Выберите новый статус заказа:</p>

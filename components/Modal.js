@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
@@ -15,9 +15,27 @@ const Modal = ({
   tone = 'default',
   size = 'md',
   disableBackdropClick = false,
+  hasUnsavedChanges = false,
+  unsavedChangesMessage = 'Есть несохранённые изменения. Закрыть окно без сохранения?',
 }) => {
   const overlayRef = useRef(null)
   const previousFocusRef = useRef(null)
+  const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
+  const closeConfirmationTitleId = useId()
+  const closeConfirmationDescriptionId = useId()
+
+  const requestClose = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setShowCloseConfirmation(true)
+      return
+    }
+    onClose?.()
+  }, [hasUnsavedChanges, onClose])
+
+  const confirmClose = useCallback(() => {
+    setShowCloseConfirmation(false)
+    onClose?.()
+  }, [onClose])
 
   // Focus trap & restore
   useEffect(() => {
@@ -41,10 +59,14 @@ const Modal = ({
     (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
-        onClose?.()
+        if (showCloseConfirmation) {
+          setShowCloseConfirmation(false)
+          return
+        }
+        requestClose()
       }
     },
-    [onClose]
+    [requestClose, showCloseConfirmation]
   )
 
   // Backdrop click
@@ -52,10 +74,10 @@ const Modal = ({
     (e) => {
       if (disableBackdropClick) return
       if (e.target === overlayRef.current) {
-        onClose?.()
+        requestClose()
       }
     },
-    [onClose, disableBackdropClick]
+    [disableBackdropClick, requestClose]
   )
 
   if (typeof window === 'undefined') return null
@@ -71,6 +93,9 @@ const Modal = ({
     '2xl': 'max-w-2xl',
     full: 'max-w-full md:max-w-[95vw] lg:max-w-[75vw]',
   }
+
+  const footerContent =
+    typeof footer === 'function' ? footer({ requestClose }) : footer
 
   const dialog = (
     <div
@@ -105,7 +130,7 @@ const Modal = ({
             <button
               type="button"
               aria-label="Закрыть"
-              onClick={onClose}
+              onClick={requestClose}
               className={cn(
                 'absolute right-2 grid h-8 w-8 place-items-center rounded-md transition-colors',
                 isParty
@@ -122,17 +147,59 @@ const Modal = ({
         <div className="flex-1 overflow-y-auto px-4 py-3">{children}</div>
 
         {/* Footer */}
-        {footer && (
+        {footerContent && (
           <div
             className={cn(
               'flex items-center justify-end gap-2 border-t px-4 py-3',
               isParty ? 'border-sky-100' : 'border-gray-200'
             )}
           >
-            {footer}
+            {footerContent}
           </div>
         )}
       </div>
+
+      {showCloseConfirmation && hasUnsavedChanges ? (
+        <div className="absolute inset-0 z-20 grid place-items-center bg-black/35 p-4">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby={closeConfirmationTitleId}
+            aria-describedby={closeConfirmationDescriptionId}
+            className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-5 shadow-2xl"
+          >
+            <h2
+              id={closeConfirmationTitleId}
+              className="text-lg font-semibold text-slate-900"
+            >
+              Закрыть без сохранения?
+            </h2>
+            <p
+              id={closeConfirmationDescriptionId}
+              className="mt-2 text-sm leading-5 text-slate-600"
+            >
+              {unsavedChangesMessage}
+            </p>
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                autoFocus
+                className="cursor-pointer rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                onClick={() => setShowCloseConfirmation(false)}
+              >
+                Продолжить редактирование
+              </button>
+              <button
+                type="button"
+                className="cursor-pointer rounded bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+                onClick={confirmClose}
+              >
+                Закрыть без сохранения
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 
