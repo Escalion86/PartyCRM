@@ -17,6 +17,9 @@ const formatAddressPoolShort = (address) => {
   return parts.join(', ') + (address.comment ? ` (${address.comment})` : '')
 }
 
+const getAddressPoolPlaceholder = (address, emptyPlaceholder) =>
+  formatAddressPoolShort(address) || emptyPlaceholder
+
 const getAddressPoolSignature = (
   address,
   fields = [
@@ -51,6 +54,7 @@ const normalizeTownList = (towns = []) =>
 
 export {
   formatAddressPoolShort,
+  getAddressPoolPlaceholder,
   getAddressPoolSignature,
   normalizeAddressPoolString,
   normalizePartyPoolAddress,

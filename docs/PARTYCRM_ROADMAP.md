@@ -159,6 +159,7 @@ PartyStaff
 - [x] PC-F6 Спроектировать product-aware MongoDB подключение с отдельной БД PartyCRM.
 - [x] PC-F7 Описать правила миграций, backup/restore и seed-данных отдельно для PartyCRM.
 - [x] PC-F8 Изолировать auth/users PartyCRM от ArtistCRM: отдельные `PartyUsers`, отдельный вход/регистрация и отдельная session cookie.
+- [x] PC-F9 Добавить отдельные вход и регистрацию PartyCRM через VK ID One Tap без смешивания с ArtistCRM auth.
 
 ### P0: Company Workspace
 
@@ -370,6 +371,7 @@ PartyStaff
 
 ## Журнал изменений
 
+- 2026-07-16: завершен PC-F9 — добавлены вход и явная регистрация PartyCRM через VK ID One Tap/PKCE с отдельными `PARTY_VK_*` env, привязкой подтверждённого VK-профиля к `PartyUsers`, сохранением PartyCRM session cookie и обязательными юридическими согласиями для нового аккаунта.
 - 2026-05-07: создан первичный roadmap второго продукта PartyCRM: отдельный бренд/домен, общий технологический core, MVP для точек, ролей, назначений, конфликтов и кабинета исполнителя.
 - 2026-05-07: принято архитектурное решение хранить данные PartyCRM и ArtistCRM в разных БД/DB namespace, сохраняя общий кодовый core на раннем этапе.
 - 2026-05-07: завершен PC-F6 — добавлен product-aware MongoDB helper для отдельного подключения PartyCRM, первые route-заготовки `/party`, `/company`, `/performer`, `/api/party/health` и доменный rewrite `partycrm.ru -> /party`.

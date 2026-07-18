@@ -57,6 +57,7 @@ export const getPartyUserModel = () =>
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
       schema.index({ phone: 1 }, { unique: true })
+      schema.index({ vkId: 1 }, { unique: true, sparse: true })
       schema.index({ email: 1 })
       schema.index({ status: 1 })
     },

@@ -59,6 +59,11 @@ PARTYCRM_MONGODB_URI=...
 PARTYCRM_MONGODB_DBNAME=...
 AUTH_SECRET=...
 PARTYCRM_HEALTH_SECRET=...
+PARTY_VK_AUTH_ENABLED=true
+PARTY_VK_ID_APP_ID=54681802
+PARTY_VK_ID_CLIENT_SECRET=...
+PARTY_VK_ID_REDIRECT_URI=https://partycrm.ru
+NEXT_PUBLIC_PARTY_VK_ID_SCOPE=phone email
 ```
 
 Для отдельного PartyCRM process допустим fallback на обычные
@@ -75,6 +80,11 @@ NEXTAUTH_URL_INTERNAL=http://127.0.0.1:3006
 ```
 
 PartyCRM использует отдельный вход `/party/login`, отдельные endpoints `/api/party/auth/*`, отдельную модель `PartyUsers` и отдельную cookie `partycrm_session`. `AUTH_SECRET` должен отличаться от публичных значений и не должен переиспользоваться как обычный пароль.
+
+VK ID PartyCRM также изолирован от ArtistCRM: используются только переменные с
+префиксом `PARTY_VK_`, а `PARTY_VK_ID_CLIENT_SECRET` не передаётся в браузер.
+Redirect `https://partycrm.ru` должен быть разрешён в приложении VK ID
+`54681802`.
 
 ## Reverse proxy
 

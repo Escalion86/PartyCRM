@@ -14,6 +14,11 @@ GOOGLE_OAUTH_CLIENT_ID=...
 GOOGLE_OAUTH_CLIENT_SECRET=...
 GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/api/party/google-calendar/callback
 NEXTAUTH_SECRET=...
+PARTY_VK_AUTH_ENABLED=true
+PARTY_VK_ID_APP_ID=54681802
+PARTY_VK_ID_CLIENT_SECRET=...
+PARTY_VK_ID_REDIRECT_URI=https://partycrm.ru
+NEXT_PUBLIC_PARTY_VK_ID_SCOPE=phone email
 ```
 
 Это набор для отдельного PartyCRM runtime. Для общего runtime с ArtistCRM
@@ -73,6 +78,12 @@ NEXT_PUBLIC_VK_ID_SCOPE
 VK_DEBUG_LOGS
 NEXT_PUBLIC_VK_DEBUG_LOGS
 ```
+
+Переменные VK ID без префикса `PARTY_` относятся к ArtistCRM и в PartyCRM не
+используются. Для PartyCRM применяются только отдельные `PARTY_VK_*` и
+`NEXT_PUBLIC_PARTY_VK_*`, чтобы приложения и ключи двух продуктов не
+смешивались. Защищённый ключ `PARTY_VK_ID_CLIENT_SECRET` хранится только на
+сервере. Redirect URI должен в точности совпадать с адресом из кабинета VK ID.
 
 ## Оставлять только если реально используете эти общие модули
 

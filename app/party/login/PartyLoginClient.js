@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { normalizeAuthPhoneForCall } from './authPhone.mjs'
+import PartyVkIdOneTap from './PartyVkIdOneTap'
 
 const normalizePhone = (value) => {
   const digits = String(value || '').replace(/[^\d]/g, '')
@@ -47,6 +48,95 @@ const interfaceRoleOptions = [
     roles: ['company', 'performer'],
   },
 ]
+
+const RegistrationChoices = ({
+  interfaceRoleMode,
+  setInterfaceRoleMode,
+  termsAccepted,
+  setTermsAccepted,
+  privacyAccepted,
+  setPrivacyAccepted,
+  personalDataAccepted,
+  setPersonalDataAccepted,
+  requireConsents = true,
+}) => (
+  <>
+    <div className="grid gap-2">
+      <p className="text-sm font-medium text-black/65">
+        Как вы будете пользоваться PartyCRM
+      </p>
+      <div className="grid gap-2">
+        {interfaceRoleOptions.map((option) => (
+          <label
+            key={option.value}
+            className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+              interfaceRoleMode === option.value
+                ? 'border-sky-600 bg-sky-50 text-sky-900'
+                : 'border-sky-100 bg-white text-slate-700 hover:bg-sky-50'
+            }`}
+          >
+            <input
+              type="radio"
+              name="party-interface-role"
+              value={option.value}
+              checked={interfaceRoleMode === option.value}
+              onChange={() => setInterfaceRoleMode(option.value)}
+            />
+            <span>{option.label}</span>
+          </label>
+        ))}
+      </div>
+    </div>
+
+    <label className="flex cursor-pointer items-start gap-2 text-sm">
+      <input
+        type="checkbox"
+        required={requireConsents}
+        checked={termsAccepted}
+        onChange={(event) => setTermsAccepted(event.target.checked)}
+        className="mt-1"
+      />
+      <span>
+        Принимаю{' '}
+        <Link href="/terms" className="text-sky-700 underline">
+          Пользовательское соглашение
+        </Link>
+      </span>
+    </label>
+
+    <label className="flex cursor-pointer items-start gap-2 text-sm">
+      <input
+        type="checkbox"
+        required={requireConsents}
+        checked={privacyAccepted}
+        onChange={(event) => setPrivacyAccepted(event.target.checked)}
+        className="mt-1"
+      />
+      <span>
+        Принимаю{' '}
+        <Link href="/privacy" className="text-sky-700 underline">
+          Политику конфиденциальности
+        </Link>
+      </span>
+    </label>
+
+    <label className="flex cursor-pointer items-start gap-2 text-sm">
+      <input
+        type="checkbox"
+        required={requireConsents}
+        checked={personalDataAccepted}
+        onChange={(event) => setPersonalDataAccepted(event.target.checked)}
+        className="mt-1"
+      />
+      <span>
+        Согласен с{' '}
+        <Link href="/personal-data-consent" className="text-sky-700 underline">
+          Согласием на обработку персональных данных
+        </Link>
+      </span>
+    </label>
+  </>
+)
 
 const Field = ({
   label,
@@ -118,7 +208,7 @@ const Field = ({
                 : 'Скрыть пароль'
             }
             onClick={onTogglePasswordVisibility}
-            className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-sky-50 hover:text-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-500"
+            className="absolute top-1/2 right-2 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-sky-50 hover:text-sky-700 focus:ring-2 focus:ring-sky-500 focus:outline-none"
           >
             <svg
               aria-hidden="true"
@@ -201,6 +291,12 @@ export default function PartyLoginClient({
   const isRegister = mode === 'register'
   const showStage1 = isRegister && registerStage === 1
   const showStage2 = isRegister && registerStage === 2
+  const interfaceRoles = useMemo(
+    () =>
+      interfaceRoleOptions.find((option) => option.value === interfaceRoleMode)
+        ?.roles || ['company', 'performer'],
+    [interfaceRoleMode]
+  )
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) {
@@ -223,7 +319,9 @@ export default function PartyLoginClient({
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}))
         if (!response.ok || payload?.success === false) {
-          throw new Error(payload?.error?.message || 'Приглашение недействительно')
+          throw new Error(
+            payload?.error?.message || 'Приглашение недействительно'
+          )
         }
         return payload?.data?.registrationPrefill
       })
@@ -365,10 +463,6 @@ export default function PartyLoginClient({
       return
     }
 
-    const interfaceRoles = interfaceRoleOptions.find(
-      (option) => option.value === interfaceRoleMode
-    )?.roles || ['company', 'performer']
-
     const normalizedPhone = normalizePhone(phone)
 
     setLoading(true)
@@ -477,6 +571,7 @@ export default function PartyLoginClient({
           onSubmit={submitLogin}
           className="mt-6 grid gap-4 rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5"
         >
+          <PartyVkIdOneTap flow="login" callbackUrl={normalizedCallbackUrl} />
           <Field
             label="Телефон"
             value={phone}
@@ -522,6 +617,26 @@ export default function PartyLoginClient({
           onSubmit={submitStage1}
           className="mt-6 grid gap-4 rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5"
         >
+          <PartyVkIdOneTap
+            flow="register"
+            callbackUrl={normalizedCallbackUrl}
+            interfaceRoles={interfaceRoles}
+            consentTerms={termsAccepted}
+            consentPrivacyPolicy={privacyAccepted}
+            consentPersonalData={personalDataAccepted}
+          >
+            <RegistrationChoices
+              interfaceRoleMode={interfaceRoleMode}
+              setInterfaceRoleMode={setInterfaceRoleMode}
+              termsAccepted={termsAccepted}
+              setTermsAccepted={setTermsAccepted}
+              privacyAccepted={privacyAccepted}
+              setPrivacyAccepted={setPrivacyAccepted}
+              personalDataAccepted={personalDataAccepted}
+              setPersonalDataAccepted={setPersonalDataAccepted}
+              requireConsents={false}
+            />
+          </PartyVkIdOneTap>
           <Field
             label="Телефон"
             value={phone}
@@ -752,85 +867,16 @@ export default function PartyLoginClient({
             />
           </div>
 
-          <div className="grid gap-2">
-            <p className="text-sm font-medium text-black/65">
-              Как вы будете пользоваться PartyCRM
-            </p>
-            <div className="grid gap-2">
-              {interfaceRoleOptions.map((option) => (
-                <label
-                  key={option.value}
-                  className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
-                    interfaceRoleMode === option.value
-                      ? 'border-sky-600 bg-sky-50 text-sky-900'
-                      : 'border-sky-100 bg-white text-slate-700 hover:bg-sky-50'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="party-interface-role"
-                    value={option.value}
-                    checked={interfaceRoleMode === option.value}
-                    onChange={() => setInterfaceRoleMode(option.value)}
-                  />
-                  <span>{option.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <label className="flex cursor-pointer items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              required
-              checked={termsAccepted}
-              onChange={(event) => setTermsAccepted(event.target.checked)}
-              className="mt-1"
-            />
-            <span>
-              Принимаю{' '}
-              <Link href="/terms" className="text-sky-700 underline">
-                Пользовательское соглашение
-              </Link>
-            </span>
-          </label>
-
-          <label className="flex cursor-pointer items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              required
-              checked={privacyAccepted}
-              onChange={(event) => setPrivacyAccepted(event.target.checked)}
-              className="mt-1"
-            />
-            <span>
-              Принимаю{' '}
-              <Link href="/privacy" className="text-sky-700 underline">
-                Политику конфиденциальности
-              </Link>
-            </span>
-          </label>
-
-          <label className="flex cursor-pointer items-start gap-2 text-sm">
-            <input
-              type="checkbox"
-              required
-              checked={personalDataAccepted}
-              onChange={(event) =>
-                setPersonalDataAccepted(event.target.checked)
-              }
-              className="mt-1"
-            />
-            <span>
-              Согласен с{' '}
-              <Link
-                href="/personal-data-consent"
-                className="text-sky-700 underline"
-              >
-                Согласием на обработку персональных данных
-              </Link>
-            </span>
-          </label>
+          <RegistrationChoices
+            interfaceRoleMode={interfaceRoleMode}
+            setInterfaceRoleMode={setInterfaceRoleMode}
+            termsAccepted={termsAccepted}
+            setTermsAccepted={setTermsAccepted}
+            privacyAccepted={privacyAccepted}
+            setPrivacyAccepted={setPrivacyAccepted}
+            personalDataAccepted={personalDataAccepted}
+            setPersonalDataAccepted={setPersonalDataAccepted}
+          />
 
           <button
             type="submit"

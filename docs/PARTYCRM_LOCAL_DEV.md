@@ -59,6 +59,13 @@ PARTYCRM_MONGODB_URI=...
 PARTYCRM_MONGODB_DBNAME=partycrm_dev
 DOMAIN=partycrm.ru
 AUTH_SECRET=local-partycrm-secret
+
+# Для локальной проверки VK ID redirect нужно добавить в кабинете VK ID
+PARTY_VK_AUTH_ENABLED=true
+PARTY_VK_ID_APP_ID=54681802
+PARTY_VK_ID_CLIENT_SECRET=...
+PARTY_VK_ID_REDIRECT_URI=http://localhost:3000
+NEXT_PUBLIC_PARTY_VK_ID_SCOPE=phone email
 ```
 
 Если запускается отдельный process только для PartyCRM, product-specific
@@ -73,6 +80,10 @@ http://localhost:3000/api/party/health
 ```
 
 Если PartyCRM БД не настроена, endpoint вернет `503` с кодом `partycrm_db_unavailable`.
+
+VK ID остаётся скрытым на странице входа, пока
+`PARTY_VK_AUTH_ENABLED=true` и не задан защищённый ключ. Production redirect
+для приложения `54681802` — `https://partycrm.ru`.
 
 ## Первый tenant PartyCRM
 

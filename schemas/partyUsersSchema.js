@@ -16,8 +16,17 @@ const partyUsersSchema = {
   },
   password: {
     type: String,
-    required: true,
     default: '',
+  },
+  vkId: {
+    type: String,
+    trim: true,
+    default: undefined,
+  },
+  registrationType: {
+    type: String,
+    enum: ['phone', 'vk'],
+    default: 'phone',
   },
   firstName: {
     type: String,

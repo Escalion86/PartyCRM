@@ -7,6 +7,7 @@ import { faPencilAlt } from '@fortawesome/free-solid-svg-icons/faPencilAlt'
 import { postData } from '@helpers/CRUD'
 import {
   formatAddressPoolShort,
+  getAddressPoolPlaceholder,
   getAddressPoolSignature,
 } from '@helpers/addressPool'
 import siteSettingsAtom from '@state/atoms/siteSettingsAtom'
@@ -83,8 +84,7 @@ const AddressPoolPicker = ({
   }, [address])
 
   const resolvedComboBoxPlaceholder = useMemo(() => {
-    if (!address) return emptyComboBoxPlaceholder
-    return formatAddressPoolShort(address)
+    return getAddressPoolPlaceholder(address, emptyComboBoxPlaceholder)
   }, [address, emptyComboBoxPlaceholder])
 
   const handleSelectFromPool = (value) => {
