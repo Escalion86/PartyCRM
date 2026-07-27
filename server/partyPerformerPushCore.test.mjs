@@ -113,3 +113,29 @@ test('collectPartyPerformerAssignmentPushTargets ignores company-only finance ch
 
   assert.deepEqual(result, [])
 })
+
+test('performer comment edit sends changed notification without resetting confirmation', () => {
+  const confirmedAssignment = {
+    staffId: 'staff-1',
+    role: 'performer',
+    confirmationStatus: 'confirmed',
+  }
+  const result = collectPartyPerformerAssignmentPushTargets({
+    previousOrder: {
+      _id: 'order-1',
+      performerComment: '',
+      assignedStaff: [confirmedAssignment],
+    },
+    nextOrder: {
+      _id: 'order-1',
+      performerComment: 'Вход со двора',
+      assignedStaff: [confirmedAssignment],
+    },
+    staffById: new Map([['staff-1', { _id: 'staff-1', authUserId: 'user-1' }]]),
+  })
+
+  assert.equal(confirmedAssignment.confirmationStatus, 'confirmed')
+  assert.deepEqual(result, [
+    { staffId: 'staff-1', userId: 'user-1', changeType: 'changed' },
+  ])
+})

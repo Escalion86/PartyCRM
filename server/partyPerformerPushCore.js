@@ -32,6 +32,7 @@ const ORDER_CHANGE_FIELDS = [
   'customAddress',
   'serviceTitle',
   'servicesIds',
+  'performerComment',
 ]
 
 const ASSIGNMENT_CHANGE_FIELDS = ['role', 'confirmationStatus']

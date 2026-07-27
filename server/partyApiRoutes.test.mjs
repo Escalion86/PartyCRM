@@ -281,6 +281,18 @@ test('party closed orders and their transactions are immutable through managemen
   assert.match(transactionSource, /validatePartyTransactionOrder\(\{\s*tenantId:\s*context\.tenantId,\s*orderId:\s*existing\.orderId/)
 })
 
+test('party order assignments auto-confirm external staff and preserve confirmations on edits', async () => {
+  const ordersSource = await route('app/api/party/orders/route.js')
+  const orderSource = await route('app/api/party/orders/[id]/route.js')
+  const modalSource = await route('components/party/modals/OrderModal.js')
+
+  assert.match(ordersSource, /applyPartyAssignmentAccountDefaults/)
+  assert.match(ordersSource, /applyPartyAssignmentConfirmationDefaults/)
+  assert.match(orderSource, /preservePartyAssignmentConfirmationStatuses/)
+  assert.match(orderSource, /previousAssignedStaff:\s*currentOrder\.assignedStaff/)
+  assert.match(modalSource, /getInitialPartyAssignmentConfirmationStatus/)
+})
+
 test('party payout transactions require assigned performer staffId', async () => {
   const transactionsSource = await route('app/api/party/transactions/route.js')
   const transactionSource = await route('app/api/party/transactions/[id]/route.js')

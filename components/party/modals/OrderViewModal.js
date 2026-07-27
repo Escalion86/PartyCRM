@@ -443,11 +443,6 @@ export default function OrderViewModal({
             {order?.adminComment ? (
               <InfoLine label="Комментарий">{order.adminComment}</InfoLine>
             ) : null}
-            {order?.performerComment ? (
-              <InfoLine label="Для исполнителя">
-                {order.performerComment}
-              </InfoLine>
-            ) : null}
           </div>
         </Section>
 
@@ -488,7 +483,17 @@ export default function OrderViewModal({
           )}
         </Section>
 
-        <Section title="Команда">
+        <Section title="Исполнители">
+          {order?.performerComment ? (
+            <div className="mb-2 rounded-md border border-sky-100 bg-sky-50 p-2 text-sm">
+              <div className="font-semibold text-slate-500">
+                Комментарий исполнителю
+              </div>
+              <div className="mt-1 whitespace-pre-wrap text-slate-900">
+                {order.performerComment}
+              </div>
+            </div>
+          ) : null}
           {assignedStaff.length > 0 ? (
             <div className="grid gap-2">
               <div className="flex flex-wrap gap-2">
@@ -531,7 +536,7 @@ export default function OrderViewModal({
                       Участие: {statusMeta.label}
                     </div>
                     <div className="mt-1 text-slate-600">
-                      Выплата: {formatMoney(Number(assignment.payoutAmount || 0))}
+                      Гонорар: {formatMoney(Number(assignment.payoutAmount || 0))}
                       {' · '}
                       {getPartyDerivedPayoutStatusLabel(payoutState.status)}
                       {payoutState.payoutAmount > 0

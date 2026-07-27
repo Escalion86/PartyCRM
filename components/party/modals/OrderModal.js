@@ -46,6 +46,7 @@ import {
 import { usePartyTransactionsQuery } from '@helpers/usePartyTransactionsQuery'
 import getPersonFullName from '@helpers/getPersonFullName'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
+import { getInitialPartyAssignmentConfirmationStatus } from '@helpers/partyOrderAssignments'
 
 // Нормализация телефона: цифры 11 символов, 8xxx → 7xxx
 const normalizePhone = (value) => {
@@ -389,7 +390,9 @@ export default function OrderModal({
   )
 
   const handleStaffToggle = useCallback(
-    (staffId, checked) => {
+    (staffMember, checked) => {
+      const staffId = staffMember?._id
+      if (!staffId) return
       setOrderDraft((prev) => {
         const current = prev.assignedStaff || []
         if (checked) {
@@ -397,7 +400,13 @@ export default function OrderModal({
             ...prev,
             assignedStaff: [
               ...current,
-              { staffId, payoutAmount: '', payoutStatus: 'planned' },
+              {
+                staffId,
+                payoutAmount: '',
+                payoutStatus: 'planned',
+                confirmationStatus:
+                  getInitialPartyAssignmentConfirmationStatus(staffMember),
+              },
             ],
           }
         }
@@ -965,7 +974,7 @@ export default function OrderModal({
                         type="checkbox"
                         checked={!!assigned}
                         onChange={(e) =>
-                          handleStaffToggle(person._id, e.target.checked)
+                          handleStaffToggle(person, e.target.checked)
                         }
                         className="cursor-pointer"
                       />

@@ -21,9 +21,27 @@ test('party order click opens a read-only order view modal', async () => {
   assert.match(viewModal, /\{order\?\.adminComment \? \(/)
   assert.match(viewModal, /<InfoLine label="Комментарий">\{order\.adminComment\}<\/InfoLine>/)
   assert.match(viewModal, /order\?\.performerComment/)
-  assert.match(viewModal, /<InfoLine label="Для исполнителя">/)
+  assert.match(viewModal, /Исполнители/)
   assert.match(viewModal, /Финансы/)
   assert.match(viewModal, /Доп\. события/)
+})
+
+test('closed party order view keeps performers, fees and performer comment visible', async () => {
+  const workspace = await source('app/company/CompanyWorkspaceClient.js')
+  const viewModal = await source('components/party/modals/OrderViewModal.js')
+  const orderRoute = await source('app/api/party/orders/[id]/route.js')
+
+  assert.match(workspace, /\? \{ \.\.\.order, status: 'closed' \}/)
+  assert.match(orderRoute, /\{ \$set: \{ status: nextStatus \} \}/)
+  assert.match(
+    viewModal,
+    /const assignedStaff = Array\.isArray\(order\?\.assignedStaff\)/
+  )
+  assert.match(viewModal, /<Section title="Исполнители">/)
+  assert.match(viewModal, /Гонорар:/)
+  assert.match(viewModal, /Комментарий исполнителю/)
+  assert.match(viewModal, /\{order\.performerComment\}/)
+  assert.doesNotMatch(viewModal, /const assignedStaff = isClosed/)
 })
 
 test('party order view shows contact shortcuts and interactive additional events', async () => {

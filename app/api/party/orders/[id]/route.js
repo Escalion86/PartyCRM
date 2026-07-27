@@ -9,7 +9,11 @@ import {
   parseJsonBody,
   partyError,
 } from '@server/partyApi'
-import { normalizeOrderPayload, validateOrderReferences } from '../route'
+import {
+  applyPartyAssignmentAccountDefaults,
+  normalizeOrderPayload,
+  validateOrderReferences,
+} from '../route'
 import { getPartyClientModel } from '@server/partyModels'
 import {
   findPartyOrderConflicts,
@@ -23,6 +27,7 @@ import {
   syncPartyOrderCalendarAfterCrud,
 } from '@server/partyOrderCalendarHooks'
 import { sendPartyPerformerAssignmentPushes } from '@server/partyPerformerPush'
+import { preservePartyAssignmentConfirmationStatuses } from '@helpers/partyOrderAssignments'
 
 const getId = async (params) => {
   const resolved = await params
@@ -75,7 +80,12 @@ export async function GET(req, { params }) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
 
-  return NextResponse.json({ success: true, data: order })
+  const orderWithAssignmentDefaults = await applyPartyAssignmentAccountDefaults({
+    tenantId: context.tenantId,
+    payload: order,
+  })
+
+  return NextResponse.json({ success: true, data: orderWithAssignmentDefaults })
 }
 
 export async function PATCH(req, { params }) {
@@ -156,7 +166,16 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ success: true, data: order })
   }
 
-  const payload = normalizeOrderPayload(body)
+  const bodyWithPreservedAssignmentStatuses = Array.isArray(body?.assignedStaff)
+    ? {
+        ...body,
+        assignedStaff: preservePartyAssignmentConfirmationStatuses({
+          assignedStaff: body.assignedStaff,
+          previousAssignedStaff: currentOrder.assignedStaff,
+        }),
+      }
+    : body
+  const payload = normalizeOrderPayload(bodyWithPreservedAssignmentStatuses)
 
   // Валидация клиента и услуги — только если эти поля явно переданы в теле запроса
   // (при частичном обновлении, например только статуса, пропускаем проверку)
@@ -186,9 +205,13 @@ export async function PATCH(req, { params }) {
     payload,
   })
   if (referenceError) return referenceError
-  const payloadWithClient = await buildOrderClientSnapshot({
+  const payloadWithAssignmentDefaults = await applyPartyAssignmentAccountDefaults({
     tenantId: context.tenantId,
     payload,
+  })
+  const payloadWithClient = await buildOrderClientSnapshot({
+    tenantId: context.tenantId,
+    payload: payloadWithAssignmentDefaults,
   })
   const { access } = await getPartyCompanyTariffAccessState(context.company)
   const limitedPayload = filterPartyOrderPayloadByTariffAccess(

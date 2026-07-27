@@ -29,6 +29,7 @@ import {
   normalizePartyOrderResponsibleStaffId,
   normalizePartyOrderTiming,
 } from '@server/partyOrderPayload'
+import { applyPartyAssignmentConfirmationDefaults } from '@helpers/partyOrderAssignments'
 
 const parseDate = (value) => {
   if (!value) return null
@@ -417,16 +418,44 @@ export async function GET(req) {
     .sort({ eventDate: 1, createdAt: -1 })
     .limit(120)
     .lean()
+  const assignmentStaffIds = [
+    ...new Set(
+      orders.flatMap((order) =>
+        (Array.isArray(order.assignedStaff) ? order.assignedStaff : [])
+          .map((item) => String(item?.staffId || ''))
+          .filter(Boolean)
+      )
+    ),
+  ]
+  const PartyStaff = await getPartyStaffModel()
   const orderIds = orders.map((order) => String(order._id))
   const PartyTransactions = await getPartyTransactionModel()
-  const transactions = orderIds.length
-    ? await PartyTransactions.find({
-        tenantId: context.tenantId,
-        orderId: { $in: orderIds },
-      })
-        .sort({ date: -1, createdAt: -1 })
-        .lean()
-    : []
+  const [assignmentStaff, transactions] = await Promise.all([
+    assignmentStaffIds.length
+      ? PartyStaff.find({
+          _id: { $in: assignmentStaffIds },
+          tenantId: context.tenantId,
+          status: { $ne: 'archived' },
+        })
+          .select('_id authUserId linkedAuthUserId')
+          .lean()
+      : Promise.resolve([]),
+    orderIds.length
+      ? PartyTransactions.find({
+          tenantId: context.tenantId,
+          orderId: { $in: orderIds },
+        })
+          .sort({ date: -1, createdAt: -1 })
+          .lean()
+      : Promise.resolve([]),
+  ])
+  const ordersWithAssignmentDefaults = orders.map((order) => ({
+    ...order,
+    assignedStaff: applyPartyAssignmentConfirmationDefaults({
+      assignedStaff: order.assignedStaff,
+      staff: assignmentStaff,
+    }),
+  }))
   const transactionsByOrderId = transactions.reduce((map, transaction) => {
     const orderId = String(transaction.orderId)
     if (!map.has(orderId)) map.set(orderId, [])
@@ -441,7 +470,7 @@ export async function GET(req) {
     })
     return map
   }, new Map())
-  const ordersWithTransactions = orders.map((order) => {
+  const ordersWithTransactions = ordersWithAssignmentDefaults.map((order) => {
     const orderTransactions = transactionsByOrderId.get(String(order._id))
     return {
       ...order,
@@ -453,6 +482,32 @@ export async function GET(req) {
   })
 
   return NextResponse.json({ success: true, data: ordersWithTransactions })
+}
+
+export const applyPartyAssignmentAccountDefaults = async ({
+  tenantId,
+  payload,
+}) => {
+  if (!Array.isArray(payload?.assignedStaff) || payload.assignedStaff.length === 0) {
+    return payload
+  }
+
+  const PartyStaff = await getPartyStaffModel()
+  const staff = await PartyStaff.find({
+    _id: { $in: payload.assignedStaff.map((item) => item.staffId) },
+    tenantId,
+    status: { $ne: 'archived' },
+  })
+    .select('_id authUserId linkedAuthUserId')
+    .lean()
+
+  return {
+    ...payload,
+    assignedStaff: applyPartyAssignmentConfirmationDefaults({
+      assignedStaff: payload.assignedStaff,
+      staff,
+    }),
+  }
 }
 
 export async function POST(req) {
@@ -486,9 +541,13 @@ export async function POST(req) {
     payload,
   })
   if (referenceError) return referenceError
-  const payloadWithClient = await buildOrderClientSnapshot({
+  const payloadWithAssignmentDefaults = await applyPartyAssignmentAccountDefaults({
     tenantId: context.tenantId,
     payload,
+  })
+  const payloadWithClient = await buildOrderClientSnapshot({
+    tenantId: context.tenantId,
+    payload: payloadWithAssignmentDefaults,
   })
 
   const PartyOrders = await getPartyOrderModel()

@@ -1561,7 +1561,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   if (accessStatus === 'loading') {
     return (
-      <section className="h-full min-h-full bg-white">
+      <section className="min-h-full bg-white">
         <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Загрузка...</p>
         </div>
@@ -1571,7 +1571,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   if (accessStatus === 'unauthenticated') {
     return (
-      <section className="h-full min-h-full bg-white">
+      <section className="min-h-full bg-white">
         <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Необходимо авторизоваться</p>
         </div>
@@ -1581,7 +1581,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   if (accessStatus === 'not_configured') {
     return (
-      <section className="h-full min-h-full bg-white">
+      <section className="min-h-full bg-white">
         <div className="flex h-64 items-center justify-center">
           <p className="text-gray-500">Нет доступных компаний</p>
         </div>
@@ -1591,7 +1591,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   if (accessStatus === 'error') {
     return (
-      <section className="h-full min-h-full bg-white">
+      <section className="min-h-full bg-white">
         <div className="flex h-64 items-center justify-center">
           <p className="text-red-500">{error || 'Ошибка загрузки'}</p>
         </div>
@@ -1600,9 +1600,9 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   }
 
   return (
-    <section className="h-full min-h-full bg-white">
+    <section className="min-h-full bg-white">
       {/* Main content */}
-      <main className="mx-auto w-full min-w-0 max-w-6xl px-5 py-8">
+      <main className="mx-auto w-full max-w-6xl min-w-0 px-5 py-8">
         {companySelectMemberships.length > 1 && (
           <div className="mb-6 flex flex-col gap-2 rounded-lg border border-sky-100 bg-sky-50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -2049,7 +2049,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )}
 
         {section === 'statistics' && canUseStatistics && (
-          <PartyStatisticsDashboard orders={orders} services={services} clients={clients} companyId={activeCompanyId} />
+          <PartyStatisticsDashboard
+            orders={orders}
+            services={services}
+            clients={clients}
+            companyId={activeCompanyId}
+          />
         )}
 
         {section === 'locations' && (
