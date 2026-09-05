@@ -13,6 +13,7 @@ import {
   validatePartyTransactionOrder,
 } from '@server/partyTransactions'
 import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
 
 export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
@@ -89,6 +90,16 @@ export async function POST(req) {
     ...payload,
     tenantId: context.tenantId,
     clientId: payload.clientId || order.clientId || null,
+  })
+
+  await recordPartyOrderAudit({
+    context,
+    order,
+    orderId: payload.orderId,
+    action: 'transaction_created',
+    summary: `${payload.type === 'income' ? 'Добавил оплату' : 'Добавил расход'} на сумму ${payload.amount.toLocaleString('ru-RU')} ₽`,
+    changes: [],
+    metadata: { transactionId: String(transaction._id) },
   })
 
   await syncPartyOrderCalendarAfterCrud({

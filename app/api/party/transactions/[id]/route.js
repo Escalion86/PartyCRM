@@ -13,6 +13,7 @@ import {
   validatePartyTransactionOrder,
 } from '@server/partyTransactions'
 import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
 
 const getId = async (params) => {
   const resolved = await params
@@ -110,6 +111,16 @@ export async function PATCH(req, { params }) {
     { returnDocument: 'after' }
   )
 
+  await recordPartyOrderAudit({
+    context,
+    order,
+    orderId: transaction.orderId,
+    action: 'transaction_updated',
+    summary: `Изменил финансовую операцию на сумму ${Number(transaction.amount || 0).toLocaleString('ru-RU')} ₽`,
+    changes: [],
+    metadata: { transactionId: String(transaction._id) },
+  })
+
   await syncPartyOrderCalendarAfterCrud({
     tenantId: context.tenantId,
     orderId: String(transaction.orderId),
@@ -169,6 +180,16 @@ export async function DELETE(req, { params }) {
     _id: id,
     tenantId: context.tenantId,
   }).lean()
+
+  await recordPartyOrderAudit({
+    context,
+    order,
+    orderId: transaction.orderId,
+    action: 'transaction_deleted',
+    summary: `Удалил финансовую операцию на сумму ${Number(transaction.amount || 0).toLocaleString('ru-RU')} ₽`,
+    changes: [],
+    metadata: { transactionId: String(transaction._id) },
+  })
 
   await syncPartyOrderCalendarAfterCrud({
     tenantId: context.tenantId,

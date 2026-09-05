@@ -9,6 +9,7 @@ import {
   getPartyCompanyModel,
 } from '@server/partyModels'
 import { savePartyNovofonCall } from '@server/partyNovofonCalls'
+import { registerPartyInboxIncoming } from '@server/partyInboxLifecycle'
 
 const getToken = async (params) => String((await params)?.token || '').trim()
 
@@ -81,6 +82,7 @@ const handlePartyNovofonWebhook = async (req, { params }) => {
     analyzeTranscript: canAnalyze
       ? (transcript) => analyzeCallTranscript(transcript, aiSettings)
       : null,
+    registerInboxIncoming: registerPartyInboxIncoming,
   })
 
   return NextResponse.json({ success: true, data: result.call }, { status: 200 })

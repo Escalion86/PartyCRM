@@ -96,6 +96,12 @@ const TariffCard = ({ tariff, style, onEdit, onDelete }) => {
             readOnly
             noMargin
           />
+          <IconCheckBox
+            checked={tariff.allowTelegramIntegration}
+            label="Telegram Business"
+            readOnly
+            noMargin
+          />
         </div>
       </div>
     </CardWrapper>
@@ -113,6 +119,7 @@ TariffCard.propTypes = {
     allowDocuments: PropTypes.bool,
     allowTelephony: PropTypes.bool,
     allowAi: PropTypes.bool,
+    allowTelegramIntegration: PropTypes.bool,
     hidden: PropTypes.bool,
   }).isRequired,
   style: PropTypes.shape({}),

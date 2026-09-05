@@ -5,6 +5,7 @@ import {
   getPartyAvitoMessageModel,
 } from '@server/partyModels'
 import { sendPartyAvitoConversationReply } from '@server/partyMessengerReplies'
+import { registerPartyInboxOutgoing } from '@server/partyInboxLifecycle'
 import { requestAvitoAccessToken, sendAvitoMessage } from '@server/avito'
 
 const getId = async (params) => String((await params)?.id || '').trim()
@@ -18,10 +19,11 @@ export async function GET(req, { params }) {
 
   const conversationId = await getId(params)
   const PartyAvitoConversations = await getPartyAvitoConversationModel()
-  const conversation = await PartyAvitoConversations.findOne({
-    _id: conversationId,
-    tenantId: context.tenantId,
-  }).lean()
+  const conversation = await PartyAvitoConversations.findOneAndUpdate(
+    { _id: conversationId, tenantId: context.tenantId },
+    { $set: { unreadCount: 0 } },
+    { returnDocument: 'after' }
+  ).lean()
   if (!conversation) {
     return NextResponse.json(
       { success: false, error: 'Переписка не найдена' },
@@ -66,6 +68,8 @@ export async function POST(req, { params }) {
     integrations: context.company?.settings?.integrations ?? {},
     requestAccessToken: requestAvitoAccessToken,
     sendMessage: sendAvitoMessage,
+    registerInboxOutgoing: registerPartyInboxOutgoing,
+    actorStaffId: context.staff?._id || null,
   })
 
   if (!result.ok) {

@@ -41,6 +41,10 @@ const partyTariffsSchema = {
     type: Boolean,
     default: false,
   },
+  allowTelegramIntegration: {
+    type: Boolean,
+    default: false,
+  },
   hidden: {
     type: Boolean,
     default: false,

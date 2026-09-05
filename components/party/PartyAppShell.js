@@ -11,6 +11,8 @@ import {
   faHome,
   faLocationDot,
   faPhone,
+  faInbox,
+  faBoxesStacked,
   faRightFromBracket,
   faStar,
   faUserGroup,
@@ -41,12 +43,36 @@ const companyMenu = [
     icon: faCalendarCheck,
   },
   { href: '/company/calls', label: 'Звонки', icon: faPhone },
+  {
+    href: '/company/inbox',
+    label: 'Входящие',
+    icon: faInbox,
+    managementOnly: true,
+  },
   { href: '/company/clients', label: 'Клиенты', icon: faAddressBook },
   { href: '/company/finance', label: 'Финансы', icon: faChartLine },
+  {
+    href: '/company/payroll',
+    label: 'Ведомости выплат',
+    icon: faBriefcase,
+    managementOnly: true,
+  },
   { href: '/company/statistics', label: 'Статистика', icon: faChartColumn },
   { href: '/company/services', label: 'Услуги', icon: faStar },
+  {
+    href: '/company/inventory',
+    label: 'Склад',
+    icon: faBoxesStacked,
+    managementOnly: true,
+  },
   { href: '/company/locations', label: 'Точки', icon: faLocationDot },
   { href: '/company/staff', label: 'Сотрудники', icon: faUserGroup },
+  {
+    href: '/company/audit',
+    label: 'История действий',
+    icon: faClockRotateLeft,
+    managementOnly: true,
+  },
   { href: '/company/settings', label: 'Настройки компании', icon: faGear },
 ]
 
@@ -65,7 +91,17 @@ const ordersSubMenu = [
 
 const performerMenu = [
   { href: '/performer', label: 'Мои заказы', icon: faBriefcase },
+  {
+    href: '/performer/reports',
+    label: 'Проверка отчётов',
+    icon: faCalendarCheck,
+  },
+  { href: '/performer/library', label: 'Опыт команды', icon: faStar },
   { href: '/performer/settings', label: 'Настройки кабинета', icon: faGear },
+]
+
+const locationOwnerMenu = [
+  { href: '/company/my-locations', label: 'Мои площадки', icon: faLocationDot },
 ]
 
 const secondaryMenu = [
@@ -83,7 +119,8 @@ const isCompanySettingsPath = (pathname = '') =>
   pathname === '/company/settings' || pathname.startsWith('/company/settings/')
 
 const isPerformerSettingsPath = (pathname = '') =>
-  pathname === '/performer/settings' || pathname.startsWith('/performer/settings/')
+  pathname === '/performer/settings' ||
+  pathname.startsWith('/performer/settings/')
 
 const MenuLink = ({ item, active, onClick }) => (
   <Link
@@ -158,7 +195,12 @@ export default function PartyAppShell({ variant = 'company', children }) {
     }
     return variant
   }, [pathname, variant])
-  const canUseCompany = interfaceRoles.includes('company')
+  const canUseCompany =
+    interfaceRoles.includes('company') ||
+    memberships.some(
+      (membership) =>
+        membership.role === 'location_owner' && membership.status === 'active'
+    )
   const canUsePerformer = interfaceRoles.includes('performer')
   const canUseBoth = canUseCompany && canUsePerformer
   const activeCompanyId =
@@ -191,18 +233,24 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const canUseSiteSettings = canAccessPartySiteSettings(partyUser?.role)
   const isCompanyVariant =
     effectiveVariant === 'company' || effectiveVariant === 'company-settings'
+  const visibleCompanyMenu = companyMenu.filter(
+    (item) => !item.managementOnly || activeMembership?.isAdmin
+  )
   const primaryMenu =
-    effectiveVariant === 'performer'
-      ? performerMenu
-      : effectiveVariant === 'settings'
-        ? canUseCompany
-          ? companyMenu
-          : canUsePerformer
-            ? performerMenu
-            : []
-        : effectiveVariant === 'company-settings'
-          ? companyMenu
-          : companyMenu
+    (activeMembership?.role === 'location_owner' && isCompanyVariant) ||
+    pathname === '/company/my-locations'
+      ? locationOwnerMenu
+      : effectiveVariant === 'performer'
+        ? performerMenu
+        : effectiveVariant === 'settings'
+          ? canUseCompany
+            ? visibleCompanyMenu
+            : canUsePerformer
+              ? performerMenu
+              : []
+          : effectiveVariant === 'company-settings'
+            ? visibleCompanyMenu
+            : visibleCompanyMenu
   const visibleSecondaryMenu = secondaryMenu.filter((item) => {
     if (item.always) return true
     if (!profileLoaded || !canUseBoth) return false
@@ -270,6 +318,14 @@ export default function PartyAppShell({ variant = 'company', children }) {
   useEffect(() => {
     if (!profileLoaded) return
     if (
+      activeMembership?.role === 'location_owner' &&
+      isCompanyVariant &&
+      pathname !== '/company/my-locations'
+    ) {
+      router.replace('/company/my-locations')
+      return
+    }
+    if (
       effectiveVariant === 'settings' ||
       effectiveVariant === 'company-settings'
     )
@@ -281,7 +337,16 @@ export default function PartyAppShell({ variant = 'company', children }) {
     if (effectiveVariant !== 'performer' && canUsePerformer && !canUseCompany) {
       router.replace('/performer')
     }
-  }, [canUseCompany, canUsePerformer, effectiveVariant, profileLoaded, router])
+  }, [
+    activeMembership?.role,
+    isCompanyVariant,
+    pathname,
+    canUseCompany,
+    canUsePerformer,
+    effectiveVariant,
+    profileLoaded,
+    router,
+  ])
 
   useEffect(() => {
     if (!profileLoaded) return

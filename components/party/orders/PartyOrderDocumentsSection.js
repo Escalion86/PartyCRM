@@ -11,6 +11,7 @@ import partyGenerateActTemplate, {
 } from '@helpers/partyGenerateActTemplate'
 import exportDocxFromTemplate from '@helpers/exportDocxFromTemplate'
 import exportContractTemplateDocx from '@helpers/exportContractTemplateDocx'
+import PartyOrderProposalsSection from './PartyOrderProposalsSection'
 import {
   formatPartyDocumentFileDate,
   getPartyDocumentTemplateSource,
@@ -235,6 +236,15 @@ export default function PartyOrderDocumentsSection({
           Сумма договора не указана. Укажите сумму клиента в поле выше.
         </div>
       )}
+
+      {/* Proposal section */}
+      <PartyOrderProposalsSection
+        order={order}
+        client={client}
+        services={services}
+        companySettings={companySettings}
+        activeCompanyId={activeCompanyId}
+      />
 
       {/* Contract section */}
       <div className="p-4 bg-white border rounded-2xl border-sky-100">

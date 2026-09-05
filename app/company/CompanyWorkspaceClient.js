@@ -50,6 +50,9 @@ import {
 import { matchesPartyOrderFinanceFilter } from '@helpers/partyOrderFinanceFilters'
 import { getOrderNonPayoutExpenseTotal } from '@helpers/partyOrderTransactions'
 import PartyStatisticsDashboard from '@components/party/statistics/PartyStatisticsDashboard'
+import PartyAuditLog from '@components/party/audit/PartyAuditLog'
+import InventoryWarnings from '@components/party/inventory/InventoryWarnings'
+import { getPartyOrderPreparationReadiness } from '@helpers/partyOrderPreparation'
 
 const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
 
@@ -446,6 +449,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [inventoryNotice, setInventoryNotice] = useState(null)
   const [activeModal, setActiveModal] = useState('')
   const [accessStatus, setAccessStatus] = useState('loading')
   const [orderFilter, setOrderFilter] = useState('all')
@@ -673,6 +677,13 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         count: sourceOrders.filter(hasOpenAdditionalEvents).length,
       },
       {
+        value: 'open_preparation',
+        label: 'Не готово',
+        count: sourceOrders.filter(
+          (order) => !getPartyOrderPreparationReadiness(order).ready
+        ).length,
+      },
+      {
         value: 'finance_wait_prepayment',
         label: 'Ждет предоплату',
         count: sourceOrders.filter((o) =>
@@ -785,6 +796,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         return sourceOrders.filter((o) => hasOrderConflict(o, orders))
       case 'tasks':
         return sourceOrders.filter(hasOpenAdditionalEvents)
+      case 'open_preparation':
+        return sourceOrders.filter(
+          (order) => !getPartyOrderPreparationReadiness(order).ready
+        )
       case 'finance_wait_prepayment':
       case 'finance_debt':
       case 'finance_unpaid_payouts':
@@ -839,6 +854,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )
         if (response.data) {
           const createdOrder = response.data
+          setInventoryNotice(
+            response.inventory?.warning || response.inventory?.hasShortage
+              ? {
+                  ...response.inventory,
+                  order: createdOrder,
+                  companyId: activeCompanyId,
+                }
+              : null
+          )
           setOrders((prev) => [...prev, createdOrder])
           if (options.keepOpen) {
             setEditingOrderId(String(createdOrder._id))
@@ -886,6 +910,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         })
       )
       if (response.data) {
+        setInventoryNotice(
+          response.inventory?.warning || response.inventory?.hasShortage
+            ? {
+                ...response.inventory,
+                order: response.data,
+                companyId: activeCompanyId,
+              }
+            : null
+        )
         setOrders((prev) =>
           prev.map((o) =>
             String(o._id) === editingOrderId ? response.data : o
@@ -1063,6 +1096,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         const createdOrder = response.data?.order
         const updatedCall = response.data?.call
         if (createdOrder) {
+          setInventoryNotice(
+            response.inventory?.warning || response.inventory?.hasShortage
+              ? {
+                  ...response.inventory,
+                  order: createdOrder,
+                  companyId: activeCompanyId,
+                }
+              : null
+          )
           setOrders((prev) => [createdOrder, ...prev])
         }
         if (updatedCall) {
@@ -2057,6 +2099,68 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           />
         )}
 
+        {inventoryNotice?.companyId === activeCompanyId && (
+          <div className="mb-5 space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
+            <p className="font-semibold text-amber-900">
+              Заказ сохранён. Проверьте реквизит.
+            </p>
+            {inventoryNotice.warning && (
+              <p role="alert" className="text-sm text-amber-900">
+                {inventoryNotice.warning}
+              </p>
+            )}
+            {inventoryNotice.hasShortage && (
+              <InventoryWarnings result={inventoryNotice} services={services} />
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="min-h-10 cursor-pointer rounded border border-amber-400 px-3 text-sm"
+                onClick={() => {
+                  setOrderDraft(normalizeOrderDraft(inventoryNotice.order))
+                  setEditingOrderId(inventoryNotice.order._id)
+                  setActiveModal('order-view')
+                }}
+              >
+                Открыть заказ
+              </button>
+              <button
+                type="button"
+                className="min-h-10 cursor-pointer rounded border border-amber-400 px-3 text-sm"
+                onClick={() => setInventoryNotice(null)}
+              >
+                Скрыть сообщение
+              </button>
+            </div>
+          </div>
+        )}
+
+        {section === 'audit' && !canManage ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            История действий доступна только владельцу и администраторам
+            компании.
+          </div>
+        ) : null}
+
+        {section === 'audit' && canManage ? (
+          <div className="grid gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">
+                История действий
+              </h1>
+              <p className="mt-1 text-sm text-slate-600">
+                Кто, когда и что менял в заказах компании.
+              </p>
+            </div>
+            <PartyAuditLog
+              activeCompanyId={activeCompanyId}
+              staff={staff}
+              services={services}
+              locations={locations}
+            />
+          </div>
+        ) : null}
+
         {section === 'locations' && (
           <>
             <div className="mb-6 flex justify-end">
@@ -2167,6 +2271,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           clientsById={clientsById}
           services={services}
           canManage={canManage}
+          activeCompanyId={activeCompanyId}
           onClose={() => {
             setActiveModal('')
             setEditingOrderId('')
@@ -2289,6 +2394,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           onClose={() => setActiveModal('')}
           onSubmit={addStaff}
           contextRole={context?.role}
+          locations={locations}
         />
       )}
 
@@ -2306,6 +2412,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           onSubmit={editStaff}
           isEdit
           contextRole={context?.role}
+          locations={locations}
         />
       )}
 

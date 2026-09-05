@@ -204,7 +204,7 @@ export const createPartyOrderFromCallDraft = async ({
   }
 
   const order = asPlainObject(
-    await models.Order.create(prepared?.payload ?? orderPayload)
+    await models.Order.create({ ...(prepared?.payload ?? orderPayload), tenantId })
   )
   const orderId = order?._id || null
   const update = {
@@ -242,6 +242,7 @@ export const savePartyNovofonCall = async ({
   normalized = {},
   rawPayload = null,
   analyzeTranscript = null,
+  registerInboxIncoming = null,
 }) => {
   const normalizedPhone = normalizePartyCallPhone(normalized.phone)
   let analysis = null
@@ -334,6 +335,7 @@ export const savePartyNovofonCall = async ({
   if (call?._id && call.orderDraft?.leadMeta) {
     call.orderDraft.leadMeta.sourceCallId = call._id
   }
+  if (call?._id && callSet.direction === 'incoming' && typeof registerInboxIncoming === 'function') await registerInboxIncoming({ tenantId, channel: 'novofon', sourceId: call._id, token: call._id, at: startedAt, text: transcript || callSet.aiSummary, call: true })
 
   return { call, client, orderDraft: call?.orderDraft ?? orderDraft }
 }

@@ -40,6 +40,7 @@ const base64ToUint8Array = (base64) => {
 
 const MARKER_PARTIES_TABLES_REGEX = /\[\[PARTIES_TABLES:([^[\]]+)\]\]/
 const MARKER_SIGNATURES_TABLE_REGEX = /\[\[SIGNATURES_TABLE:([^[\]]+)\]\]/
+const MARKER_PROPOSAL_ITEMS_REGEX = /\[\[PROPOSAL_ITEMS:([^[\]]+)\]\]/
 const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 const XML_NS = 'http://www.w3.org/XML/1998/namespace'
 
@@ -270,6 +271,61 @@ const buildSignaturesTableNode = (doc, payload) => {
   return table
 }
 
+const parseProposalItemsMarker = (rawPayload) => {
+  try {
+    const parsed = JSON.parse(decodeURIComponent(String(rawPayload ?? '')))
+    if (!parsed || !Array.isArray(parsed.items)) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+const formatProposalMoney = (value) =>
+  `${Number(value || 0).toLocaleString('ru-RU', {
+    maximumFractionDigits: 2,
+  })} ₽`
+
+const buildProposalItemsTableNode = (doc, payload) => {
+  const table = createWordElement(doc, 'tbl')
+  applyTableBorders(doc, table, 'single')
+
+  const widths = [500, 3900, 1400, 1600, 1600]
+  const grid = createWordElement(doc, 'tblGrid')
+  widths.forEach((width) => {
+    const gridCol = createWordElement(doc, 'gridCol')
+    setWordAttr(gridCol, 'w', width)
+    grid.appendChild(gridCol)
+  })
+  table.appendChild(grid)
+
+  const appendRow = (values, { total = false } = {}) => {
+    const row = createWordElement(doc, 'tr')
+    if (total) {
+      appendCell(doc, row, { text: values[0], colSpan: 4, width: 7200 })
+      appendCell(doc, row, { text: values[1], width: 1600 })
+    } else {
+      values.forEach((value, index) => {
+        appendCell(doc, row, { text: value, width: widths[index] })
+      })
+    }
+    table.appendChild(row)
+  }
+
+  appendRow(['№', 'Наименование услуги', 'Количество', 'Цена', 'Стоимость'])
+  payload.items.forEach((item, index) => {
+    appendRow([
+      index + 1,
+      String(item?.title ?? ''),
+      `${item?.quantity ?? 1} ${item?.unit || 'услуга'}`,
+      formatProposalMoney(item?.unitPrice),
+      formatProposalMoney(item?.total),
+    ])
+  })
+  appendRow(['Итого', formatProposalMoney(payload.total)], { total: true })
+  return table
+}
+
 const replacePartiesTablesInXml = (documentXml) => {
   if (typeof DOMParser === 'undefined' || typeof XMLSerializer === 'undefined') {
     return documentXml
@@ -303,6 +359,15 @@ const replacePartiesTablesInXml = (documentXml) => {
       if (payload) {
         replacements.push({ paragraph: parent, type: 'signatures', payload })
       }
+      return
+    }
+
+    const proposalMatch = value.match(MARKER_PROPOSAL_ITEMS_REGEX)
+    if (proposalMatch?.[1]) {
+      const payload = parseProposalItemsMarker(proposalMatch[1])
+      if (payload) {
+        replacements.push({ paragraph: parent, type: 'proposal', payload })
+      }
     }
   })
 
@@ -311,7 +376,9 @@ const replacePartiesTablesInXml = (documentXml) => {
     const tableNode =
       type === 'signatures'
         ? buildSignaturesTableNode(xmlDoc, payload)
-        : buildPartiesTableNode(xmlDoc, payload)
+        : type === 'proposal'
+          ? buildProposalItemsTableNode(xmlDoc, payload)
+          : buildPartiesTableNode(xmlDoc, payload)
     paragraph.parentNode.replaceChild(tableNode, paragraph)
   })
 

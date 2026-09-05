@@ -17,6 +17,7 @@ const emptyForm = {
   allowDocuments: false,
   allowTelephony: false,
   allowAi: false,
+  allowTelegramIntegration: false,
   description: '',
   features: [],
   hidden: false,
@@ -129,6 +130,7 @@ function TariffForm({
             ['allowCalendarSync', 'Google Calendar'],
             ['allowTelephony', 'Телефония'],
             ['allowAi', 'AI'],
+            ['allowTelegramIntegration', 'Telegram Business'],
           ].map(([field, label]) => (
             <label
               key={field}
@@ -312,6 +314,7 @@ export default function PartyTariffsAdmin({ embedded = false }) {
       allowDocuments: tariff.allowDocuments || false,
       allowTelephony: tariff.allowTelephony || false,
       allowAi: tariff.allowAi || false,
+      allowTelegramIntegration: tariff.allowTelegramIntegration || false,
       description: tariff.description || '',
       features: tariff.features || [],
       hidden: tariff.hidden || false,

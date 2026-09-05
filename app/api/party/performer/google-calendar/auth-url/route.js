@@ -4,7 +4,7 @@ import { nonceCookieOptions } from '../../../google-calendar/_shared'
 import { createPerformerCore, jsonResult } from '../_shared'
 
 export async function GET() {
-  const { sessionUser } = await getPartyMembershipContext()
+  const { sessionUser } = await getPartyMembershipContext({ excludeLocationOwners: true })
   if (!sessionUser?._id) {
     return NextResponse.json(
       { success: false, error: { code: 'unauthorized', message: 'Не авторизован' } },

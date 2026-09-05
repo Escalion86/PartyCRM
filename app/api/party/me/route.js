@@ -1,9 +1,16 @@
 import { NextResponse } from 'next/server'
 import { getPartyRequestContext } from '@server/partyApi'
+import {
+  serializePartyMembershipCompany,
+  serializePartyMembershipStaff,
+} from '@server/partyMembershipResponse'
 
 export async function GET(req) {
   try {
-    const { context, error } = await getPartyRequestContext({ req })
+    const { context, error } = await getPartyRequestContext({
+      req,
+      allowLocationOwner: true,
+    })
     if (error) {
       return error
     }
@@ -15,8 +22,8 @@ export async function GET(req) {
       data: {
         tenantId,
         role,
-        staff,
-        company,
+        staff: serializePartyMembershipStaff(staff),
+        company: serializePartyMembershipCompany(company, role),
       },
     })
   } catch (error) {
@@ -26,7 +33,7 @@ export async function GET(req) {
         error: {
           code: 'partycrm_context_failed',
           type: 'server',
-          message: error.message,
+          message: 'Не удалось загрузить данные компании',
         },
       },
       { status: 500 }

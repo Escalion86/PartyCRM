@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { syncPartyOrderInventory } from '@server/partyInventory'
 import {
   getPartyOrderModel,
   getPartyTransactionModel,
@@ -28,6 +29,7 @@ import {
 } from '@server/partyOrderCalendarHooks'
 import { sendPartyPerformerAssignmentPushes } from '@server/partyPerformerPush'
 import { preservePartyAssignmentConfirmationStatuses } from '@helpers/partyOrderAssignments'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
 
 const getId = async (params) => {
   const resolved = await params
@@ -157,13 +159,27 @@ export async function PATCH(req, { params }) {
       { returnDocument: 'after' }
     ).lean()
 
+    const inventory = await syncPartyOrderInventory({
+      tenantId: context.tenantId,
+      order,
+      staffId: context.staff?._id,
+    })
+
+    await recordPartyOrderAudit({
+      context,
+      order,
+      previousOrder: currentOrder,
+      action: 'order_status_changed',
+      summary: 'Изменил статус заказа',
+    })
+
     await syncPartyOrderCalendarAfterCrud({
       tenantId: context.tenantId,
       orderId: id,
       previousOrder: currentOrder,
     })
 
-    return NextResponse.json({ success: true, data: order })
+    return NextResponse.json({ success: true, data: order, inventory })
   }
 
   const bodyWithPreservedAssignmentStatuses = Array.isArray(body?.assignedStaff)
@@ -245,6 +261,14 @@ export async function PATCH(req, { params }) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
 
+  await recordPartyOrderAudit({
+    context,
+    order,
+    previousOrder: currentOrder,
+    action: 'order_updated',
+    summary: 'Изменил заказ',
+  })
+
   await syncPartyOrderCalendarAfterCrud({
     tenantId: context.tenantId,
     orderId: id,
@@ -259,7 +283,8 @@ export async function PATCH(req, { params }) {
     source: 'party-order-updated',
   })
 
-  return NextResponse.json({ success: true, data: order })
+  const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, staffId: context.staff?._id })
+  return NextResponse.json({ success: true, data: order, inventory })
 }
 
 export async function DELETE(req, { params }) {
@@ -307,12 +332,22 @@ export async function DELETE(req, { params }) {
       return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
     }
 
+    await recordPartyOrderAudit({
+      context,
+      previousOrder: order,
+      orderId: id,
+      action: 'order_deleted',
+      summary: 'Удалил заказ без возможности восстановления',
+      changes: [],
+    })
+
     await deletePartyOrderCalendarEventsAfterCrud({
       tenantId: context.tenantId,
       orderSnapshot: order,
     })
 
-    return NextResponse.json({ success: true, data: order })
+    const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, deleted: true })
+    return NextResponse.json({ success: true, data: order, inventory })
   }
 
   // По умолчанию — отмена заказа (мягкое удаление)
@@ -325,6 +360,14 @@ export async function DELETE(req, { params }) {
   if (!order) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
+
+  await recordPartyOrderAudit({
+    context,
+    order,
+    previousOrder: currentOrder,
+    action: 'order_canceled',
+    summary: 'Отменил заказ',
+  })
 
   await syncPartyOrderCalendarAfterCrud({
     tenantId: context.tenantId,
@@ -340,5 +383,6 @@ export async function DELETE(req, { params }) {
     source: 'party-order-canceled',
   })
 
-  return NextResponse.json({ success: true, data: order })
+  const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, staffId: context.staff?._id })
+  return NextResponse.json({ success: true, data: order, inventory })
 }

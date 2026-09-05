@@ -49,7 +49,11 @@ const getEndpointDetails = (endpoint = '') => {
     endpointHost = ''
   }
   return {
-    endpointHash: crypto.createHash('sha256').update(value).digest('hex').slice(0, 16),
+    endpointHash: crypto
+      .createHash('sha256')
+      .update(value)
+      .digest('hex')
+      .slice(0, 16),
     endpointHost,
   }
 }
@@ -96,7 +100,8 @@ const savePushSubscription = async ({
   const keysChanged =
     existing?.keys?.p256dh !== normalized.keys.p256dh ||
     existing?.keys?.auth !== normalized.keys.auth
-  const shouldLog = !existing || keysChanged || existing?.isActive !== Boolean(isActive)
+  const shouldLog =
+    !existing || keysChanged || existing?.isActive !== Boolean(isActive)
 
   const saved = await PushSubscriptions.findOneAndUpdate(
     {
@@ -215,7 +220,7 @@ const sendPushToTenant = async ({
     return { ok: false, sent: 0, failed: 0, deactivated: 0, reason: 'no_vapid' }
   }
 
-  const docs = await PushSubscriptions.find(
+  let docs = await PushSubscriptions.find(
     buildPushSubscriptionFindFilter({
       tenantId,
       product,
@@ -223,8 +228,25 @@ const sendPushToTenant = async ({
       allowCrossTenantUserTarget,
     })
   )
-    .select('endpoint keys')
+    .select('endpoint keys userId')
     .lean()
+
+  if (product === 'partycrm' && docs.length) {
+    const { getPartyStaffModel } = await import('./partyModels')
+    const Staff = await getPartyStaffModel()
+    const authorized = await Staff.find({
+      tenantId,
+      authUserId: {
+        $in: docs.map((doc) => String(doc.userId || '')).filter(Boolean),
+      },
+      status: 'active',
+      role: { $in: ['owner', 'admin', 'performer'] },
+    })
+      .select('authUserId')
+      .lean()
+    const users = new Set(authorized.map((staff) => String(staff.authUserId)))
+    docs = docs.filter((doc) => users.has(String(doc.userId || '')))
+  }
 
   if (!Array.isArray(docs) || docs.length === 0) {
     await logPushDelivery({
@@ -250,7 +272,8 @@ const sendPushToTenant = async ({
   let deactivated = 0
   const body = JSON.stringify(payload)
   const resolvedTtl = Number(payload?.ttl)
-  const ttl = Number.isFinite(resolvedTtl) && resolvedTtl >= 0 ? resolvedTtl : 43200
+  const ttl =
+    Number.isFinite(resolvedTtl) && resolvedTtl >= 0 ? resolvedTtl : 43200
   const urgencyValue = String(payload?.urgency || 'high').toLowerCase()
   const urgency =
     urgencyValue === 'very-low' ||

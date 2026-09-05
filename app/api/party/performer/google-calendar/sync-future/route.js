@@ -5,7 +5,7 @@ import { syncPartyOrderToPerformerCalendars } from '@server/partyPerformerGoogle
 import { isValidObjectId } from '@server/partyApi'
 
 export async function POST() {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
   if (!sessionUser?._id) {
     return NextResponse.json(
       { success: false, error: { code: 'unauthorized', message: 'Не авторизован' } },

@@ -9,6 +9,7 @@ import useUnsavedChanges from '@helpers/useUnsavedChanges'
 const ALL_ROLE_OPTIONS = [
   { value: 'performer', label: 'Исполнитель' },
   { value: 'admin', label: 'Администратор' },
+  { value: 'location_owner', label: 'Владелец площадки' },
   { value: 'owner', label: 'Владелец' },
 ]
 
@@ -43,6 +44,7 @@ export default function StaffModal({
   onSubmit,
   isEdit,
   contextRole = '',
+  locations = [],
 }) {
   const hasUnsavedChanges = useUnsavedChanges(staffDraft, open)
   const handleChange = (field) => (value) => {
@@ -62,7 +64,11 @@ export default function StaffModal({
         type="button"
         className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         onClick={onSubmit}
-        disabled={saving}
+        disabled={
+          saving ||
+          (staffDraft.role === 'location_owner' &&
+            !staffDraft.locationIds?.length)
+        }
       >
         {saving
           ? 'Сохранение...'
@@ -144,6 +150,51 @@ export default function StaffModal({
             tone="party"
           />
         </div>
+        {staffDraft.role === 'location_owner' && (
+          <fieldset className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3">
+            <legend className="px-1 text-sm font-semibold">
+              Доступные площадки
+            </legend>
+            <p className="text-sm text-slate-600">
+              Сотрудник увидит только заказы и деньги выбранных площадок.
+              Настройки компании и остальные площадки ему недоступны.
+            </p>
+            {locations
+              .filter((location) => location.status !== 'archived')
+              .map((location) => (
+                <label
+                  key={location._id}
+                  className="flex min-h-10 items-center gap-2 text-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={(staffDraft.locationIds || []).includes(
+                      String(location._id)
+                    )}
+                    onChange={(event) =>
+                      setStaffDraft((previous) => ({
+                        ...previous,
+                        locationIds: event.target.checked
+                          ? [
+                              ...(previous.locationIds || []),
+                              String(location._id),
+                            ]
+                          : (previous.locationIds || []).filter(
+                              (id) => id !== String(location._id)
+                            ),
+                      }))
+                    }
+                  />
+                  {location.title}
+                </label>
+              ))}
+            {!locations.length && (
+              <p className="text-sm text-amber-800">
+                Сначала добавьте площадку компании.
+              </p>
+            )}
+          </fieldset>
+        )}
         <Input
           label="Описание"
           value={staffDraft.description}

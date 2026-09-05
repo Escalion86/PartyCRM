@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { syncPartyOrderInventory } from '@server/partyInventory'
 import {
   getPartyClientModel,
   getPartyLocationModel,
@@ -30,6 +31,8 @@ import {
   normalizePartyOrderTiming,
 } from '@server/partyOrderPayload'
 import { applyPartyAssignmentConfirmationDefaults } from '@helpers/partyOrderAssignments'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
+import { buildPartyOpenPreparationFilter } from '@helpers/partyOrderPreparation'
 
 const parseDate = (value) => {
   if (!value) return null
@@ -410,10 +413,13 @@ export async function GET(req) {
   })
   if (error) return error
 
+  const preparationFilter = new URL(req.url).searchParams.get('preparation')
+  if (preparationFilter && preparationFilter !== 'open') return partyError(400, 'partycrm_invalid_preparation_filter', 'Некорректный фильтр подготовки', 'validation')
   const PartyOrders = await getPartyOrderModel()
   const orders = await PartyOrders.find({
     tenantId: context.tenantId,
     status: { $ne: 'canceled' },
+    ...(preparationFilter === 'open' ? buildPartyOpenPreparationFilter() : {}),
   })
     .sort({ eventDate: 1, createdAt: -1 })
     .limit(120)
@@ -596,6 +602,14 @@ export async function POST(req) {
     tenantId: context.tenantId,
   })
 
+  await recordPartyOrderAudit({
+    context,
+    order,
+    action: 'order_created',
+    summary: 'Создал заказ',
+    changes: [],
+  })
+
   await syncPartyOrderCalendarAfterCrud({
     tenantId: context.tenantId,
     orderId: String(order._id),
@@ -608,5 +622,6 @@ export async function POST(req) {
     source: 'party-order-created',
   })
 
-  return NextResponse.json({ success: true, data: order }, { status: 201 })
+  const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, staffId: context.staff?._id })
+  return NextResponse.json({ success: true, data: order, inventory }, { status: 201 })
 }

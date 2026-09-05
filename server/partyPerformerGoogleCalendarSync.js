@@ -150,6 +150,7 @@ export const syncPartyOrderToPerformerCalendars = async ({
           })
         : null
       const shouldSync =
+        staffItem?.role !== 'location_owner' &&
         order.status !== 'canceled' &&
         order.status !== 'closed' &&
         acceptedStatuses.has(String(assignment.confirmationStatus || 'pending'))

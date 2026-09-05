@@ -38,6 +38,17 @@ test('getPartyOrderCloseReadiness allows fully paid order with paid payouts and 
     unpaidPayoutCount: 0,
     payoutStatus: 'paid',
     grossMargin: 6000,
+    preparation: {
+      totalItems: 0,
+      pendingItems: 0,
+      clientCheckStatus: 'waiting',
+      clientCheckComplete: false,
+      assemblyStatus: 'not_started',
+      assemblyReady: false,
+      addressChanged: false,
+      assignedAcknowledgementCount: 0,
+      missingAddressAcknowledgementCount: 0,
+    },
   })
 })
 

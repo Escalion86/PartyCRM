@@ -10,6 +10,10 @@ import {
   normalizePartyVkGroups,
   removeLegacyVkKeys,
 } from '@server/partyVkGroups'
+import {
+  normalizePartyTelegramSettings,
+  publicPartyTelegramStatus,
+} from '@server/partyTelegramBusiness'
 
 export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
@@ -48,6 +52,9 @@ export async function GET(req) {
       vk: normalizePartyVkSettings(nextIntegrations),
       novofon: normalizeNovofonSettings(nextIntegrations),
       ai: normalizeAiSettings(nextIntegrations),
+      telegram: publicPartyTelegramStatus(
+        normalizePartyTelegramSettings(nextIntegrations)
+      ),
     },
   })
 }

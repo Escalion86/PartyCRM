@@ -261,3 +261,19 @@ test('createPartyOrderFromCallDraft rejects calls that already created an order'
   assert.equal(models.calls.orderCreate.length, 0)
   assert.equal(models.calls.callUpdateOne.length, 0)
 })
+
+test('prepared call payload always keeps the authenticated tenant', async () => {
+  for (const preparedTenant of [undefined, 'foreign-company']) {
+    const models = createFakeOrderModels({
+      call: { _id: 'call-1', tenantId: 'company-1', orderDraft: { title: 'Заявка' } },
+    })
+    const result = await createPartyOrderFromCallDraft({
+      models,
+      tenantId: 'company-1',
+      callId: 'call-1',
+      prepareOrderPayload: async () => ({ payload: { title: 'После нормализации', tenantId: preparedTenant } }),
+    })
+    assert.equal(result.error, null)
+    assert.equal(models.calls.orderCreate[0].tenantId, 'company-1')
+  }
+})

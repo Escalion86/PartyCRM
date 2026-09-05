@@ -8,6 +8,8 @@ import {
   hasPartyOrderConflicts,
 } from '@server/partyOrderConflicts'
 import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
+import { syncPartyOrderInventory } from '@server/partyInventory'
 import {
   canCreatePartyOrderByTariff,
   filterPartyOrderPayloadByTariffAccess,
@@ -128,13 +130,28 @@ export async function POST(req, { params }) {
     )
   }
 
+  const inventory = await syncPartyOrderInventory({
+    tenantId: context.tenantId,
+    order: result.order,
+    staffId: context.staff?._id,
+  })
+
+  await recordPartyOrderAudit({
+    context,
+    order: result.order,
+    action: 'order_created',
+    summary: 'Создал заказ из звонка',
+    changes: [],
+    metadata: { callId: String(result.call?._id || resolvedParams?.id || '') },
+  })
+
   await syncPartyOrderCalendarAfterCrud({
     tenantId: context.tenantId,
     orderId: String(result.order._id),
   })
 
   return NextResponse.json(
-    { success: true, data: { order: result.order, call: result.call } },
+    { success: true, data: { order: result.order, call: result.call }, inventory },
     { status: 201 }
   )
 }

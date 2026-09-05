@@ -56,6 +56,13 @@ export const getCompanyIntegrationIndicatorState = ({
       : INTEGRATION_INDICATOR_STATE.disconnected
   }
 
+  if (type === 'telegram') {
+    if (status === 'connected') return INTEGRATION_INDICATOR_STATE.connected
+    return enabled || status === 'bot_ready'
+      ? INTEGRATION_INDICATOR_STATE.warning
+      : INTEGRATION_INDICATOR_STATE.disconnected
+  }
+
   if (type === 'novofon') {
     if (!enabled) return INTEGRATION_INDICATOR_STATE.disconnected
     return hasValue(apiKey)

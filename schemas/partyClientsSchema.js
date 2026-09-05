@@ -79,6 +79,12 @@ const partyClientsSchema = {
     default: '',
     maxlength: 160,
   },
+  telegramUserId: {
+    type: String,
+    trim: true,
+    default: '',
+    maxlength: 80,
+  },
   leadSource: {
     type: String,
     trim: true,

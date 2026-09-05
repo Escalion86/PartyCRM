@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getPartyStaffModel } from '@server/partyModels'
+import { validateStaffLocationScope } from '@server/partyLocationAccess'
 import {
   getPartyRequestContext,
   isValidObjectId,
@@ -47,7 +48,7 @@ const pickStaffPatch = (body) => {
   if (typeof body.description === 'string') {
     patch.description = normalizeText(body.description, 1000)
   }
-  if (['owner', 'admin', 'performer'].includes(body.role))
+  if (['owner', 'admin', 'performer', 'location_owner'].includes(body.role))
     patch.role = body.role
   if (['active', 'invited', 'paused', 'archived'].includes(body.status)) {
     patch.status = body.status
@@ -146,6 +147,27 @@ export async function PATCH(req, { params }) {
   const PartyStaff = await getPartyStaffModel()
 
   // Передача прав владельца — только текущий владелец может назначить нового
+  const currentStaff = await PartyStaff.findOne({
+    _id: id,
+    tenantId: context.tenantId,
+  }).lean()
+  if (!currentStaff)
+    return partyError(404, 'partycrm_staff_not_found', 'Сотрудник не найден')
+  if ((patch.role || currentStaff.role) === 'location_owner') {
+    try {
+      patch.locationIds = await validateStaffLocationScope(
+        context.tenantId,
+        body.locationIds ?? currentStaff.locationIds
+      )
+    } catch (failure) {
+      return partyError(
+        failure.status || 400,
+        'partycrm_invalid_location_scope',
+        failure.status ? failure.message : 'Не удалось проверить площадки',
+        'validation'
+      )
+    }
+  } else if (patch.role) patch.locationIds = []
   let previousOwnerData = null
   if (patch.role === 'owner') {
     if (context.role !== 'owner') {

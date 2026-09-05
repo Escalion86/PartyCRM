@@ -46,7 +46,15 @@ const partyStaffSchema = {
   },
   specialization: {
     type: String,
-    enum: ['', 'animator', 'magician', 'host', 'photographer', 'workshop', 'other'],
+    enum: [
+      '',
+      'animator',
+      'magician',
+      'host',
+      'photographer',
+      'workshop',
+      'other',
+    ],
     default: '',
     index: true,
   },
@@ -58,10 +66,16 @@ const partyStaffSchema = {
   },
   role: {
     type: String,
-    enum: ['owner', 'admin', 'performer'],
+    enum: ['owner', 'admin', 'performer', 'location_owner'],
     default: 'performer',
     index: true,
   },
+  locationIds: {
+    type: [Schema.Types.ObjectId],
+    ref: 'Location',
+    default: [],
+  },
+  locationScopeRevision: { type: Number, default: 0 },
   status: {
     type: String,
     enum: ['active', 'invited', 'paused', 'archived'],

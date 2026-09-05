@@ -83,6 +83,7 @@ test('getPartyTariffAccessRows describes company feature flags', () => {
       allowStatistics: false,
       allowCalendarSync: true,
       allowTelephony: false,
+      allowTelegramIntegration: true,
       allowAi: true,
       unlimitedEvents: false,
       eventsPerMonth: 50,
@@ -96,6 +97,7 @@ test('getPartyTariffAccessRows describes company feature flags', () => {
       { label: 'Статистика', value: 'Недоступно' },
       { label: 'Google Calendar', value: 'Доступно' },
       { label: 'Телефония', value: 'Недоступно' },
+      { label: 'Telegram Business', value: 'Доступно' },
       { label: 'AI', value: 'Доступно' },
     ]
   )

@@ -14,12 +14,7 @@ export const buildPartyContextShell = (membershipContext) => ({
   activeMembership: null,
 })
 
-export const partyContextError = (
-  status,
-  code,
-  message,
-  type = 'server'
-) => ({
+export const partyContextError = (status, code, message, type = 'server') => ({
   status,
   code,
   message,
@@ -30,6 +25,7 @@ export const resolvePartyRequestContext = ({
   membershipContext,
   requestedCompanyId = '',
   managementOnly = false,
+  allowLocationOwner = false,
 } = {}) => {
   if (!membershipContext?.sessionUser?._id) {
     return {
@@ -85,7 +81,8 @@ export const resolvePartyRequestContext = ({
     }
   }
 
-  const membershipStatus = membership.status || membership.staff?.status || 'active'
+  const membershipStatus =
+    membership.status || membership.staff?.status || 'active'
   if (membershipStatus !== 'active') {
     return {
       context: {
@@ -126,7 +123,10 @@ export const resolvePartyRequestContext = ({
     }
   }
 
-  if (managementOnly && !PARTY_MANAGEMENT_ROLES.includes(context.role)) {
+  if (
+    (context.role === 'location_owner' && !allowLocationOwner) ||
+    (managementOnly && !PARTY_MANAGEMENT_ROLES.includes(context.role))
+  ) {
     return {
       context,
       error: partyContextError(

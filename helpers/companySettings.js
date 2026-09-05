@@ -128,9 +128,22 @@ export const normalizeCompanyDocumentRequisites = (value = {}) => {
 
 export const normalizeCompanyDocuments = (value = {}) => {
   const documents = normalizeObjectField(value)
+  const proposalValidityDays = Number(documents.proposalValidityDays)
   return {
     ...documents,
     requisites: normalizeCompanyDocumentRequisites(documents.requisites),
+    proposalValidityDays: Number.isFinite(proposalValidityDays)
+      ? Math.min(365, Math.max(1, Math.floor(proposalValidityDays)))
+      : 14,
+    proposalTaxText: normalizeAddressPoolString(
+      documents.proposalTaxText
+    ).slice(0, 500),
+    proposalPaymentTerms: normalizeAddressPoolString(
+      documents.proposalPaymentTerms
+    ).slice(0, 2000),
+    proposalIncludedText: normalizeAddressPoolString(
+      documents.proposalIncludedText
+    ).slice(0, 3000),
   }
 }
 
@@ -252,6 +265,26 @@ const AI_INTEGRATION_KEYS = new Set([
   'aiAnalysisModel',
 ])
 
+const TELEGRAM_INTEGRATION_KEYS = new Set([
+  'telegramBusinessEnabled',
+  'telegramBusinessAutoCreateClients',
+  'telegramBusinessBotToken',
+  'telegramBusinessBotId',
+  'telegramBusinessBotUsername',
+  'telegramBusinessWebhookToken',
+  'telegramBusinessWebhookSecret',
+  'telegramBusinessWebhookUrl',
+  'telegramBusinessConnectionId',
+  'telegramBusinessAccountUserId',
+  'telegramBusinessRights',
+  'telegramBusinessStatus',
+  'telegramBusinessLastError',
+  'telegramBusinessConnectedAt',
+  'telegramBusinessLastCheckedAt',
+  'telegramBusinessLastWebhookAt',
+  'telegramBusinessLastMessageAt',
+])
+
 export const filterCompanySettingsPatchByTariffAccess = (patch = {}, access = {}) => {
   const filtered = { ...patch }
 
@@ -270,6 +303,12 @@ export const filterCompanySettingsPatchByTariffAccess = (patch = {}, access = {}
 
     if (!access.allowAi) {
       for (const key of AI_INTEGRATION_KEYS) {
+        delete filtered.integrations[key]
+      }
+    }
+
+    if (!access.allowTelegramIntegration) {
+      for (const key of TELEGRAM_INTEGRATION_KEYS) {
         delete filtered.integrations[key]
       }
     }

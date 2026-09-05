@@ -63,6 +63,7 @@ export const getPartyTariffAccessRows = (access = {}) => [
   { label: 'Статистика', value: availableLabel(access.allowStatistics) },
   { label: 'Google Calendar', value: availableLabel(access.allowCalendarSync) },
   { label: 'Телефония', value: availableLabel(access.allowTelephony) },
+  { label: 'Telegram Business', value: availableLabel(access.allowTelegramIntegration) },
   { label: 'AI', value: availableLabel(access.allowAi) },
 ]
 

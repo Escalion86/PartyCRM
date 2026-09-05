@@ -6,6 +6,7 @@ import {
 import { getPartyRequestContext } from '@server/partyApi'
 import { getPartyOrderCloseReadiness } from '@helpers/partyOrderCloseReadiness'
 import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
 
 const startOfToday = () => {
   const now = new Date()
@@ -80,11 +81,24 @@ export async function POST(req) {
     )
     await Promise.all(
       closedIds.map((orderId) =>
-        syncPartyOrderCalendarAfterCrud({
-          tenantId: context.tenantId,
-          orderId,
-          previousOrder: orders.find((order) => String(order._id) === orderId),
-        })
+        Promise.all([
+          syncPartyOrderCalendarAfterCrud({
+            tenantId: context.tenantId,
+            orderId,
+            previousOrder: orders.find((order) => String(order._id) === orderId),
+          }),
+          recordPartyOrderAudit({
+            context,
+            orderId,
+            order: {
+              ...orders.find((order) => String(order._id) === orderId),
+              status: 'closed',
+            },
+            previousOrder: orders.find((order) => String(order._id) === orderId),
+            action: 'order_status_changed',
+            summary: 'Закрыл прошедший заказ',
+          }),
+        ])
       )
     )
   }

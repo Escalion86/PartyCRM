@@ -351,6 +351,11 @@ const PartyBillingModal = ({ open, onClose }) => {
                                 ? "✓ Документы"
                                 : "✗ Документы"}
                             </p>
+                            <p>
+                              {tariff.allowTelegramIntegration
+                                ? "✓ Telegram Business"
+                                : "✗ Telegram Business"}
+                            </p>
                           </div>
                         </div>
                         {!isActive && (

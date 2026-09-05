@@ -7,7 +7,7 @@ import { getActivePartyPushMembershipTargets } from '@server/partyPushSubscripti
 import { sendPushToTenant } from '@server/pushNotifications'
 
 export async function POST() {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
 
   if (!sessionUser?._id) {
     return NextResponse.json(

@@ -10,7 +10,7 @@ import { sanitizePartyOrderForPerformer } from '@helpers/partyPerformerOrders'
 import { buildPartyPerformerCalendarIcs } from '@helpers/partyPerformerCalendar'
 
 export async function GET() {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
 
   if (!sessionUser?._id) {
     return partyError(401, 'unauthorized', 'Не авторизован', 'auth')

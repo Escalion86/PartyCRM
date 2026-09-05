@@ -3,7 +3,7 @@ import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { createPerformerCore, jsonResult } from '../_shared'
 
 export async function POST() {
-  const { sessionUser } = await getPartyMembershipContext()
+  const { sessionUser } = await getPartyMembershipContext({ excludeLocationOwners: true })
   if (!sessionUser?._id) {
     return NextResponse.json(
       { success: false, error: { code: 'unauthorized', message: 'Не авторизован' } },

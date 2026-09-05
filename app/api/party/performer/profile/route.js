@@ -72,7 +72,7 @@ const loadProfileData = async ({ sessionUser, memberships }) => {
 }
 
 export async function GET() {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
 
   if (!sessionUser?._id) {
     return NextResponse.json(
@@ -97,7 +97,7 @@ export async function GET() {
 }
 
 export async function PATCH(req) {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
 
   if (!sessionUser?._id) {
     return NextResponse.json(

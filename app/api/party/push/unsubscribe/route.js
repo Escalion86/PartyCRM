@@ -14,7 +14,7 @@ export async function POST(req) {
     req.headers.get('x-partycrm-company-id') || ''
   ).trim()
   if (!requestedCompanyId) {
-    const membershipContext = await getPartyMembershipContext()
+    const membershipContext = await getPartyMembershipContext({ excludeLocationOwners: true })
     if (!membershipContext?.sessionUser?._id) {
       return NextResponse.json(
         { success: false, error: 'Не авторизован' },

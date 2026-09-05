@@ -8,7 +8,13 @@ import {
 
 export { PARTY_MANAGEMENT_ROLES }
 
-export const partyError = (status, code, message, type = 'server', extra = {}) =>
+export const partyError = (
+  status,
+  code,
+  message,
+  type = 'server',
+  extra = {}
+) =>
   NextResponse.json(
     {
       success: false,
@@ -22,8 +28,7 @@ export const partyError = (status, code, message, type = 'server', extra = {}) =
     { status }
   )
 
-export const isValidObjectId = (value) =>
-  isValidPartyObjectId(value)
+export const isValidObjectId = (value) => isValidPartyObjectId(value)
 
 const getRequestedCompanyId = (req) =>
   String(req?.headers?.get('x-partycrm-company-id') || '').trim()
@@ -34,12 +39,14 @@ const toPartyErrorResponse = (error) =>
 export const getPartyRequestContext = async ({
   req = null,
   managementOnly = false,
+  allowLocationOwner = false,
 } = {}) => {
   const membershipContext = await getPartyMembershipContext()
   const resolved = resolvePartyRequestContext({
     membershipContext,
     requestedCompanyId: getRequestedCompanyId(req),
     managementOnly,
+    allowLocationOwner,
   })
 
   if (resolved.error) {

@@ -18,11 +18,16 @@ import partyAvitoConversationsSchema from '@schemas/partyAvitoConversationsSchem
 import partyAvitoMessagesSchema from '@schemas/partyAvitoMessagesSchema'
 import partyVkConversationsSchema from '@schemas/partyVkConversationsSchema'
 import partyVkMessagesSchema from '@schemas/partyVkMessagesSchema'
+import partyTelegramConversationsSchema from '@schemas/partyTelegramConversationsSchema'
+import partyTelegramMessagesSchema from '@schemas/partyTelegramMessagesSchema'
+import partyAuditLogsSchema from '@schemas/partyAuditLogsSchema'
+import partyProposalsSchema from '@schemas/partyProposalsSchema'
 
 export const PARTY_STAFF_ROLES = Object.freeze({
   OWNER: 'owner',
   ADMIN: 'admin',
   PERFORMER: 'performer',
+  LOCATION_OWNER: 'location_owner',
   CONTRACTOR: 'contractor',
 })
 
@@ -30,6 +35,7 @@ export const PARTY_STAFF_ROLE_VALUES = Object.freeze([
   PARTY_STAFF_ROLES.OWNER,
   PARTY_STAFF_ROLES.ADMIN,
   PARTY_STAFF_ROLES.PERFORMER,
+  PARTY_STAFF_ROLES.LOCATION_OWNER,
 ])
 
 export const PARTY_CONTRACTOR_RULE =
@@ -150,6 +156,35 @@ export const getPartyOrderModel = () =>
       schema.index({ tenantId: 1, locationId: 1, eventDate: 1 })
       schema.index({ tenantId: 1, 'assignedStaff.staffId': 1, eventDate: 1 })
       schema.index({ tenantId: 1, status: 1, 'additionalEvents.date': 1 })
+      schema.index({ tenantId: 1, status: 1, 'preparation.enabled': 1, 'preparation.items.status': 1 })
+    },
+  })
+
+export const getPartyProposalModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'Proposal',
+    collectionName: 'proposals',
+    schemaDefinition: partyProposalsSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, orderId: 1, createdAt: -1 })
+      schema.index({ tenantId: 1, number: 1, version: 1 }, { unique: true })
+      schema.index({ tenantId: 1, status: 1, validUntil: 1 })
+    },
+  })
+
+export const getPartyAuditLogModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'AuditLog',
+    collectionName: 'auditLogs',
+    schemaDefinition: partyAuditLogsSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, createdAt: -1 })
+      schema.index({ tenantId: 1, entityType: 1, entityId: 1, createdAt: -1 })
+      schema.index({ tenantId: 1, actorStaffId: 1, createdAt: -1 })
     },
   })
 
@@ -262,6 +297,7 @@ export const getPartyAvitoMessageModel = () =>
     configureSchema: (schema) => {
       schema.index({ tenantId: 1, conversationId: 1, sentAt: 1 })
       schema.index({ tenantId: 1, avitoChatId: 1, avitoMessageId: 1 })
+      schema.index({ tenantId: 1, avitoChatId: 1, avitoMessageId: 1, direction: 1 }, { name: 'party_avito_incoming_idempotency', unique: true, partialFilterExpression: { avitoMessageId: { $gt: '' }, direction: 'incoming' } })
       schema.index({ tenantId: 1, clientId: 1, sentAt: -1 })
       schema.index({ tenantId: 1, orderId: 1, sentAt: -1 })
     },
@@ -291,6 +327,39 @@ export const getPartyVkMessageModel = () =>
     configureSchema: (schema) => {
       schema.index({ tenantId: 1, conversationId: 1, sentAt: 1 })
       schema.index({ tenantId: 1, vkGroupId: 1, vkPeerId: 1, vkMessageId: 1 })
+      schema.index({ tenantId: 1, vkGroupId: 1, vkPeerId: 1, vkMessageId: 1, direction: 1 }, { name: 'party_vk_incoming_idempotency', unique: true, partialFilterExpression: { vkMessageId: { $gt: '' }, direction: 'incoming' } })
+      schema.index({ tenantId: 1, clientId: 1, sentAt: -1 })
+      schema.index({ tenantId: 1, orderId: 1, sentAt: -1 })
+    },
+  })
+
+export const getPartyTelegramConversationModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'PartyTelegramConversation',
+    collectionName: 'telegramConversations',
+    schemaDefinition: partyTelegramConversationsSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, telegramChatId: 1 }, { unique: true })
+      schema.index({ tenantId: 1, clientId: 1, lastMessageAt: -1 })
+      schema.index({ tenantId: 1, orderId: 1, lastMessageAt: -1 })
+    },
+  })
+
+export const getPartyTelegramMessageModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'PartyTelegramMessage',
+    collectionName: 'telegramMessages',
+    schemaDefinition: partyTelegramMessagesSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index(
+        { tenantId: 1, telegramChatId: 1, telegramMessageId: 1 },
+        { unique: true }
+      )
+      schema.index({ tenantId: 1, conversationId: 1, sentAt: 1 })
       schema.index({ tenantId: 1, clientId: 1, sentAt: -1 })
       schema.index({ tenantId: 1, orderId: 1, sentAt: -1 })
     },

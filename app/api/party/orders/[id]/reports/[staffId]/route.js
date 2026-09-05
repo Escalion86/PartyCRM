@@ -7,6 +7,7 @@ import {
   partyError,
 } from '@server/partyApi'
 import { normalizePartyPerformerReportReview } from '@server/partyPerformerReports'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
 
 const getParam = async (params, key) => {
   const resolved = await params
@@ -53,6 +54,18 @@ export async function PATCH(req, { params }) {
   const assignment = (order.assignedStaff ?? []).find(
     (item) => String(item.staffId) === String(staffId)
   )
+
+  await recordPartyOrderAudit({
+    context,
+    order,
+    action: 'performer_report_reviewed',
+    summary:
+      review.status === 'accepted'
+        ? 'Принял отчет исполнителя'
+        : 'Запросил правки отчета исполнителя',
+    changes: [],
+    metadata: { staffId: String(staffId), reportStatus: review.status },
+  })
 
   return NextResponse.json({
     success: true,

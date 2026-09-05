@@ -299,6 +299,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   const [statusLoading, setStatusLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState('')
   const [actionError, setActionError] = useState('')
+  const [telegramBotToken, setTelegramBotToken] = useState('')
   const [googleCalendarStatus, setGoogleCalendarStatus] = useState(null)
   const [googleCalendarLoading, setGoogleCalendarLoading] = useState(true)
   const [googleCalendarError, setGoogleCalendarError] = useState('')
@@ -412,6 +413,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   const origin = buildOrigin()
   const telephonyLocked = Boolean(access && !access.allowTelephony)
   const aiLocked = Boolean(access && !access.allowAi)
+  const telegramLocked = Boolean(access && !access.allowTelegramIntegration)
   const googleCalendarLocked = isGoogleCalendarLocked({
     access,
     status: googleCalendarStatus,
@@ -446,6 +448,13 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       status?.vk?.enabled ??
       normalizeVkGroupDrafts(integrations).some((group) => group.enabled),
     status: status?.vk?.status,
+    loading: statusLoading,
+  })
+  const telegramIndicatorState = getCompanyIntegrationIndicatorState({
+    type: 'telegram',
+    enabled: status?.telegram?.enabled === true,
+    status: status?.telegram?.status,
+    locked: telegramLocked,
     loading: statusLoading,
   })
   const novofonIndicatorState = getCompanyIntegrationIndicatorState({
@@ -944,6 +953,75 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
               action: 'check',
               method: 'GET',
             })
+          }
+        />
+      </CompanyIntegrationCard>
+
+      <CompanyIntegrationCard
+        title="Telegram Business"
+        description="Получение сообщений личного Telegram-аккаунта и ответы из PartyCRM."
+        locked={telegramLocked}
+        indicatorState={telegramIndicatorState}
+        note="Автосоздание клиентов по умолчанию выключено. Не включайте его для личного аккаунта: друзья и другие личные контакты также могут попасть в базу клиентов."
+      >
+        <Field
+          label="Токен бота из BotFather"
+          type="password"
+          value={telegramBotToken}
+          placeholder={status?.telegram?.hasBotToken ? 'Токен сохранён на сервере' : ''}
+          onChange={setTelegramBotToken}
+        />
+        <label className="flex items-start gap-2 text-sm font-semibold text-slate-700">
+          <input
+            type="checkbox"
+            checked={status?.telegram?.autoCreateClients === true}
+            onChange={(event) =>
+              patchIntegrations({
+                telegramBusinessAutoCreateClients: event.target.checked,
+              })
+            }
+          />
+          <span>
+            Создавать карточку клиента, если контакта Telegram нет в базе
+          </span>
+        </label>
+        <div className="rounded-lg border border-sky-100 bg-sky-50 px-3 py-3 text-xs leading-5 text-slate-700">
+          <div className="font-semibold">Как подключить</div>
+          <ol className="mt-1 list-decimal space-y-1 pl-5">
+            <li>В BotFather создайте бота командой /newbot.</li>
+            <li>В Bot Settings включите Secretary Mode / «Режим секретаря».</li>
+            <li>Вставьте токен выше и нажмите «Подключить».</li>
+            <li>В Telegram откройте Настройки → Telegram Business → Чат-боты, добавьте бота и разрешите чтение сообщений и ответы.</li>
+          </ol>
+        </div>
+        {status?.telegram?.botUsername ? (
+          <div className="text-xs text-slate-600">
+            Бот: @{status.telegram.botUsername}
+          </div>
+        ) : null}
+        <IntegrationDiagnostics state={status?.telegram} />
+        <div className="text-xs text-slate-500">
+          Исходящие запросы: {status?.telegram?.proxyEnabled ? `через ${String(status.telegram.proxyType || '').toUpperCase()}-прокси` : 'напрямую'}
+        </div>
+        <IntegrationActions
+          provider="Telegram"
+          disabled={telegramLocked}
+          loading={actionLoading.startsWith('telegram:')}
+          onConnect={() =>
+            runIntegrationAction({
+              provider: 'telegram',
+              action: 'connect',
+              body: { botToken: telegramBotToken },
+            }).then(() => setTelegramBotToken(''))
+          }
+          onCheck={() =>
+            runIntegrationAction({
+              provider: 'telegram',
+              action: 'status',
+            })
+          }
+          onDisconnect={() =>
+            runIntegrationAction({ provider: 'telegram', action: 'disconnect' })
           }
         />
       </CompanyIntegrationCard>

@@ -6,6 +6,7 @@ import {
   getPartyServiceModel,
 } from '@server/partyModels'
 import { sendPushToTenant } from '@server/pushNotifications'
+import { syncPartyOrderInventory } from './partyInventory'
 import {
   buildPartyPublicLeadOrderPayload,
   normalizePartyPublicLeadApiKeys,
@@ -154,6 +155,10 @@ export const createPartyPublicLeadOrder = async ({
     ...orderPayload,
     tenantId,
   })
+
+  // Keep shortage details inside the company: public lead responses expose
+  // only their own order identifier, never other customers or reservations.
+  await syncPartyOrderInventory({ tenantId, order, staffId: null })
 
   const pushEnabled = company?.settings?.notifications?.pushEnabled === true
   if (pushEnabled) {

@@ -1,0 +1,46 @@
+import { Schema } from 'mongoose'
+const partyMoneyTasksSchema = {
+  tenantId: { type: Schema.Types.ObjectId, required: true },
+  orderId: { type: Schema.Types.ObjectId, required: true },
+  staffId: { type: Schema.Types.ObjectId, required: true },
+  responsibleStaffId: { type: Schema.Types.ObjectId, required: true },
+  settlementId: { type: Schema.Types.ObjectId, default: null },
+  type: {
+    type: String,
+    enum: ['receive_from_client', 'transfer_to_company'],
+    required: true,
+  },
+  amountKopecks: { type: Number, min: 0, required: true },
+  dueAt: { type: Date, required: true },
+  comment: { type: String, default: '', maxlength: 1000 },
+  paymentMethod: {
+    type: String,
+    enum: ['cash', 'transfer', 'account', 'other'],
+    required: true,
+  },
+  recipientType: {
+    type: String,
+    enum: ['client', 'company', 'staff'],
+    required: true,
+  },
+  recipientLabel: { type: String, required: true, maxlength: 160 },
+  idempotencyKey: { type: String, required: true },
+  createPayloadHash: { type: String, required: true },
+  status: {
+    type: String,
+    enum: ['pending', 'submitted', 'completed', 'canceled'],
+    default: 'pending',
+  },
+  revision: { type: Number, default: 0 },
+  submittedAmountKopecks: { type: Number, min: 0, default: null },
+  submissionComment: { type: String, default: '', maxlength: 1000 },
+  submittedAt: { type: Date, default: null },
+  submittedByStaffId: { type: Schema.Types.ObjectId, default: null },
+  reviewComment: { type: String, default: '', maxlength: 1000 },
+  completedAt: { type: Date, default: null },
+  completedByStaffId: { type: Schema.Types.ObjectId, default: null },
+  completedOperationId: { type: Schema.Types.ObjectId, default: null },
+  canceledAt: { type: Date, default: null },
+  canceledByStaffId: { type: Schema.Types.ObjectId, default: null },
+}
+export default partyMoneyTasksSchema

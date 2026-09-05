@@ -11,7 +11,7 @@ const serializeNotifications = (user) => ({
 })
 
 const getAuthorizedPerformerContext = async () => {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
 
   if (!sessionUser?._id) {
     return {

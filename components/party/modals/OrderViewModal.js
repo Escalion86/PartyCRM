@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import Modal from '@components/Modal'
 import ContactsIconsButtons from '@components/ContactsIconsButtons'
 import { formatMoney } from '@helpers/formatMoney'
@@ -18,6 +19,23 @@ import {
   getPartyAssignmentPayoutState,
   getPartyDerivedPayoutStatusLabel,
 } from '@helpers/partyOrderTransactions'
+import PartyAuditLog from '@components/party/audit/PartyAuditLog'
+
+const PartyOrderReports = dynamic(
+  () => import('@components/party/reports/PartyOrderReports')
+)
+const OrderInventoryPanel = dynamic(
+  () => import('@components/party/inventory/OrderInventoryPanel')
+)
+const PartyOrderPreparationPanel = dynamic(
+  () => import('@components/party/orders/PartyOrderPreparationPanel')
+)
+const PartyFinancialSettlementsPanel = dynamic(
+  () => import('@components/party/finance/PartyFinancialSettlementsPanel')
+)
+const PartyFinancialTasksPanel = dynamic(
+  () => import('@components/party/finance/PartyFinancialTasksPanel')
+)
 
 const ORDER_STATUS_LABELS = {
   draft: 'Заявка',
@@ -76,7 +94,7 @@ const formatDateTime = (value) => {
 
 const Section = ({ title, children }) => (
   <section className="rounded-lg border border-sky-100 bg-white p-3">
-    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <div className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
       {title}
     </div>
     {children}
@@ -175,22 +193,22 @@ const ContactCard = ({ contact, onView }) => {
         onView?.(contact.client)
       }}
     >
-    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-      <span className="font-semibold text-slate-500">{contact.label}:</span>
-      <span className="min-w-0 font-semibold break-words text-slate-900">
-        {contact.name}
-      </span>
-      <ContactsIconsButtons
-        user={contact.client}
-        showChat
-        className="my-0 shrink-0"
-      />
-    </div>
-    {formatClientContactLines(contact.client).map((line) => (
-      <div key={line} className="mt-0.5 text-xs text-slate-600">
-        {line}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-semibold text-slate-500">{contact.label}:</span>
+        <span className="min-w-0 font-semibold break-words text-slate-900">
+          {contact.name}
+        </span>
+        <ContactsIconsButtons
+          user={contact.client}
+          showChat
+          className="my-0 shrink-0"
+        />
       </div>
-    ))}
+      {formatClientContactLines(contact.client).map((line) => (
+        <div key={line} className="mt-0.5 text-xs text-slate-600">
+          {line}
+        </div>
+      ))}
     </div>
   )
 }
@@ -233,6 +251,7 @@ export default function OrderViewModal({
   clientsById,
   services = [],
   canManage = false,
+  activeCompanyId = '',
   onClose,
   onEdit,
   onReviewReport,
@@ -248,6 +267,9 @@ export default function OrderViewModal({
       responsibleStaffId: '',
     })
   const [viewingClient, setViewingClient] = useState(null)
+  const [showReportForms, setShowReportForms] = useState(false)
+  const [showInventory, setShowInventory] = useState(false)
+  const [inventoryReviewResult, setInventoryReviewResult] = useState(null)
   const safeClientsById = clientsById ?? new Map()
   const location = locations.find(
     (item) => String(item._id) === String(order?.locationId)
@@ -280,19 +302,20 @@ export default function OrderViewModal({
     ? order.additionalEvents
     : []
   const activeAdditionalEventItem =
-    activeAdditionalEvent !== null ? additionalEvents[activeAdditionalEvent] : null
+    activeAdditionalEvent !== null
+      ? additionalEvents[activeAdditionalEvent]
+      : null
   const responsibleStaffMember = staff.find(
     (item) => String(item._id) === String(order?.responsibleStaffId)
   )
-  const adminStaffOptions = staff
-    .filter(isAdminStaff)
-    .map((item) => ({
-      value: String(item._id),
-      label: getStaffLabel(item),
-    }))
+  const adminStaffOptions = staff.filter(isAdminStaff).map((item) => ({
+    value: String(item._id),
+    label: getStaffLabel(item),
+  }))
 
   const getAdditionalEventResponsibleLabel = (item) => {
-    const responsibleStaffId = item?.responsibleStaffId || order?.responsibleStaffId
+    const responsibleStaffId =
+      item?.responsibleStaffId || order?.responsibleStaffId
     if (!responsibleStaffId) return 'Не назначен'
     const person = staff.find(
       (staffMember) => String(staffMember._id) === String(responsibleStaffId)
@@ -418,10 +441,14 @@ export default function OrderViewModal({
                 </p>
               </div>
               <span className="rounded bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700">
-                {ORDER_STATUS_LABELS[order?.status] || order?.status || 'Статус не указан'}
+                {ORDER_STATUS_LABELS[order?.status] ||
+                  order?.status ||
+                  'Статус не указан'}
               </span>
             </div>
-            <InfoLine label="Дата и время">{formatDateTime(order?.eventDate)}</InfoLine>
+            <InfoLine label="Дата и время">
+              {formatDateTime(order?.eventDate)}
+            </InfoLine>
             <InfoLine label="Длительность">
               {order?.durationMinutes ? `${order.durationMinutes} мин` : '-'}
             </InfoLine>
@@ -536,7 +563,8 @@ export default function OrderViewModal({
                       Участие: {statusMeta.label}
                     </div>
                     <div className="mt-1 text-slate-600">
-                      Гонорар: {formatMoney(Number(assignment.payoutAmount || 0))}
+                      Гонорар:{' '}
+                      {formatMoney(Number(assignment.payoutAmount || 0))}
                       {' · '}
                       {getPartyDerivedPayoutStatusLabel(payoutState.status)}
                       {payoutState.payoutAmount > 0
@@ -554,6 +582,108 @@ export default function OrderViewModal({
           )}
         </Section>
 
+        {canManage && activeCompanyId && (
+          <Section title="Готовность праздника">
+            <PartyOrderPreparationPanel
+              manager
+              companyId={activeCompanyId}
+              orderId={String(order._id)}
+              staff={staff}
+            />
+          </Section>
+        )}
+
+        {canManage && activeCompanyId && (
+          <Section title="Расчёты с исполнителями">
+            <PartyFinancialSettlementsPanel
+              manager
+              companyId={activeCompanyId}
+              orderId={String(order._id)}
+              assignments={assignedStaff}
+              staff={staff}
+            />
+          </Section>
+        )}
+
+        {canManage && activeCompanyId && (
+          <Section title="Денежные поручения">
+            <PartyFinancialTasksPanel
+              manager
+              companyId={activeCompanyId}
+              orderId={String(order._id)}
+              assignments={assignedStaff}
+              staff={staff}
+            />
+          </Section>
+        )}
+
+        {canManage && activeCompanyId && (
+          <Section title="Реквизит заказа">
+            {(inventoryReviewResult
+              ? inventoryReviewResult.hasShortage
+              : order.inventoryHasShortage || order.inventorySyncError) && (
+              <p
+                role="alert"
+                className="mb-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900"
+              >
+                {(!inventoryReviewResult && order.inventorySyncError) ||
+                  'При последней проверке реквизита не хватало. Откройте комплект и повторите проверку перед выдачей.'}
+              </p>
+            )}
+            <button
+              type="button"
+              className="min-h-10 cursor-pointer rounded-lg border border-sky-200 px-3 text-sm font-semibold text-sky-800"
+              onClick={() => setShowInventory((value) => !value)}
+            >
+              {showInventory ? 'Свернуть' : 'Комплект и занятость реквизита'}
+            </button>
+            {showInventory && (
+              <OrderInventoryPanel
+                activeCompanyId={activeCompanyId}
+                orderId={String(order._id)}
+                serviceItems={(order.servicesIds || []).map(
+                  (serviceId, index) => ({
+                    serviceId: String(serviceId),
+                    serviceLineId: `${serviceId}:${index}`,
+                    quantity: 1,
+                  })
+                )}
+                services={services}
+                eventDate={order.eventDate}
+                dateEnd={
+                  order.dateEnd ||
+                  (order.eventDate
+                    ? new Date(
+                        +new Date(order.eventDate) +
+                          (order.durationMinutes || 60) * 60000
+                      ).toISOString()
+                    : '')
+                }
+                onSaved={(result) =>
+                  setInventoryReviewResult(result || { hasShortage: false })
+                }
+              />
+            )}
+          </Section>
+        )}
+        {activeCompanyId && (
+          <Section title="Отчёты по формам">
+            <button
+              type="button"
+              className="mb-3 min-h-10 cursor-pointer rounded-lg border border-sky-200 px-3 text-sm font-semibold text-sky-800"
+              onClick={() => setShowReportForms((value) => !value)}
+            >
+              {showReportForms ? 'Свернуть' : 'Открыть отчёты и проверку'}
+            </button>
+            {showReportForms && (
+              <PartyOrderReports
+                companyId={activeCompanyId}
+                orderId={String(order._id)}
+                staff={staff}
+              />
+            )}
+          </Section>
+        )}
         <Section title="Отчеты исполнителей">
           {assignedStaff.length > 0 ? (
             <div className="grid gap-2">
@@ -581,7 +711,9 @@ export default function OrderViewModal({
                         {report.text}
                       </div>
                     ) : (
-                      <p className="mt-2 text-slate-500">Отчет еще не отправлен.</p>
+                      <p className="mt-2 text-slate-500">
+                        Отчет еще не отправлен.
+                      </p>
                     )}
                     {files.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-2">
@@ -651,9 +783,15 @@ export default function OrderViewModal({
         <Section title="Финансы">
           <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-3">
             <InfoLine label="Договор">{formatMoney(contractAmount)}</InfoLine>
-            <InfoLine label="Получено">{formatMoney(paymentState.incomeTotal)}</InfoLine>
-            <InfoLine label="Остаток">{formatMoney(paymentState.balanceDue)}</InfoLine>
-            <InfoLine label="Расходы">{formatMoney(paymentState.expenseTotal)}</InfoLine>
+            <InfoLine label="Получено">
+              {formatMoney(paymentState.incomeTotal)}
+            </InfoLine>
+            <InfoLine label="Остаток">
+              {formatMoney(paymentState.balanceDue)}
+            </InfoLine>
+            <InfoLine label="Расходы">
+              {formatMoney(paymentState.expenseTotal)}
+            </InfoLine>
             <InfoLine label="Выплаты">{formatMoney(payoutTotal)}</InfoLine>
             <InfoLine label="Маржа">{formatMoney(grossMargin)}</InfoLine>
           </div>
@@ -677,9 +815,24 @@ export default function OrderViewModal({
               ))}
             </div>
           ) : (
-            <p className="text-sm text-slate-500">Дополнительные события не добавлены.</p>
+            <p className="text-sm text-slate-500">
+              Дополнительные события не добавлены.
+            </p>
           )}
         </Section>
+
+        {canManage ? (
+          <Section title="История действий">
+            <PartyAuditLog
+              activeCompanyId={activeCompanyId}
+              staff={staff}
+              services={services}
+              locations={locations}
+              orderId={String(order?._id || '')}
+              deferred
+            />
+          </Section>
+        ) : null}
       </div>
 
       {activeAdditionalEventItem ? (
@@ -702,9 +855,13 @@ export default function OrderViewModal({
                 <button
                   type="button"
                   className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700"
-                  onClick={() => toggleAdditionalEventDone(activeAdditionalEvent)}
+                  onClick={() =>
+                    toggleAdditionalEventDone(activeAdditionalEvent)
+                  }
                 >
-                  {activeAdditionalEventItem.done ? 'Вернуть в работу' : 'Выполнено'}
+                  {activeAdditionalEventItem.done
+                    ? 'Вернуть в работу'
+                    : 'Выполнено'}
                 </button>
               ) : null}
             </div>

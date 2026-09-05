@@ -35,7 +35,10 @@ test('party membership context keeps real staff memberships for developers', asy
 test('party me route resolves active company through request context', async () => {
   const source = await route('app/api/party/me/route.js')
 
-  assert.match(source, /getPartyRequestContext\(\{\s*req\s*\}\)/)
+  assert.match(
+    source,
+    /getPartyRequestContext\(\{\s*req,\s*allowLocationOwner:\s*true,?\s*\}\)/
+  )
   assert.match(source, /tenantId/)
   assert.match(source, /staff/)
   assert.match(source, /company/)

@@ -5,6 +5,7 @@ import {
   getPartyVkMessageModel,
 } from '@server/partyModels'
 import { sendPartyVkConversationReply } from '@server/partyMessengerReplies'
+import { registerPartyInboxOutgoing } from '@server/partyInboxLifecycle'
 import { sendVkMessage } from '@server/vkGroup'
 
 const getId = async (params) => String((await params)?.id || '').trim()
@@ -18,10 +19,11 @@ export async function GET(req, { params }) {
 
   const conversationId = await getId(params)
   const PartyVkConversations = await getPartyVkConversationModel()
-  const conversation = await PartyVkConversations.findOne({
-    _id: conversationId,
-    tenantId: context.tenantId,
-  }).lean()
+  const conversation = await PartyVkConversations.findOneAndUpdate(
+    { _id: conversationId, tenantId: context.tenantId },
+    { $set: { unreadCount: 0 } },
+    { returnDocument: 'after' }
+  ).lean()
   if (!conversation) {
     return NextResponse.json(
       { success: false, error: 'Переписка не найдена' },
@@ -65,6 +67,8 @@ export async function POST(req, { params }) {
     text: body?.text,
     integrations: context.company?.settings?.integrations ?? {},
     sendMessage: sendVkMessage,
+    registerInboxOutgoing: registerPartyInboxOutgoing,
+    actorStaffId: context.staff?._id || null,
   })
 
   if (!result.ok) {

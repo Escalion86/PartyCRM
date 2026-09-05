@@ -11,7 +11,7 @@ import { isValidObjectId } from '@server/partyApi'
 import { sanitizePartyOrderForPerformer } from '@helpers/partyPerformerOrders'
 
 export async function GET() {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
 
   if (!sessionUser?._id) {
     return NextResponse.json(

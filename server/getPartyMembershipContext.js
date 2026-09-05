@@ -6,7 +6,9 @@ import {
   sortPartyMemberships,
 } from './partyMembershipCore'
 
-const getPartyMembershipContext = async () => {
+const getPartyMembershipContext = async ({
+  excludeLocationOwners = false,
+} = {}) => {
   const sessionUser = await getPartySessionUser()
   const authUserId = sessionUser?._id ? String(sessionUser._id) : ''
 
@@ -23,6 +25,7 @@ const getPartyMembershipContext = async () => {
   const staffItems = await PartyStaff.find({
     authUserId,
     status: { $ne: 'archived' },
+    ...(excludeLocationOwners ? { role: { $ne: 'location_owner' } } : {}),
   })
     .sort({ role: 1, createdAt: 1 })
     .lean()

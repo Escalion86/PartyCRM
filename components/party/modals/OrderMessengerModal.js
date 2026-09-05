@@ -3,6 +3,7 @@
 import Modal from '@components/Modal'
 import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
 import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
+import PartyTelegramConversationsPanel from '@components/party/integrations/PartyTelegramConversationsPanel'
 import getPersonFullName from '@helpers/getPersonFullName'
 
 const getOrderMessengerTitle = ({ order, client }) => {
@@ -43,6 +44,12 @@ export default function OrderMessengerModal({
             canReply={canManage}
           />
           <PartyAvitoConversationsPanel
+            clientId={order.clientId || ''}
+            orderId={order._id || ''}
+            companyId={activeCompanyId}
+            canReply={canManage}
+          />
+          <PartyTelegramConversationsPanel
             clientId={order.clientId || ''}
             orderId={order._id || ''}
             companyId={activeCompanyId}

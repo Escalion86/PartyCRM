@@ -7,6 +7,8 @@ import {
   getPartyTransactionModel,
   getPartyVkConversationModel,
   getPartyVkMessageModel,
+  getPartyTelegramConversationModel,
+  getPartyTelegramMessageModel,
 } from '@server/partyModels'
 
 export const buildPartyClientSnapshot = (client = {}) => ({
@@ -48,6 +50,8 @@ export const mergePartyClients = async ({
     PartyVkMessages,
     PartyAvitoConversations,
     PartyAvitoMessages,
+    PartyTelegramConversations,
+    PartyTelegramMessages,
   ] = await Promise.all([
     getPartyOrderModel(),
     getPartyTransactionModel(),
@@ -56,6 +60,8 @@ export const mergePartyClients = async ({
     getPartyVkMessageModel(),
     getPartyAvitoConversationModel(),
     getPartyAvitoMessageModel(),
+    getPartyTelegramConversationModel(),
+    getPartyTelegramMessageModel(),
   ])
 
   const client = buildPartyClientSnapshot(targetClient)
@@ -67,6 +73,8 @@ export const mergePartyClients = async ({
     vkMessages,
     avitoConversations,
     avitoMessages,
+    telegramConversations,
+    telegramMessages,
   ] = await Promise.all([
     PartyOrders.updateMany(
       { tenantId, clientId: sourceClientId },
@@ -96,6 +104,14 @@ export const mergePartyClients = async ({
       { tenantId, clientId: sourceClientId },
       { $set: { clientId: targetClientId } }
     ),
+    PartyTelegramConversations.updateMany(
+      { tenantId, clientId: sourceClientId },
+      { $set: { clientId: targetClientId } }
+    ),
+    PartyTelegramMessages.updateMany(
+      { tenantId, clientId: sourceClientId },
+      { $set: { clientId: targetClientId } }
+    ),
   ])
 
   const archivedClient = await PartyClients.findOneAndUpdate(
@@ -116,6 +132,8 @@ export const mergePartyClients = async ({
       vkMessages: vkMessages.modifiedCount || 0,
       avitoConversations: avitoConversations.modifiedCount || 0,
       avitoMessages: avitoMessages.modifiedCount || 0,
+      telegramConversations: telegramConversations.modifiedCount || 0,
+      telegramMessages: telegramMessages.modifiedCount || 0,
     },
   }
 }

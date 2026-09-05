@@ -76,6 +76,29 @@ test('returns warning for enabled but disconnected Avito and VK integrations', (
   }
 })
 
+test('returns Telegram states for bot-ready and connected lifecycle', () => {
+  assert.equal(
+    getCompanyIntegrationIndicatorState({ type: 'telegram' }),
+    disconnected
+  )
+  assert.equal(
+    getCompanyIntegrationIndicatorState({
+      type: 'telegram',
+      enabled: true,
+      status: 'bot_ready',
+    }),
+    warning
+  )
+  assert.equal(
+    getCompanyIntegrationIndicatorState({
+      type: 'telegram',
+      enabled: true,
+      status: 'connected',
+    }),
+    connected
+  )
+})
+
 test('returns connected or warning for Novofon depending on apiKey', () => {
   assert.equal(
     getCompanyIntegrationIndicatorState({

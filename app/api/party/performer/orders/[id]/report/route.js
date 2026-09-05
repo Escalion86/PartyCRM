@@ -7,6 +7,7 @@ import {
   partyError,
 } from '@server/partyApi'
 import { normalizePartyPerformerReportPayload } from '@server/partyPerformerReports'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
 
 const getId = async (params) => {
   const resolved = await params
@@ -14,7 +15,7 @@ const getId = async (params) => {
 }
 
 export async function PATCH(req, { params }) {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
 
   if (!sessionUser?._id) {
     return partyError(401, 'unauthorized', 'Не авторизован', 'auth')
@@ -68,6 +69,20 @@ export async function PATCH(req, { params }) {
   const assignment = (order.assignedStaff ?? []).find(
     (item) => String(item.staffId) === staffId
   )
+
+  await recordPartyOrderAudit({
+    context: {
+      tenantId: membership.tenantId,
+      role: membership.role,
+      staff: membership.staff,
+      sessionUser,
+    },
+    order,
+    action: 'performer_report_submitted',
+    summary: 'Отправил отчет по заказу',
+    changes: [],
+    metadata: { staffId, reportStatus: report.status },
+  })
 
   return NextResponse.json({
     success: true,

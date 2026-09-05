@@ -1,11 +1,25 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import ContactsIconsButtons from '@components/ContactsIconsButtons'
 import Modal from '@components/Modal'
 import { apiJson } from '@helpers/apiClient'
 import getPersonFullName from '@helpers/getPersonFullName'
 import { isPushSupported, syncPushSubscription } from '@helpers/pushClient'
+
+const PartyOrderReports = dynamic(
+  () => import('@components/party/reports/PartyOrderReports')
+)
+const PartyOrderPreparationPanel = dynamic(
+  () => import('@components/party/orders/PartyOrderPreparationPanel')
+)
+const PartyFinancialSettlementsPanel = dynamic(
+  () => import('@components/party/finance/PartyFinancialSettlementsPanel')
+)
+const PartyFinancialTasksPanel = dynamic(
+  () => import('@components/party/finance/PartyFinancialTasksPanel')
+)
 
 const formatDateTime = (value) => {
   if (!value) return 'Дата не указана'
@@ -20,8 +34,7 @@ const formatDateTime = (value) => {
   })
 }
 
-const formatMoney = (value) =>
-  `${Number(value || 0).toLocaleString('ru-RU')} ₽`
+const formatMoney = (value) => `${Number(value || 0).toLocaleString('ru-RU')} ₽`
 
 const confirmationLabels = {
   pending: 'Ждет подтверждения',
@@ -54,8 +67,10 @@ const getAddressText = (order) => {
         .filter(Boolean)
         .join(', ')
     : ''
-  return [order.location?.title, addressText].filter(Boolean).join(' · ') ||
+  return (
+    [order.location?.title, addressText].filter(Boolean).join(' · ') ||
     'Точка не указана'
+  )
 }
 
 const formatCompanyTitle = (title) =>
@@ -65,8 +80,8 @@ const isOrderStarted = (order) => {
   const eventDate = order?.eventDate ? new Date(order.eventDate) : null
   return Boolean(
     eventDate &&
-      !Number.isNaN(eventDate.getTime()) &&
-      eventDate.getTime() <= Date.now()
+    !Number.isNaN(eventDate.getTime()) &&
+    eventDate.getTime() <= Date.now()
   )
 }
 
@@ -92,7 +107,7 @@ const getReportAccessMessage = (order) => {
 
 const DetailSection = ({ title, children }) => (
   <section className="rounded-lg border border-sky-100 bg-white p-3">
-    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <div className="mb-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
       {title}
     </div>
     {children}
@@ -156,7 +171,9 @@ const PerformerReportEditor = ({
             />
             <input
               value={reportDraft.fileUrl}
-              onChange={(event) => onDraftChange({ fileUrl: event.target.value })}
+              onChange={(event) =>
+                onDraftChange({ fileUrl: event.target.value })
+              }
               className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
               placeholder="Ссылка на файл"
               disabled={report?.status === 'accepted'}
@@ -260,7 +277,9 @@ const PerformerOrderViewModal = ({ order, onClose }) => {
               />
             </div>
             {order.client?.phone ? (
-              <div className="text-slate-600">Телефон: {order.client.phone}</div>
+              <div className="text-slate-600">
+                Телефон: {order.client.phone}
+              </div>
             ) : null}
             {order.client?.email ? (
               <div className="text-slate-600">Email: {order.client.email}</div>
@@ -303,6 +322,37 @@ const PerformerOrderViewModal = ({ order, onClose }) => {
               {formatMoney(order.assignment?.payoutAmount)}
             </DetailLine>
           </div>
+        </DetailSection>
+
+        <DetailSection title="Подготовка">
+          <PartyOrderPreparationPanel
+            companyId={order.companyId}
+            orderId={String(order._id)}
+            staffId={String(order.staffId)}
+          />
+        </DetailSection>
+
+        <DetailSection title="Расчёт по празднику">
+          <PartyFinancialSettlementsPanel
+            companyId={order.companyId}
+            orderId={String(order._id)}
+            staffId={String(order.staffId)}
+            assignments={[{ ...order.assignment, staffId: order.staffId }]}
+            staff={[
+              {
+                _id: order.staffId,
+                firstName: order.staffName || 'Исполнитель',
+              },
+            ]}
+          />
+        </DetailSection>
+
+        <DetailSection title="Денежные поручения">
+          <PartyFinancialTasksPanel
+            companyId={order.companyId}
+            orderId={String(order._id)}
+            staffId={String(order.staffId)}
+          />
         </DetailSection>
       </div>
     </Modal>
@@ -404,6 +454,13 @@ export default function PerformerWorkspaceClient() {
   const [pushMessage, setPushMessage] = useState('')
   const [viewingOrderKey, setViewingOrderKey] = useState('')
   const [reportOrderKey, setReportOrderKey] = useState('')
+  const [formReportOrder, setFormReportOrder] = useState(null)
+  const [dirtyFormReports, setDirtyFormReports] = useState({})
+  const handleReportDirty = useCallback(
+    (id, dirty) =>
+      setDirtyFormReports((previous) => ({ ...previous, [id]: dirty })),
+    []
+  )
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -526,8 +583,9 @@ export default function PerformerWorkspaceClient() {
 
   const reportOrder = useMemo(
     () =>
-      orders.find((order) => `${order._id}:${order.staffId}` === reportOrderKey) ||
-      null,
+      orders.find(
+        (order) => `${order._id}:${order.staffId}` === reportOrderKey
+      ) || null,
     [orders, reportOrderKey]
   )
 
@@ -623,7 +681,11 @@ export default function PerformerWorkspaceClient() {
       )
       setReportDrafts((prev) => ({
         ...prev,
-        [orderKey]: { text: response.data.report?.text || '', fileName: '', fileUrl: '' },
+        [orderKey]: {
+          text: response.data.report?.text || '',
+          fileName: '',
+          fileUrl: '',
+        },
       }))
     } catch (saveError) {
       setError(saveError.message || 'Не удалось отправить отчет')
@@ -669,32 +731,32 @@ export default function PerformerWorkspaceClient() {
 
   if (loading) {
     return (
-      <section className="max-w-5xl px-5 py-10 mx-auto">
+      <section className="mx-auto max-w-5xl px-5 py-10">
         <p className="text-sm text-black/60">Загружаем заказы исполнителя...</p>
       </section>
     )
   }
 
   return (
-    <section className="max-w-5xl px-5 py-10 mx-auto">
-      <p className="text-sm font-semibold uppercase text-sky-700">
+    <section className="mx-auto max-w-5xl px-5 py-10">
+      <p className="text-sm font-semibold text-sky-700 uppercase">
         Кабинет исполнителя
       </p>
-      <h1 className="mt-3 text-3xl font-semibold font-futuraPT sm:text-4xl">
+      <h1 className="font-futuraPT mt-3 text-3xl font-semibold sm:text-4xl">
         Кабинет исполнителя
       </h1>
-      <p className="max-w-2xl mt-4 leading-7 text-slate-700">
+      <p className="mt-4 max-w-2xl leading-7 text-slate-700">
         Видны только назначенные заказы и сумма выплаты исполнителю. Полная
         клиентская смета здесь не показывается.
       </p>
       {error && (
-        <div className="p-3 mt-5 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
+        <div className="border-danger/30 bg-danger/10 text-danger mt-5 rounded-md border p-3 text-sm">
           {error}
         </div>
       )}
 
       {pushAvailable && pushPermission !== 'granted' && (
-        <div className="flex flex-col gap-3 p-4 mt-6 bg-white border rounded-lg border-sky-100 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-6 flex flex-col gap-3 rounded-lg border border-sky-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-800">
               Уведомления о назначениях
@@ -715,21 +777,20 @@ export default function PerformerWorkspaceClient() {
       )}
 
       {pushMessage && (
-        <div className="p-3 mt-5 text-sm text-emerald-700 border rounded-md border-emerald-200 bg-emerald-50">
+        <div className="mt-5 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
           {pushMessage}
         </div>
       )}
 
       {linkRequests.length > 0 && (
-        <div className="grid gap-3 mt-8">
+        <div className="mt-8 grid gap-3">
           <h2 className="text-xl font-semibold">Запросы на привязку</h2>
           {linkRequests.map((request) => {
-            const isSaving =
-              String(savingLinkRequestId) === String(request._id)
+            const isSaving = String(savingLinkRequestId) === String(request._id)
             return (
               <div
                 key={request._id}
-                className="p-5 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
+                className="rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5"
               >
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
@@ -779,14 +840,14 @@ export default function PerformerWorkspaceClient() {
         </div>
       )}
 
-      <div className="mt-8 overflow-hidden bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5">
+      <div className="mt-8 overflow-hidden rounded-lg border border-sky-100 bg-white shadow-sm shadow-sky-950/5">
         <div className="grid gap-px bg-sky-100 sm:grid-cols-3">
           {[
             ['Компаний', `${companyOptions.length || 0}`],
             ['Назначено', `${filteredOrders.length} заказов`],
             ['К выплате', formatMoney(payoutTotal)],
           ].map(([title, value]) => (
-            <div key={title} className="p-5 bg-white">
+            <div key={title} className="bg-white p-5">
               <p className="text-sm text-black/55">{title}</p>
               <p className="mt-1 text-2xl font-semibold">{value}</p>
             </div>
@@ -801,7 +862,7 @@ export default function PerformerWorkspaceClient() {
             <select
               value={companyFilter}
               onChange={(event) => setCompanyFilter(event.target.value)}
-              className="h-10 px-3 bg-white border rounded-md outline-none cursor-pointer border-sky-100 focus:border-sky-500"
+              className="h-10 cursor-pointer rounded-md border border-sky-100 bg-white px-3 outline-none focus:border-sky-500"
             >
               <option value="all">Все компании</option>
               {companyOptions.map((company) => (
@@ -814,13 +875,13 @@ export default function PerformerWorkspaceClient() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 mt-5">
+      <div className="mt-5 flex flex-wrap gap-2">
         {statusFilters.map((filter) => (
           <button
             key={filter.value}
             type="button"
             onClick={() => setStatusFilter(filter.value)}
-            className={`px-3 py-2 text-sm font-semibold transition-colors border rounded-md cursor-pointer ${
+            className={`cursor-pointer rounded-md border px-3 py-2 text-sm font-semibold transition-colors ${
               statusFilter === filter.value
                 ? 'border-sky-600 bg-sky-600 text-white'
                 : 'border-sky-100 bg-white text-slate-700 hover:bg-sky-50'
@@ -829,7 +890,9 @@ export default function PerformerWorkspaceClient() {
             {filter.label}
             <span
               className={`ml-2 ${
-                statusFilter === filter.value ? 'text-white/80' : 'text-slate-400'
+                statusFilter === filter.value
+                  ? 'text-white/80'
+                  : 'text-slate-400'
               }`}
             >
               {statusFilterCounts[filter.value] || 0}
@@ -838,16 +901,16 @@ export default function PerformerWorkspaceClient() {
         ))}
       </div>
 
-      <div className="grid gap-3 mt-6">
+      <div className="mt-6 grid gap-3">
         {orders.length === 0 && (
-          <div className="p-5 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5">
+          <div className="rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5">
             <p className="text-sm text-black/60">
               Назначенных заказов пока нет.
             </p>
           </div>
         )}
         {orders.length > 0 && filteredOrders.length === 0 && (
-          <div className="p-5 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5">
+          <div className="rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5">
             <p className="text-sm text-black/60">
               По выбранным фильтрам назначенных заказов нет.
             </p>
@@ -862,7 +925,7 @@ export default function PerformerWorkspaceClient() {
           return (
             <div
               key={orderKey}
-              className="p-5 bg-white border rounded-lg shadow-sm border-sky-100 shadow-sky-950/5"
+              className="rounded-lg border border-sky-100 bg-white p-5 shadow-sm shadow-sky-950/5"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -877,7 +940,7 @@ export default function PerformerWorkspaceClient() {
                     {getAddressText(order)}
                   </p>
                   {order.performerComment ? (
-                    <p className="mt-2 max-w-2xl whitespace-pre-wrap rounded bg-sky-50 p-2 text-sm text-slate-700">
+                    <p className="mt-2 max-w-2xl rounded bg-sky-50 p-2 text-sm whitespace-pre-wrap text-slate-700">
                       {order.performerComment}
                     </p>
                   ) : null}
@@ -913,7 +976,10 @@ export default function PerformerWorkspaceClient() {
                         Ответственный:
                       </span>
                       <span className="min-w-0 truncate">
-                        {getContactName(order.responsibleStaff, 'Администратор')}
+                        {getContactName(
+                          order.responsibleStaff,
+                          'Администратор'
+                        )}
                       </span>
                       <ContactsIconsButtons
                         user={order.responsibleStaff}
@@ -928,15 +994,26 @@ export default function PerformerWorkspaceClient() {
                     {formatMoney(order.assignment?.payoutAmount)}
                   </p>
                   <p className="mt-1 text-xs text-black/50">
-                    {confirmationLabels[confirmationStatus] || confirmationStatus}
+                    {confirmationLabels[confirmationStatus] ||
+                      confirmationStatus}
                   </p>
-                  <div className="flex flex-col gap-2 mt-4 sm:items-end">
+                  <div className="mt-4 flex flex-col gap-2 sm:items-end">
                     <button
                       type="button"
                       onClick={() => setViewingOrderKey(orderKey)}
                       className={secondaryButtonClass}
                     >
                       Подробнее
+                    </button>
+                    <button
+                      type="button"
+                      className={secondaryButtonClass}
+                      onClick={() => {
+                        setDirtyFormReports({})
+                        setFormReportOrder(order)
+                      }}
+                    >
+                      Формы отчёта
                     </button>
                     {hasStarted ? (
                       <button
@@ -986,6 +1063,23 @@ export default function PerformerWorkspaceClient() {
           )
         })}
       </div>
+      {formReportOrder && (
+        <Modal
+          open={true}
+          onClose={() => setFormReportOrder(null)}
+          title="Отчёты до и после мероприятия"
+          tone="party"
+          size="full"
+          hasUnsavedChanges={Object.values(dirtyFormReports).some(Boolean)}
+        >
+          <PartyOrderReports
+            companyId={formReportOrder.companyId}
+            orderId={String(formReportOrder._id)}
+            staffId={String(formReportOrder.staffId)}
+            onDirtyChange={handleReportDirty}
+          />
+        </Modal>
+      )}
       <PerformerOrderViewModal
         order={viewingOrder}
         onClose={() => setViewingOrderKey('')}

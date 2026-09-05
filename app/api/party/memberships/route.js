@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
+import { serializePartyMembershipResponse } from '@server/partyMembershipResponse'
 
 export async function GET() {
   try {
@@ -22,7 +23,7 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       data: {
-        memberships,
+        memberships: memberships.map(serializePartyMembershipResponse),
       },
     })
   } catch (error) {
@@ -32,7 +33,7 @@ export async function GET() {
         error: {
           code: 'partycrm_memberships_failed',
           type: 'server',
-          message: error.message,
+          message: 'Не удалось загрузить доступные компании',
         },
       },
       { status: 500 }

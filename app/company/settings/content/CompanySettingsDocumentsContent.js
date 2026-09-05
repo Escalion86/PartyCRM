@@ -100,9 +100,12 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
     if (type === 'contract') {
       nextDocuments.contractDocxTemplateBase64 = base64
       nextDocuments.contractDocxTemplateFileName = file.name
-    } else {
+    } else if (type === 'act') {
       nextDocuments.actDocxTemplateBase64 = base64
       nextDocuments.actDocxTemplateFileName = file.name
+    } else {
+      nextDocuments.proposalDocxTemplateBase64 = base64
+      nextDocuments.proposalDocxTemplateFileName = file.name
     }
 
     await savePatch({ documents: nextDocuments })
@@ -218,6 +221,114 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
           />
           <div className="mt-4 text-xs leading-5 text-slate-500">
             Без пользовательского файла используется встроенный шаблон акта.
+          </div>
+        </label>
+      </div>
+
+      <div className="rounded-2xl border border-sky-100 bg-white p-5">
+        <div className="text-base font-semibold">Коммерческие предложения</div>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Эти значения подставляются в новые КП. В конкретном предложении их
+          можно изменить перед сохранением версии.
+        </p>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Срок действия, дней
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={365}
+              defaultValue={documents.proposalValidityDays || 14}
+              onBlur={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    proposalValidityDays: Math.min(
+                      365,
+                      Math.max(1, Number(event.target.value) || 14)
+                    ),
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Налоговая формулировка
+            </span>
+            <input
+              type="text"
+              defaultValue={documents.proposalTaxText || ''}
+              placeholder="НДС не облагается..."
+              onBlur={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    proposalTaxText: event.target.value,
+                  },
+                })
+              }
+              className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Условия оплаты по умолчанию
+            </span>
+            <textarea
+              rows={3}
+              defaultValue={documents.proposalPaymentTerms || ''}
+              placeholder="Например: предоплата 50%, остаток в день мероприятия"
+              onBlur={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    proposalPaymentTerms: event.target.value,
+                  },
+                })
+              }
+              className="rounded-lg border border-sky-100 px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              В стоимость включено
+            </span>
+            <textarea
+              rows={3}
+              defaultValue={documents.proposalIncludedText || ''}
+              placeholder="Работа команды, оборудование, транспорт..."
+              onBlur={(event) =>
+                savePatch({
+                  documents: {
+                    ...documents,
+                    proposalIncludedText: event.target.value,
+                  },
+                })
+              }
+              className="rounded-lg border border-sky-100 px-3 py-2 text-sm"
+            />
+          </label>
+        </div>
+        <label className="mt-4 block rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
+          <div className="text-sm font-semibold">DOCX-шаблон КП</div>
+          <div className="mt-1 text-xs text-slate-500">
+            Текущий: {documents.proposalDocxTemplateFileName || 'не загружен'}
+          </div>
+          <input
+            type="file"
+            accept=".docx"
+            className="mt-4 block cursor-pointer text-sm"
+            onChange={async (event) => {
+              await saveDocxTemplate('proposal', event.target.files?.[0])
+              event.target.value = ''
+            }}
+          />
+          <div className="mt-3 text-xs leading-5 text-slate-500">
+            Без файла PartyCRM использует встроенный официальный шаблон.
           </div>
         </label>
       </div>

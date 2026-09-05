@@ -13,6 +13,7 @@ const sectionTitles = {
   services: 'Услуги',
   locations: 'Точки',
   staff: 'Сотрудники',
+  audit: 'История действий',
 }
 
 export const metadata = {

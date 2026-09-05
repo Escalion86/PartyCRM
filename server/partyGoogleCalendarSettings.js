@@ -218,8 +218,21 @@ const serializePartyCompanySettingsForResponse = (
   { allowCalendarSync } = {}
 ) => {
   const source = settings && typeof settings === 'object' ? settings : {}
+  const integrations = { ...(source.integrations || {}) }
+  for (const key of [
+    'telegramBusinessBotToken',
+    'telegramBusinessWebhookToken',
+    'telegramBusinessWebhookSecret',
+    'telegramBusinessWebhookUrl',
+    'telegramBusinessConnectionId',
+    'telegramBusinessAccountUserId',
+    'telegramBusinessRights',
+  ]) {
+    delete integrations[key]
+  }
   return {
     ...source,
+    integrations,
     googleCalendar: toPublicPartyGoogleCalendarStatus({
       settings: source.googleCalendar,
       allowCalendarSync,

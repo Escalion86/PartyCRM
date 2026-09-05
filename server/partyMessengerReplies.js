@@ -24,6 +24,8 @@ const createOutgoingMessage = async ({
   status,
   raw,
   provider,
+  registerInboxOutgoing,
+  actorStaffId,
 }) => {
   const sentAt = new Date()
   const providerFields =
@@ -57,6 +59,7 @@ const createOutgoingMessage = async ({
       },
     }
   )
+  if (status === 'sent') await registerInboxOutgoing({ tenantId, channel: provider, sourceId: conversation._id, token: message._id, at: sentAt, text, actorStaffId })
 
   return message
 }
@@ -73,6 +76,8 @@ export const sendPartyVkConversationReply = async ({
   text,
   integrations = {},
   sendMessage,
+  registerInboxOutgoing = async () => {},
+  actorStaffId = null,
 }) => {
   const cleanMessageText = cleanText(text)
   if (!cleanMessageText) return makeError('message_text_required')
@@ -105,6 +110,8 @@ export const sendPartyVkConversationReply = async ({
       ? { provider: 'vk', payload: sendResult.payload }
       : { provider: 'vk', error: sendResult.error, payload: sendResult.payload },
     provider: 'vk',
+    registerInboxOutgoing,
+    actorStaffId,
   })
 
   return {
@@ -122,6 +129,8 @@ export const sendPartyAvitoConversationReply = async ({
   integrations = {},
   requestAccessToken,
   sendMessage,
+  registerInboxOutgoing = async () => {},
+  actorStaffId = null,
 }) => {
   const cleanMessageText = cleanText(text)
   if (!cleanMessageText) return makeError('message_text_required')
@@ -165,6 +174,8 @@ export const sendPartyAvitoConversationReply = async ({
       ? { provider: 'avito', payload: sendResult.payload }
       : { provider: 'avito', error: sendResult.error, payload: sendResult.payload },
     provider: 'avito',
+    registerInboxOutgoing,
+    actorStaffId,
   })
 
   return {

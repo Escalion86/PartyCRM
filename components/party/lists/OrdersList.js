@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createPortal } from 'react-dom'
 import {
   faBan,
@@ -81,6 +82,7 @@ const hasConnectedMessengerIntegration = (companySettings) => {
 
   return (
     integrations.avitoEnabled === true ||
+    integrations.telegramBusinessEnabled === true ||
     integrations.vkGroupEnabled === true ||
     vkGroups.some((group) => group?.enabled === true)
   )
@@ -253,10 +255,10 @@ const getOrderClient = (order, clientsById) => {
   }
 }
 
-const OrderMessengerButton = ({ onClick }) => (
+const OrderMessengerButton = ({ onClick, unreadCount = 0 }) => (
   <button
     type="button"
-    className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center text-sky-600 duration-300 hover:scale-110 hover:text-sky-800"
+    className="relative flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center text-sky-600 duration-300 hover:scale-110 hover:text-sky-800"
     title="Открыть переписки заказа"
     aria-label="Открыть переписки заказа"
     onClick={(event) => {
@@ -265,10 +267,15 @@ const OrderMessengerButton = ({ onClick }) => (
     }}
   >
     <FontAwesomeIcon icon={faComments} size="lg" />
+    {unreadCount > 0 ? (
+      <span className="absolute -top-2 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+        {unreadCount > 99 ? '99+' : unreadCount}
+      </span>
+    ) : null}
   </button>
 )
 
-const OrderContactLine = ({ label, client, onMessenger }) => {
+const OrderContactLine = ({ label, client, onMessenger, unreadCount = 0 }) => {
   const name = getPersonFullName(client, { fallback: 'не указан' })
 
   return (
@@ -276,7 +283,7 @@ const OrderContactLine = ({ label, client, onMessenger }) => {
       <span className="font-medium text-black/70">{label}:</span>
       <span className="min-w-0 truncate">{name}</span>
       <ContactsIconsButtons user={client} showChat className="my-0 shrink-0" />
-      {onMessenger ? <OrderMessengerButton onClick={onMessenger} /> : null}
+      {onMessenger ? <OrderMessengerButton onClick={onMessenger} unreadCount={unreadCount} /> : null}
     </div>
   )
 }
@@ -372,7 +379,7 @@ const OrderContactsPopover = ({ contacts, triggerRef, onClose }) => {
   )
 }
 
-const OrderContactsSummary = ({ order, clientsById, onMessenger }) => {
+const OrderContactsSummary = ({ order, clientsById, onMessenger, unreadCount = 0 }) => {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false)
   const triggerRef = useRef(null)
   const client = getOrderClient(order, clientsById)
@@ -385,6 +392,7 @@ const OrderContactsSummary = ({ order, clientsById, onMessenger }) => {
           label="Клиент"
           client={client}
           onMessenger={onMessenger}
+          unreadCount={unreadCount}
         />
         {otherContacts.length > 0 && (
           <button
@@ -822,6 +830,7 @@ const OrderCard = ({
   onMessenger,
   onStatusChange,
   onDelete,
+  messengerUnreadCount = 0,
 }) => {
   const [statusModalOpen, setStatusModalOpen] = useState(false)
   const location = locations.find((item) => item._id === order.locationId)
@@ -868,6 +877,11 @@ const OrderCard = ({
               {hasConflict && (
                 <span className="shrink-0 rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
                   Конфликт
+                </span>
+              )}
+              {canManage && (order.inventoryHasShortage || order.inventorySyncError) && (
+                <span className="shrink-0 rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800" title={order.inventorySyncError || 'При последней проверке реквизита не хватало'}>
+                  {order.inventorySyncError ? 'Реквизит: нужна проверка' : 'Не хватает реквизита'}
                 </span>
               )}
               {(order.assignedStaff ?? []).length === 0 && (
@@ -942,6 +956,7 @@ const OrderCard = ({
                   onMessenger={
                     showMessengerButton ? () => onMessenger?.(order) : null
                   }
+                  unreadCount={messengerUnreadCount}
                 />
               </div>
               <OrderAmountSummary
@@ -995,7 +1010,36 @@ export default function OrdersList({
   onMessenger,
   onStatusChange,
   onDelete,
+  activeCompanyId = '',
 }) {
+  const queryClient = useQueryClient()
+  const summaryKey = useMemo(
+    () => ['partyMessengerSummary', activeCompanyId],
+    [activeCompanyId]
+  )
+  const { data: messengerSummary } = useQuery({
+    queryKey: summaryKey,
+    queryFn: async () => {
+      const response = await fetch('/api/party/integrations/messenger-summary', {
+        headers: activeCompanyId ? { 'x-partycrm-company-id': activeCompanyId } : {},
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || result?.success === false) throw new Error('Не удалось загрузить непрочитанные сообщения')
+      return result.data
+    },
+    enabled: Boolean(activeCompanyId),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+
+  const openMessenger = useCallback((order) => {
+    queryClient.setQueryData(summaryKey, (current) => current ? {
+      ...current,
+      byOrderId: { ...current.byOrderId, [String(order?._id || '')]: 0 },
+    } : current)
+    onMessenger?.(order)
+  }, [onMessenger, queryClient, summaryKey])
+
   return (
     <div className="mx-auto">
       <div className="grid gap-3">
@@ -1021,7 +1065,8 @@ export default function OrdersList({
             onView={onView}
             onEdit={onEdit}
             onAdditionalEvents={onAdditionalEvents}
-            onMessenger={onMessenger}
+            onMessenger={openMessenger}
+            messengerUnreadCount={Math.max(0, Number(messengerSummary?.byOrderId?.[String(order._id)] || 0))}
             onStatusChange={onStatusChange}
             onDelete={onDelete}
           />

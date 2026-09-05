@@ -30,7 +30,7 @@ test('company owner sees all settings tabs without global admin role', () => {
 
   assert.deepEqual(
     getVisibleCompanySettingsTabs(ownerAccess).map((item) => item.slug),
-    ['general', 'integrations', 'lists', 'notifications', 'documents', 'tariffs']
+    ['general', 'integrations', 'lists', 'notifications', 'documents', 'reports', 'tariffs']
   )
 })
 
@@ -39,7 +39,7 @@ test('company admin sees all settings tabs', () => {
 
   assert.deepEqual(
     getVisibleCompanySettingsTabs(adminAccess).map((item) => item.slug),
-    ['general', 'integrations', 'lists', 'notifications', 'documents', 'tariffs']
+    ['general', 'integrations', 'lists', 'notifications', 'documents', 'reports', 'tariffs']
   )
 })
 
@@ -60,7 +60,7 @@ test('global admin and dev have no company settings access without membership', 
 
 test('settings tabs do not use global role access markers', () => {
   const ownerTabs = getVisibleCompanySettingsTabs({ companyRole: 'owner' })
-  assert.equal(ownerTabs.length, 6)
+  assert.equal(ownerTabs.length, 7)
   assert.equal(
     ownerTabs.some((item) => ['admin-dev', 'dev'].includes(item.access)),
     false

@@ -7,6 +7,7 @@ import {
 import { createPartyPublicLeadOrder } from '@server/partyPublicLeadService'
 import { normalizePartyPublicLeadPayload } from '@server/partyPublicLeadCore'
 import { saveIncomingPartyAvitoMessage } from '@server/partyMessengerPersistence'
+import { registerPartyInboxIncoming } from '@server/partyInboxLifecycle'
 import { normalizePartyAvitoWebhookLead } from '@helpers/partyIntegrationWebhooks'
 
 const getToken = async (params) => String((await params)?.token || '').trim()
@@ -70,6 +71,7 @@ export async function POST(req, { params }) {
       company,
       normalized,
       rawPayload: body,
+      registerInboxIncoming: registerPartyInboxIncoming,
       apiKeyData: {
         id: 'avito',
         name: 'Avito',

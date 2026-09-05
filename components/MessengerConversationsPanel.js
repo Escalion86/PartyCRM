@@ -16,6 +16,7 @@ const buildQuery = ({ clientId, eventId, orderId }) => {
 }
 
 const EMPTY_HEADERS = {}
+const DEFAULT_CAN_REPLY_TO_CONVERSATION = () => true
 
 const getAudioAttachments = (message) => {
   const attachments = Array.isArray(message?.attachments)
@@ -210,6 +211,8 @@ const MessengerConversationsPanel = ({
   getConversationTitle,
   getConversationSubtitle,
   getConversationMeta,
+  canReplyToConversation = DEFAULT_CAN_REPLY_TO_CONVERSATION,
+  replyUnavailableText = '',
 }) => {
   const snackbar = useSnackbar()
   const [conversations, setConversations] = useState([])
@@ -264,6 +267,8 @@ const MessengerConversationsPanel = ({
     },
     [apiBasePath, provider, requestHeaders, selectedId, snackbar, title]
   )
+  const selectedCanReply =
+    canReply && canReplyToConversation(selectedConversation)
 
   useEffect(() => {
     let active = true
@@ -405,18 +410,24 @@ const MessengerConversationsPanel = ({
 
       {canReply ? (
       <div className="flex flex-col gap-2">
+        {!selectedCanReply && replyUnavailableText ? (
+          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {replyUnavailableText}
+          </div>
+        ) : null}
         <textarea
           className="min-h-20 w-full resize-y rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-general"
           value={text}
           onChange={(event) => setText(event.target.value)}
           placeholder={replyPlaceholder}
           maxLength={4000}
+          disabled={!selectedCanReply}
         />
         <button
           type="button"
           className="action-icon-button action-icon-button--success flex h-10 w-full cursor-pointer items-center justify-center rounded px-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 tablet:w-auto tablet:self-end"
           onClick={sendMessage}
-          disabled={sending || !selectedId || !text.trim()}
+          disabled={sending || !selectedId || !text.trim() || !selectedCanReply}
         >
           {sending ? 'Отправка...' : sendButtonText}
         </button>

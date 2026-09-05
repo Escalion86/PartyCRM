@@ -1,6 +1,7 @@
 export const roleLabels = {
   owner: 'Владелец',
   admin: 'Администратор',
+  location_owner: 'Владелец площадки',
   performer: 'Исполнитель',
 }
 

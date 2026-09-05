@@ -31,9 +31,11 @@ export default async function CompanySettingsTabPage({ params }) {
   if (!state.companyReady) {
     redirect('/company/master')
   }
-  const managementMembership = memberships.find(
-    (membership) => membership?.isAdmin
+  const managementMemberships = memberships.filter((membership) =>
+    ['owner', 'admin'].includes(membership.role) &&
+    (membership.status || membership.staff?.status || 'active') === 'active'
   )
+  const managementMembership = managementMemberships[0]
   if (
     !canAccessCompanySettingsTab(tab, {
       companyRole: managementMembership?.role,
@@ -43,5 +45,6 @@ export default async function CompanySettingsTabPage({ params }) {
     redirect('/company/settings')
   }
 
-  return <CompanySettingsPageContent activeTab={tab} />
+  const companies = managementMemberships.map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания' }))
+  return <CompanySettingsPageContent activeTab={tab} companies={companies} />
 }

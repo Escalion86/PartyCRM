@@ -166,6 +166,49 @@ const partyOrderOtherContactSchema = new Schema(
   { _id: false }
 )
 
+const partyOrderPreparationItemSchema = new Schema({
+  title: { type: String, trim: true, required: true, maxlength: 240 },
+  status: { type: String, enum: ['pending', 'done'], default: 'pending' },
+  responsibleStaffId: { type: Schema.Types.ObjectId, ref: 'Staff', default: null },
+  dueAt: { type: Date, default: null },
+  completedAt: { type: Date, default: null },
+  completedByStaffId: { type: Schema.Types.ObjectId, ref: 'Staff', default: null },
+  note: { type: String, trim: true, default: '', maxlength: 1000 },
+}, { _id: true })
+
+const partyOrderAddressAcknowledgementSchema = new Schema({
+  staffId: { type: Schema.Types.ObjectId, ref: 'Staff', required: true },
+  acknowledgedAt: { type: Date, required: true },
+}, { _id: false })
+
+const partyOrderPreparationSchema = new Schema({
+  enabled: { type: Boolean, default: false },
+  revision: { type: Number, default: 0, min: 0 },
+  items: { type: [partyOrderPreparationItemSchema], default: [] },
+  clientCheck: {
+    status: { type: String, enum: ['waiting', 'message_received', 'call_completed', 'not_required'], default: 'waiting' },
+    checkedAt: { type: Date, default: null },
+    checkedByStaffId: { type: Schema.Types.ObjectId, ref: 'Staff', default: null },
+    note: { type: String, trim: true, default: '', maxlength: 1000 },
+  },
+  assembly: {
+    status: { type: String, enum: ['not_started', 'planned', 'in_progress', 'ready'], default: 'not_started' },
+    plannedAt: { type: Date, default: null },
+    completedAt: { type: Date, default: null },
+    completedByStaffId: { type: Schema.Types.ObjectId, ref: 'Staff', default: null },
+    note: { type: String, trim: true, default: '', maxlength: 1000 },
+  },
+  addressChange: {
+    before: { type: String, trim: true, default: '', maxlength: 1000 },
+    after: { type: String, trim: true, default: '', maxlength: 1000 },
+    changedAt: { type: Date, default: null },
+    changedByStaffId: { type: Schema.Types.ObjectId, ref: 'Staff', default: null },
+    acknowledgements: { type: [partyOrderAddressAcknowledgementSchema], default: [] },
+  },
+  updatedAt: { type: Date, default: null },
+  updatedByStaffId: { type: Schema.Types.ObjectId, ref: 'Staff', default: null },
+}, { _id: false })
+
 const partyOrdersSchema = {
   tenantId: {
     type: Schema.Types.ObjectId,
@@ -251,6 +294,10 @@ const partyOrdersSchema = {
     default: '',
     maxlength: 180,
   },
+  inventoryHasShortage: { type: Boolean, default: false },
+  locationFinanceRevision: { type: Number, default: 0 },
+  inventorySyncError: { type: String, default: '', maxlength: 500 },
+  inventoryCheckedAt: { type: Date, default: null },
   contractAmount: {
     type: Number,
     default: 0,
@@ -264,6 +311,7 @@ const partyOrdersSchema = {
     type: [partyOrderAdditionalEventSchema],
     default: [],
   },
+  preparation: { type: partyOrderPreparationSchema, default: () => ({}) },
   otherContacts: {
     type: [partyOrderOtherContactSchema],
     default: [],

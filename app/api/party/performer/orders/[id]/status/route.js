@@ -7,6 +7,7 @@ import {
 } from '@server/partyApi'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { syncPartyOrderToPerformerCalendars } from '@server/partyPerformerGoogleCalendarSync'
+import { recordPartyOrderAudit } from '@server/partyAuditLog'
 
 const ALLOWED_STATUSES = new Set(['confirmed', 'declined', 'done'])
 
@@ -16,7 +17,7 @@ const getId = async (params) => {
 }
 
 export async function PATCH(req, { params }) {
-  const { sessionUser, memberships } = await getPartyMembershipContext()
+  const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
 
   if (!sessionUser?._id) {
     return partyError(401, 'unauthorized', 'Не авторизован', 'auth')
@@ -84,6 +85,25 @@ export async function PATCH(req, { params }) {
   const assignment = (order.assignedStaff ?? []).find(
     (item) => String(item.staffId) === staffId
   )
+
+  await recordPartyOrderAudit({
+    context: {
+      tenantId: membership.tenantId,
+      role: membership.role,
+      staff: membership.staff,
+      sessionUser,
+    },
+    order,
+    action: 'assignment_status_changed',
+    summary:
+      confirmationStatus === 'confirmed'
+        ? 'Подтвердил участие в заказе'
+        : confirmationStatus === 'declined'
+          ? 'Отказался от участия в заказе'
+          : 'Отметил работу выполненной',
+    changes: [],
+    metadata: { staffId, confirmationStatus },
+  })
 
   await syncPartyOrderToPerformerCalendars({
     tenantId: String(membership.tenantId),

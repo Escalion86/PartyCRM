@@ -2,6 +2,7 @@ const rolePriority = {
   owner: 0,
   admin: 1,
   performer: 2,
+  location_owner: 3,
 }
 
 const sanitizeDocument = (document) => {
@@ -31,6 +32,8 @@ export const buildPartyMembership = (staff, company) => {
     isOwner: sanitizedStaff.role === 'owner',
     isAdmin: ['owner', 'admin'].includes(sanitizedStaff.role),
     isPerformer: sanitizedStaff.role === 'performer',
+    isLocationOwner: sanitizedStaff.role === 'location_owner',
+    locationIds: (sanitizedStaff.locationIds || []).map(String),
     staff: sanitizedStaff,
     company: sanitizedCompany,
   }

@@ -17,6 +17,7 @@ import ContactsIconsButtons from '@components/ContactsIconsButtons'
 import PartyAddressBlock from '@components/party/inputs/PartyAddressBlock'
 import PartyDictionaryPicker from '@components/party/inputs/PartyDictionaryPicker'
 import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAvitoConversationsPanel'
+import PartyTelegramConversationsPanel from '@components/party/integrations/PartyTelegramConversationsPanel'
 import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
 
@@ -823,6 +824,11 @@ export function ClientFormModal({
               canReply={canManage}
             />
             <PartyAvitoConversationsPanel
+              clientId={clientDraft._id || ''}
+              companyId={activeCompanyId}
+              canReply={canManage}
+            />
+            <PartyTelegramConversationsPanel
               clientId={clientDraft._id || ''}
               companyId={activeCompanyId}
               canReply={canManage}

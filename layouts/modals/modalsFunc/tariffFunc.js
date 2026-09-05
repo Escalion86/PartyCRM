@@ -39,6 +39,9 @@ const tariffFunc = (tariffId, clone = false) => {
     const [allowAi, setAllowAi] = useState(
       tariff?.allowAi ?? DEFAULT_TARIFF.allowAi
     )
+    const [allowTelegramIntegration, setAllowTelegramIntegration] = useState(
+      tariff?.allowTelegramIntegration ?? DEFAULT_TARIFF.allowTelegramIntegration
+    )
     const [hidden, setHidden] = useState(
       tariff?.hidden ?? DEFAULT_TARIFF.hidden
     )
@@ -61,6 +64,7 @@ const tariffFunc = (tariffId, clone = false) => {
               allowDocuments,
               allowTelephony,
               allowAi,
+              allowTelegramIntegration,
               hidden,
             },
             clone
@@ -73,6 +77,7 @@ const tariffFunc = (tariffId, clone = false) => {
       allowStatistics,
       allowTelephony,
       allowAi,
+      allowTelegramIntegration,
       checkErrors,
       closeModal,
       eventsPerMonth,
@@ -93,6 +98,7 @@ const tariffFunc = (tariffId, clone = false) => {
         tariff?.allowDocuments !== allowDocuments ||
         tariff?.allowTelephony !== allowTelephony ||
         tariff?.allowAi !== allowAi ||
+        tariff?.allowTelegramIntegration !== allowTelegramIntegration ||
         tariff?.hidden !== hidden
 
       setOnConfirmFunc(
@@ -106,6 +112,7 @@ const tariffFunc = (tariffId, clone = false) => {
       allowStatistics,
       allowTelephony,
       allowAi,
+      allowTelegramIntegration,
       eventsPerMonth,
       hidden,
       price,
@@ -116,6 +123,7 @@ const tariffFunc = (tariffId, clone = false) => {
       tariff?.allowDocuments,
       tariff?.allowTelephony,
       tariff?.allowAi,
+      tariff?.allowTelegramIntegration,
       tariff?.allowStatistics,
       tariff?.eventsPerMonth,
       tariff?.hidden,
@@ -191,6 +199,12 @@ const tariffFunc = (tariffId, clone = false) => {
               checked={allowAi}
               onClick={() => setAllowAi((prev) => !prev)}
               label="ИИ-возможности"
+              noMargin
+            />
+            <IconCheckBox
+              checked={allowTelegramIntegration}
+              onClick={() => setAllowTelegramIntegration((prev) => !prev)}
+              label="Telegram Business"
               noMargin
             />
             <IconCheckBox

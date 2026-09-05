@@ -54,7 +54,16 @@ export const getPartyEntryState = ({ user = null, memberships = [] } = {}) => {
   }
 }
 
-export const resolvePartyEntryPath = ({ user = null, memberships = [] } = {}) => {
+export const resolvePartyEntryPath = ({
+  user = null,
+  memberships = [],
+} = {}) => {
+  const locationMembership = memberships.find(
+    (membership) =>
+      membership.role === 'location_owner' && membership.status === 'active'
+  )
+  if (locationMembership && !hasPartyManagementAccess(memberships))
+    return '/company/my-locations'
   const state = getPartyEntryState({ user, memberships })
 
   if (state.needsRoleSelection) {

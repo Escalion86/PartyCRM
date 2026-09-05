@@ -4,6 +4,7 @@ import CompanySettingsListsContent from './CompanySettingsListsContent'
 import CompanySettingsNotificationsContent from './CompanySettingsNotificationsContent'
 import CompanySettingsDocumentsContent from './CompanySettingsDocumentsContent'
 import CompanySettingsTariffsContent from './CompanySettingsTariffsContent'
+import CompanySettingsReportsContent from './CompanySettingsReportsContent'
 
 export const COMPANY_SETTINGS_CONTENT = Object.freeze({
   general: CompanySettingsGeneralContent,
@@ -12,4 +13,5 @@ export const COMPANY_SETTINGS_CONTENT = Object.freeze({
   notifications: CompanySettingsNotificationsContent,
   documents: CompanySettingsDocumentsContent,
   tariffs: CompanySettingsTariffsContent,
+  reports: CompanySettingsReportsContent,
 })

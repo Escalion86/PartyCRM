@@ -3,6 +3,7 @@ import {
   getOrderNonPayoutExpenseTotal,
   getPartyOrderPayoutSummary,
 } from './partyOrderTransactions.js'
+import { getPartyOrderPreparationReadiness } from './partyOrderPreparation.js'
 
 const getPartyOrderCloseSummary = ({ order = {}, paymentState } = {}) => {
   const payoutSummary = getPartyOrderPayoutSummary({
@@ -46,6 +47,7 @@ export const getPartyOrderCloseReadiness = ({
   })
   const openTasks = (order.additionalEvents ?? []).filter((item) => !item?.done)
   const blockers = []
+  const preparationReadiness = getPartyOrderPreparationReadiness(order)
 
   if (paymentState.balanceDue > 0) {
     blockers.push({
@@ -67,13 +69,14 @@ export const getPartyOrderCloseReadiness = ({
       message: `Открытые задачи: ${openTasks.length}`,
     })
   }
+  blockers.push(...preparationReadiness.blockers)
 
   return {
     ok: blockers.length === 0,
     blockers,
-    summary: getPartyOrderCloseSummary({
+    summary: { ...getPartyOrderCloseSummary({
       order,
       paymentState: { ...paymentState, transactions: sourceTransactions },
-    }),
+    }), preparation: preparationReadiness.summary },
   }
 }

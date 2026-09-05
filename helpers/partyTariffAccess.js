@@ -28,6 +28,7 @@ export const getPartyCompanyTariffAccess = (company, tariffs = []) => {
     allowDocuments: trialActive || Boolean(tariff?.allowDocuments),
     allowTelephony: Boolean(tariff?.allowTelephony),
     allowAi: Boolean(tariff?.allowAi),
+    allowTelegramIntegration: Boolean(tariff?.allowTelegramIntegration),
     eventsPerMonth: trialActive
       ? Infinity
       : normalizePositiveLimit(tariff?.eventsPerMonth),
@@ -46,6 +47,7 @@ export const serializePartyTariffAccess = (access = {}) => {
     allowDocuments: Boolean(access.allowDocuments),
     allowTelephony: Boolean(access.allowTelephony),
     allowAi: Boolean(access.allowAi),
+    allowTelegramIntegration: Boolean(access.allowTelegramIntegration),
     eventsPerMonth: unlimitedEvents ? null : Number(access.eventsPerMonth ?? 0),
     unlimitedEvents,
     staffLimit: unlimitedStaff ? null : Number(access.staffLimit ?? 0),

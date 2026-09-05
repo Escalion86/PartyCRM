@@ -7,6 +7,7 @@ import {
 import { createPartyPublicLeadOrder } from '@server/partyPublicLeadService'
 import { normalizePartyPublicLeadPayload } from '@server/partyPublicLeadCore'
 import { saveIncomingPartyVkMessage } from '@server/partyMessengerPersistence'
+import { registerPartyInboxIncoming } from '@server/partyInboxLifecycle'
 import {
   isPartyVkWebhookSecretValid,
   normalizePartyVkWebhookLead,
@@ -141,6 +142,7 @@ export async function POST(req, { params }) {
       company,
       normalized,
       rawPayload: body,
+      registerInboxIncoming: registerPartyInboxIncoming,
       apiKeyData: {
         id: vkGroup.id || vkGroup.webhookToken || 'vk_group',
         name: vkGroup.name || 'VK',

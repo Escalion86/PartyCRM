@@ -7,6 +7,7 @@ import {
 } from '@server/partyApi'
 import { normalizePartyPhone } from '@server/partyAuth'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
+import { validateStaffLocationScope } from '@server/partyLocationAccess'
 import { canCreatePartyStaffByTariff } from '@helpers/partyTariffAccess'
 
 const normalizePhone = (phone) => {
@@ -89,7 +90,7 @@ const normalizeStaffPayload = (body) => {
       ? body.specialization
       : '',
     description: normalizeText(body.description, 1000),
-    role: ['owner', 'admin', 'performer'].includes(body.role)
+    role: ['owner', 'admin', 'performer', 'location_owner'].includes(body.role)
       ? body.role
       : 'performer',
     status: ['active', 'invited', 'paused', 'archived'].includes(body.status)
@@ -138,6 +139,21 @@ export async function POST(req) {
 
   const body = await parseJsonBody(req)
   const payload = normalizeStaffPayload(body)
+  if (payload.role === 'location_owner') {
+    try {
+      payload.locationIds = await validateStaffLocationScope(
+        context.tenantId,
+        body.locationIds
+      )
+    } catch (failure) {
+      return partyError(
+        failure.status || 400,
+        'partycrm_invalid_location_scope',
+        failure.status ? failure.message : 'Не удалось проверить площадки',
+        'validation'
+      )
+    }
+  }
 
   if (!payload.authUserId && (!payload.firstName || !payload.phone)) {
     return partyError(
@@ -159,12 +175,7 @@ export async function POST(req) {
     currentStaffCount,
   })
   if (!limitState.ok) {
-    return partyError(
-      403,
-      limitState.code,
-      limitState.message,
-      'permission'
-    )
+    return partyError(403, limitState.code, limitState.message, 'permission')
   }
 
   const staff = await PartyStaff.create({
