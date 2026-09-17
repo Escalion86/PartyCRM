@@ -1,4 +1,5 @@
 import { notFound, redirect } from 'next/navigation'
+import { uniquePartyCompanyMemberships } from '@helpers/uniquePartyCompanyMemberships'
 import CompanySettingsPageContent from '../CompanySettingsPageContent'
 import {
   canAccessCompanySettingsTab,
@@ -45,6 +46,6 @@ export default async function CompanySettingsTabPage({ params }) {
     redirect('/company/settings')
   }
 
-  const companies = managementMemberships.map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания' }))
+  const companies = uniquePartyCompanyMemberships(managementMemberships).map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания' }))
   return <CompanySettingsPageContent activeTab={tab} companies={companies} />
 }

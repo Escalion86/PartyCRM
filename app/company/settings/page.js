@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { uniquePartyCompanyMemberships } from '@helpers/uniquePartyCompanyMemberships'
 import CompanySettingsPageContent from './CompanySettingsPageContent'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { getPartyEntryState } from '@server/partyEntry'
@@ -49,6 +50,6 @@ export default async function CompanySettingsPage() {
     redirect('/company')
   }
 
-  const companies = managementMemberships.map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания' }))
+  const companies = uniquePartyCompanyMemberships(managementMemberships).map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания' }))
   return <CompanySettingsPageContent activeTab="general" companies={companies} />
 }
