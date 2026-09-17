@@ -36,6 +36,12 @@ export const COMPANY_SETTINGS_TABS = Object.freeze([
     access: 'management',
   },
   {
+    slug: 'schedule',
+    label: 'График ответов',
+    href: '/company/settings/schedule',
+    access: 'management',
+  },
+  {
     slug: 'tariffs',
     label: 'Тарифы',
     href: '/company/settings/tariffs',

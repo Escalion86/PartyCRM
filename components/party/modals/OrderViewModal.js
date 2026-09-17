@@ -1,5 +1,8 @@
 'use client'
 
+import { PartyOrderContactRolesView } from '@components/party/orders/PartyOrderContactRoles'
+
+import { getInventoryServiceQuantity } from '@helpers/partyInventory'
 import { useState } from 'react'
 import dynamic from 'next/dynamic'
 import Modal from '@components/Modal'
@@ -20,6 +23,9 @@ import {
   getPartyDerivedPayoutStatusLabel,
 } from '@helpers/partyOrderTransactions'
 import PartyAuditLog from '@components/party/audit/PartyAuditLog'
+import { PartyEventBriefView } from '@components/party/orders/PartyEventBrief'
+
+const PartyRelatedOrders = dynamic(() => import('@components/party/orders/PartyRelatedOrders'))
 
 const PartyOrderReports = dynamic(
   () => import('@components/party/reports/PartyOrderReports')
@@ -256,6 +262,7 @@ export default function OrderViewModal({
   onEdit,
   onReviewReport,
   onUpdateOrder,
+  onRelatedOrdersChanged,
 }) {
   const [activeAdditionalEvent, setActiveAdditionalEvent] = useState(null)
   const [editingAdditionalEvent, setEditingAdditionalEvent] = useState(null)
@@ -268,6 +275,7 @@ export default function OrderViewModal({
     })
   const [viewingClient, setViewingClient] = useState(null)
   const [showReportForms, setShowReportForms] = useState(false)
+  const [showRelatedOrders, setShowRelatedOrders] = useState(false)
   const [showInventory, setShowInventory] = useState(false)
   const [inventoryReviewResult, setInventoryReviewResult] = useState(null)
   const safeClientsById = clientsById ?? new Map()
@@ -473,6 +481,10 @@ export default function OrderViewModal({
           </div>
         </Section>
 
+        <Section title="Бриф праздника">
+          <PartyEventBriefView value={order?.eventBrief || {}} />
+        </Section>
+
         <Section title="Клиент">
           <div className="grid gap-2">
             <ContactCard contact={mainContact} onView={openClientView} />
@@ -493,8 +505,60 @@ export default function OrderViewModal({
           </div>
         </Section>
 
+        {canManage && activeCompanyId && <Section title="Связанные части праздника">
+          <button type="button" className="mb-3 min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 text-sm text-sky-800" onClick={() => setShowRelatedOrders(value => !value)}>{showRelatedOrders ? 'Свернуть связанные заказы' : 'Открыть связанные заказы'}</button>
+          {showRelatedOrders && <PartyRelatedOrders companyId={activeCompanyId} orderId={String(order._id)} onChanged={onRelatedOrdersChanged} />}
+        </Section>}
+
+        <Section title="Роли контактов и правила связи">
+          <PartyOrderContactRolesView value={order?.contactRoles || {}} clientsById={safeClientsById} />
+        </Section>
+
         <Section title="Услуги">
-          {serviceTitles.length > 0 ? (
+          {Array.isArray(order?.orderItems) && order.orderItems.length > 0 ? (
+            <div className="grid gap-2">
+              {order.orderItems.map((item, index) => (
+                <div
+                  key={item._id || `${item.serviceId || 'manual'}:${index}`}
+                  className="rounded-lg border border-sky-100 bg-sky-50/50 p-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <span className="font-semibold text-slate-900">{item.title}</span>
+                    <span className="font-semibold text-sky-800">
+                      {formatMoney(Number(item.total || 0))}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {Number(item.quantity || 1)} {item.unit || 'услуга'} ×{' '}
+                    {formatMoney(Number(item.unitPrice || 0))}
+                    {Number(item.discount || 0) > 0
+                      ? ` · скидка ${formatMoney(Number(item.discount))}`
+                      : ''}
+                  </p>
+                  {item.description ? (
+                    <p className="mt-1 whitespace-pre-wrap text-xs text-slate-600">
+                      {item.description}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+              {order.agreedProposal?.proposalId ? (
+                <div className="text-xs text-emerald-700">
+                  <p>
+                    Согласовано по КП №{order.agreedProposal.number}, версия{' '}
+                    {order.agreedProposal.version}.
+                  </p>
+                  {Number(order.agreedProposal.discount || 0) > 0 ? (
+                    <p className="mt-1">
+                      Общая скидка по КП:{' '}
+                      {formatMoney(Number(order.agreedProposal.discount))}; итог:{' '}
+                      {formatMoney(Number(order.agreedProposal.total))}.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : serviceTitles.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {serviceTitles.map((title) => (
                 <span
@@ -641,13 +705,23 @@ export default function OrderViewModal({
               <OrderInventoryPanel
                 activeCompanyId={activeCompanyId}
                 orderId={String(order._id)}
-                serviceItems={(order.servicesIds || []).map(
-                  (serviceId, index) => ({
-                    serviceId: String(serviceId),
-                    serviceLineId: `${serviceId}:${index}`,
-                    quantity: 1,
-                  })
-                )}
+                serviceItems={
+                  Array.isArray(order.orderItems) && order.orderItems.length
+                    ? order.orderItems.flatMap((item, index) =>
+                        (order.servicesIds || []).some((id) => String(id) === String(item.serviceId))
+                          ? [{
+                              serviceId: String(item.serviceId),
+                              serviceLineId: `${item.serviceId}:${index}`,
+                              quantity: getInventoryServiceQuantity(item),
+                            }]
+                          : []
+                      )
+                    : (order.servicesIds || []).map((serviceId, index) => ({
+                        serviceId: String(serviceId),
+                        serviceLineId: `${serviceId}:${index}`,
+                        quantity: 1,
+                      }))
+                }
                 services={services}
                 eventDate={order.eventDate}
                 dateEnd={
@@ -677,6 +751,7 @@ export default function OrderViewModal({
             </button>
             {showReportForms && (
               <PartyOrderReports
+                manager={canManage}
                 companyId={activeCompanyId}
                 orderId={String(order._id)}
                 staff={staff}

@@ -38,6 +38,7 @@ export default function PartyOrderDocumentsSection({
   services = [],
   companySettings,
   activeCompanyId,
+  onOrderUpdated,
 }) {
   const [contractNumber, setContractNumber] = useState('1')
   const [contractDate, setContractDate] = useState(() =>
@@ -244,6 +245,7 @@ export default function PartyOrderDocumentsSection({
         services={services}
         companySettings={companySettings}
         activeCompanyId={activeCompanyId}
+        onOrderUpdated={onOrderUpdated}
       />
 
       {/* Contract section */}

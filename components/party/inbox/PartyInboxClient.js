@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, useRef } from 'react'
 import Link from 'next/link'
-import { PARTY_INBOX_STATUSES } from '@helpers/partyInboxCore'
+import { PARTY_INBOX_STATUSES, PARTY_INBOX_SALES_STAGES } from '@helpers/partyInboxCore'
 
 const CHANNELS = { vk: 'VK', avito: 'Авито', telegram: 'Telegram', novofon: 'Звонки Novofon' }
 const inputClass = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
@@ -21,12 +21,7 @@ const localDate = (value) => {
   const date = new Date(value)
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 }
-const isOverdue = (item, now) =>
-  Boolean(
-    item?.status !== 'resolved' &&
-      (item?.isOverdue ||
-        (item?.responseDueAt && new Date(item.responseDueAt).getTime() <= now))
-  )
+const isOverdue = (item, now) => Boolean(item?.responseDueAt && new Date(item.responseDueAt).getTime() < now)
 const durationLabel = (milliseconds) => {
   const minutes = Math.max(0, Math.ceil(Math.abs(milliseconds) / 60000))
   const days = Math.floor(minutes / 1440)
@@ -37,7 +32,7 @@ const durationLabel = (milliseconds) => {
   return `${rest} мин`
 }
 const SlaBadge = ({ item, now, className = '' }) => {
-  if (!item.responseDueAt || item.status === 'resolved') return null
+  if (!item.responseDueAt) return null
   const dueAt = new Date(item.responseDueAt).getTime()
   if (!Number.isFinite(dueAt)) return null
   const overdue = isOverdue(item, now)
@@ -60,7 +55,7 @@ function InboxDetail({ item, companyId, currentStaffId, now, options, onSaved })
   const [reply, setReply] = useState('')
   const [saved, setSaved] = useState(false)
   const [handoffAssignee, setHandoffAssignee] = useState(item.proposedAssigneeStaffId || '')
-  const [draft, setDraft] = useState(() => ({ ...item, nextContactAt: localDate(item.nextContactAt) }))
+  const [draft, setDraft] = useState(() => ({ ...item, salesStage: item.salesStage || 'new', lostReason: item.lostReason || '', nextContactAt: localDate(item.nextContactAt) }))
   const endpoint = `/api/party/inbox/${encodeURIComponent(item.id)}`
   const handoffActive = Boolean(item.proposedAssigneeStaffId)
   const canAcceptHandoff = handoffActive && String(item.proposedAssigneeStaffId) === String(currentStaffId)
@@ -79,6 +74,7 @@ function InboxDetail({ item, companyId, currentStaffId, now, options, onSaved })
     setBusy(true); setError(''); setSaved(false)
     try {
       await request(companyId, endpoint, { method: 'PATCH', body: JSON.stringify({
+        salesStage: draft.salesStage, lostReason: draft.lostReason,
         status: draft.status, nextContactAt: draft.nextContactAt ? new Date(draft.nextContactAt).toISOString() : null,
         assigneeStaffId: draft.assigneeStaffId, clientId: draft.clientId, orderId: draft.orderId,
         expectedRevision: Number(item.revision || 0),
@@ -137,14 +133,25 @@ function InboxDetail({ item, companyId, currentStaffId, now, options, onSaved })
       </div>}
     </div>
     <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
+      <label className="text-sm">Этап продажи<select className={`${inputClass} mt-1 cursor-pointer`} value={draft.salesStage} onChange={(event) => change('salesStage', event.target.value)}>{Object.entries(PARTY_INBOX_SALES_STAGES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+      <p className="self-center text-xs text-slate-500">Этап отражает договорённость с клиентом. Он не меняет статус заказа или необходимость ответить.</p>
+      {draft.salesStage === 'lost' && <label className="text-sm sm:col-span-2">Причина отказа<textarea required maxLength={1000} className={`${inputClass} mt-1`} value={draft.lostReason} onChange={(event) => change('lostReason', event.target.value)} /></label>}
+
       <label className="text-sm">Состояние<select className={`${inputClass} mt-1 cursor-pointer`} value={draft.status} onChange={(event) => change('status', event.target.value)}>{Object.entries(PARTY_INBOX_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="text-sm">Ответственный<select className={`${inputClass} mt-1 cursor-pointer`} value={draft.assigneeStaffId} onChange={(event) => change('assigneeStaffId', event.target.value)}><option value="">Не назначен</option>{options.staff.map((person) => <option key={person._id} value={person._id}>{personLabel(person)}</option>)}</select></label>
       <label className="text-sm">Следующий контакт<input type="datetime-local" required={draft.status === 'follow_up'} className={`${inputClass} mt-1`} value={draft.nextContactAt} onChange={(event) => change('nextContactAt', event.target.value)} /></label>
       <label className="text-sm">Клиент<select className={`${inputClass} mt-1 cursor-pointer`} value={draft.clientId} onChange={(event) => change('clientId', event.target.value)}><option value="">Не связан</option>{draft.clientId && !options.clients.some((client) => String(client._id) === draft.clientId) && <option value={draft.clientId}>Связанный клиент · {draft.clientId}</option>}{options.clients.map((client) => <option key={client._id} value={client._id}>{personLabel(client)}</option>)}</select></label>
-      <label className="text-sm sm:col-span-2">Заказ<select className={`${inputClass} mt-1 cursor-pointer`} value={draft.orderId} onChange={(event) => change('orderId', event.target.value)}><option value="">Не связан</option>{draft.orderId && !options.orders.some((order) => String(order._id) === draft.orderId) && <option value={draft.orderId}>Связанный заказ · {draft.orderId}</option>}{options.orders.map((order) => <option key={order._id} value={order._id}>{dateLabel(order.eventDate)} · {order.title || `Заказ ${String(order._id).slice(-6)}`}</option>)}</select></label>
+      <label className="text-sm sm:col-span-2">Заказ<select className={`${inputClass} mt-1 cursor-pointer`} value={draft.orderId} required={draft.salesStage === 'won'} onChange={(event) => change('orderId', event.target.value)}><option value="">Не связан</option>{draft.orderId && !options.orders.some((order) => String(order._id) === draft.orderId) && <option value={draft.orderId}>Связанный заказ · {draft.orderId}</option>}{options.orders.map((order) => <option key={order._id} value={order._id}>{dateLabel(order.eventDate)} · {order.title || `Заказ ${String(order._id).slice(-6)}`}</option>)}</select></label>
       <div className="flex items-center gap-3 sm:col-span-2"><button type="submit" disabled={busy} className={`${buttonClass} bg-sky-600 text-white`}>Сохранить состояние</button>{saved && <span role="status" className="text-sm text-emerald-700">Сохранено</span>}</div>
     </form>
     {options.truncated && <p className="mt-2 text-xs text-slate-500">В выборе показано до 500 клиентов и последних заказов. Ранее сохранённые связи доступны.</p>}
+    {details?.salesHistory?.length > 0 && <details className="mt-4 text-sm">
+      <summary className="cursor-pointer font-medium">История этапов продажи</summary>
+      <ol className="mt-2 space-y-2">{details.salesHistory.map((entry, index) => <li key={`${entry.at}:${index}`} className="rounded-lg bg-slate-50 p-2">
+        <p>{dateLabel(entry.at)} · {PARTY_INBOX_SALES_STAGES[entry.fromSalesStage] || entry.fromSalesStage} → {PARTY_INBOX_SALES_STAGES[entry.toSalesStage] || entry.toSalesStage}</p>
+        {entry.lostReason && <p className="whitespace-pre-wrap break-words text-slate-600">{entry.lostReason}</p>}
+      </li>)}</ol>
+    </details>}
     <div className="my-5 border-t border-slate-200" />
     {!details ? <p role="status" className="text-sm text-slate-500">Загрузка истории…</p> : item.channel === 'novofon' ? <div className="space-y-3">
       <p className="whitespace-pre-wrap break-words text-sm">{details.transcript || 'Расшифровка пока недоступна.'}</p>
@@ -179,34 +186,52 @@ function InboxWorkspace({ companyId, currentStaffId }) {
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
   const [overdueOnly, setOverdueOnly] = useState(false)
+  const [salesStage, setSalesStage] = useState('')
+  const requestSequence = useRef(0)
+  const activeRequest = useRef(null)
   const [now, setNow] = useState(() => Date.now())
 
-  const load = useCallback(async (page = 0, signal) => {
+  const load = useCallback(async (page = 0) => {
+    activeRequest.current?.abort()
+    const controller = new AbortController()
+    activeRequest.current = controller
+    const sequence = ++requestSequence.current
     setLoading(true); setError('')
     try {
-      const next = await request(companyId, `/api/party/inbox?page=${page}`, { signal })
-      setData((previous) => ({ ...next, page: Math.max(previous.page, next.page), hasMore: page < previous.page ? previous.hasMore : next.hasMore, options: next.options || previous.options, items: [...new Map([...previous.items, ...next.items.map((item) => ({ ...item, loadedPage: page }))].map((item) => [item.id, item])).values()] }))
-    } catch (failure) { if (!signal?.aborted) setError(failure.message) } finally { if (!signal?.aborted) setLoading(false) }
-  }, [companyId])
+      const query = new URLSearchParams({ page: String(page), scope: overdueOnly ? 'overdue' : 'all' })
+      if (salesStage) query.set('salesStage', salesStage)
+      const next = await request(companyId, `/api/party/inbox?${query}`, { signal: controller.signal })
+      if (controller.signal.aborted || sequence !== requestSequence.current) return
+      setData((previous) => ({ ...next, options: next.options || previous.options,
+        items: page === 0 ? next.items : [...new Map([...previous.items, ...next.items].map((item) => [item.id, item])).values()],
+      }))
+    } catch (failure) {
+      if (!controller.signal.aborted && sequence === requestSequence.current) setError(failure.message)
+    } finally {
+      if (!controller.signal.aborted && sequence === requestSequence.current) setLoading(false)
+    }
+  }, [companyId, overdueOnly, salesStage])
   useEffect(() => {
-    const controller = new AbortController()
-    load(0, controller.signal)
-    return () => controller.abort()
+    setSelectedId('')
+    setData({ items: [], options: { staff: [], clients: [], orders: [] }, hasMore: false, page: 0 })
+    load(0)
+    return () => { activeRequest.current?.abort(); requestSequence.current += 1 }
   }, [load])
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30000)
     return () => window.clearInterval(timer)
   }, [])
-  const visible = useMemo(() => data.items.filter((item) => (!channel || item.channel === channel) && (!status || item.status === status) && (!overdueOnly || isOverdue(item, now)) && `${item.title} ${item.preview}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => new Date(b.lastActivityAt) - new Date(a.lastActivityAt)), [data.items, channel, status, search, overdueOnly, now])
+  const visible = useMemo(() => data.items.filter((item) => (!channel || item.channel === channel) && (!status || item.status === status) && `${item.title} ${item.preview}`.toLowerCase().includes(search.toLowerCase())).sort((a, b) => overdueOnly ? new Date(a.overdueAt) - new Date(b.overdueAt) : new Date(b.lastActivityAt) - new Date(a.lastActivityAt)), [data.items, channel, status, search, overdueOnly])
   const selected = data.items.find((item) => item.id === selectedId)
   return <>
     <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <label className="text-sm">Канал<select value={channel} onChange={(event) => setChannel(event.target.value)} className={`${inputClass} mt-1 cursor-pointer`}><option value="">Все каналы</option>{Object.entries(CHANNELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="text-sm">Состояние<select value={status} onChange={(event) => setStatus(event.target.value)} className={`${inputClass} mt-1 cursor-pointer`}><option value="">Все состояния</option>{Object.entries(PARTY_INBOX_STATUSES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="text-sm">Поиск<input className={`${inputClass} mt-1`} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Имя, телефон, сообщение" /></label>
-      <div className="flex items-end gap-3"><button className={buttonClass} disabled={loading} onClick={() => load()}>Обновить</button><label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={overdueOnly} onChange={(event) => setOverdueOnly(event.target.checked)} className="cursor-pointer" />Просрочен SLA</label></div>
+      <div className="flex items-end gap-3"><button className={buttonClass} disabled={loading} onClick={() => load()}>Обновить</button><label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={overdueOnly} onChange={(event) => setOverdueOnly(event.target.checked)} className="cursor-pointer" />Все просрочки</label></div>
     </div>
-    <p className="mb-4 text-xs text-slate-500">История подключённых VK, Авито, Telegram Business и Novofon. Новое входящее возвращает состояние «Нужен ответ». Список обновляется кнопкой. Фильтры применяются к загруженным обращениям.</p>
+    <label className="mb-3 block max-w-sm text-sm">Фильтр по этапу продажи<select className={`${inputClass} mt-1 cursor-pointer`} value={salesStage} onChange={(event) => setSalesStage(event.target.value)}><option value="">Все этапы</option>{Object.entries(PARTY_INBOX_SALES_STAGES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+    <p className="mb-4 text-xs text-slate-500">История подключённых VK, Авито, Telegram Business и Novofon. Новое входящее возвращает состояние «Нужен ответ». Список обновляется кнопкой. «Все просрочки» выбирает просроченные ответы и следующие контакты из всей сохранённой очереди. Этап продажи фильтруется на сервере; канал, состояние и поиск — среди загруженных результатов. Старые обращения без зафиксированного срока не входят в просрочки.</p>
     {error && <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(260px,0.7fr)_minmax(0,1.3fr)]">
       <section aria-label="Список входящих" className="min-w-0 space-y-2">
@@ -217,14 +242,15 @@ function InboxWorkspace({ companyId, currentStaffId }) {
             <div className="flex justify-between gap-2"><span className="break-words font-semibold">{item.title}</span><span className="shrink-0 text-xs text-slate-500">{CHANNELS[item.channel]}</span></div>
             <p className="mt-1 truncate text-sm text-slate-600">{item.preview}</p>
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs"><span className={item.status === 'needs_reply' ? 'font-semibold text-amber-700' : 'text-slate-600'}>{PARTY_INBOX_STATUSES[item.status]}</span><span className="text-slate-500">{dateLabel(item.lastActivityAt)}</span></div>
+            <p className="mt-1 text-xs text-sky-800">{PARTY_INBOX_SALES_STAGES[item.salesStage || 'new']}</p>
             <SlaBadge item={item} now={now} className="mt-2" />
             {item.assigneeStaffId && <p className="mt-1 text-xs text-slate-600">Ответственный: {personLabel(data.options.staff.find((person) => String(person._id) === item.assigneeStaffId) || { _id: item.assigneeStaffId })}</p>}
             {item.nextContactAt && <p className={`mt-1 text-xs ${item.status !== 'resolved' && new Date(item.nextContactAt) < new Date() ? 'text-red-700' : 'text-slate-500'}`}>Контакт: {dateLabel(item.nextContactAt)}</p>}
           </button>)}
         </div>
-        {data.hasMore && <button disabled={loading} className={`${buttonClass} w-full`} onClick={() => load(data.page + 1)}>Загрузить более ранние обращения</button>}
+        {data.hasMore && <button disabled={loading} className={`${buttonClass} w-full`} onClick={() => load(data.page + 1)}>Загрузить ещё обращения</button>}
       </section>
-      {selected ? <InboxDetail key={`${selected.id}:${selectionVersion}:${selected.revision}:${selected.incomingToken}`} item={selected} companyId={companyId} currentStaffId={currentStaffId} now={now} options={data.options} onSaved={() => load(selected.loadedPage || 0)} /> : <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Выберите обращение для ответа и следующего действия.</p>}
+      {selected ? <InboxDetail key={`${selected.id}:${selectionVersion}:${selected.revision}:${selected.incomingToken}`} item={selected} companyId={companyId} currentStaffId={currentStaffId} now={now} options={data.options} onSaved={() => load(0)} /> : <p className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">Выберите обращение для ответа и следующего действия.</p>}
     </div>
   </>
 }

@@ -173,6 +173,7 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
                 setDraft({
                   title: '',
                   stage: 'before',
+                  audience: 'individual',
                   active: true,
                   fields: [emptyField()],
                 })
@@ -180,6 +181,7 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
             >
               Новая форма
             </button>
+            <button type="button" className={button} onClick={() => setDraft({ ...structuredClone(starterPartyReportTemplates.find(item => item.stage === 'after')), title: 'Командный отчёт координатора', audience: 'team' })}>Командный отчёт: взять образец</button>
             {starterPartyReportTemplates.map((template) => (
               <button
                 key={template.stage}
@@ -206,7 +208,7 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
                 <p className="text-sm text-slate-500">
                   {template.stage === 'before' ? 'До' : 'После'} мероприятия ·
                   версия {template.version} · {template.fields.length} полей ·{' '}
-                  {template.active ? 'Активна' : 'Отключена'}
+                  {template.active ? 'Активна' : 'Отключена'} · {template.audience === 'team' ? 'Командная' : 'Личная'}
                 </p>
               </div>
               <button
@@ -251,6 +253,13 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
               </select>
             </label>
           </div>
+          <label className="block text-sm">Кто заполняет
+            <select className={`${control} cursor-pointer`} value={draft.audience || 'individual'} disabled={Boolean(draft._id)} onChange={event => setDraft({ ...draft, audience: event.target.value })}>
+              <option value="individual">Каждый исполнитель — личный отчёт</option>
+              <option value="team">Координатор — командный отчёт</option>
+            </select>
+          </label>
+          {draft.audience === 'team' && <p className="text-sm text-slate-600">Координатор назначается в заказе. Он заполняет общий отчёт по команде; личные финансовые расчёты исполнителей оформляются отдельно. Тип опубликованной формы изменить нельзя — создайте новую.</p>}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"

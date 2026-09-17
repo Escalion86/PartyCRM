@@ -110,3 +110,38 @@ test('sanitizePartyOrderForPerformer hides company finance fields', () => {
   assert.equal(Object.hasOwn(result, 'adminComment'), false)
   assert.equal(Object.hasOwn(result, 'internalNotes'), false)
 })
+
+test('onsite projection exposes only contact details and communication instructions', () => {
+  const order = {
+    _id: 'order', tenantId: 'company',
+    contactRoles: {
+      onsiteClientId: 'onsite', partnerClientId: 'partner', payerClientId: 'payer',
+      representAs: 'Агентство', communicationNotes: 'Сначала написать',
+      allowedContactMethods: ['telegram', 'phone', 'internal'],
+    },
+  }
+  const args = {
+    order, membership: { staffId: 'staff', tenantId: 'company' }, locationsById: new Map(),
+    clientsById: new Map([['company:onsite', {
+      tenantId: 'company', firstName: 'Анна', secondName: 'Иванова',
+      phone: '123', email: 'example@example.com', balance: 1234, notes: 'private',
+    }]]),
+  }
+  const result = sanitizePartyOrderForPerformer(args)
+  assert.deepEqual(result.onsiteContact, { name: 'Анна Иванова', phone: '123', email: 'example@example.com' })
+  assert.deepEqual(result.communicationInstructions, {
+    representAs: 'Агентство', communicationNotes: 'Сначала написать', allowedContactMethods: ['telegram', 'phone'],
+  })
+  assert.equal(Object.hasOwn(result, 'contactRoles'), false)
+  assert.equal(JSON.stringify(result).includes('payer'), false)
+  for (const contact of [
+    { tenantId: 'other', phone: 'secret' },
+    { tenantId: 'company', status: 'archived', phone: 'secret' },
+  ]) {
+    assert.equal(sanitizePartyOrderForPerformer({ ...args, clientsById: new Map([['company:onsite', contact]]) }).onsiteContact, null)
+  }
+  assert.equal(sanitizePartyOrderForPerformer({ ...args, clientsById: new Map([['other:onsite', { tenantId: 'other' }]]) }).onsiteContact, null)
+  const legacy = sanitizePartyOrderForPerformer({ ...args, order: { _id: 'order', tenantId: 'company' } })
+  assert.equal(legacy.onsiteContact, null)
+  assert.deepEqual(legacy.communicationInstructions, { representAs: '', communicationNotes: '', allowedContactMethods: [] })
+})

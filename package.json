@@ -1,12 +1,13 @@
 {
   "name": "PartyCRM",
-  "version": "1.11.0",
+  "version": "1.24.1",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
     "test": "node --test \"**/*.test.mjs\"",
+    "test:party-finance:mongo": "node scripts/testPartyGroupPaymentsMongo.mjs",
     "lint": "eslint .",
     "party:migrate-collections": "node scripts/partyRenameCollections.js",
     "tochka:discover": "node scripts/tochkaDiscover.js",

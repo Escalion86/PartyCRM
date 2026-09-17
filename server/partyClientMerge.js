@@ -114,6 +114,19 @@ export const mergePartyClients = async ({
     ),
   ])
 
+  // Remap each role independently; unrelated roles and communication rules stay intact.
+  for (const role of ['partnerClientId', 'payerClientId', 'onsiteClientId']) {
+    await PartyOrders.updateMany(
+      { tenantId, [`contactRoles.${role}`]: sourceClientId },
+      { $set: { [`contactRoles.${role}`]: targetClientId } }
+    )
+  }
+  await PartyOrders.updateMany(
+    { tenantId, 'otherContacts.clientId': sourceClientId },
+    { $set: { 'otherContacts.$[contact].clientId': targetClientId } },
+    { arrayFilters: [{ 'contact.clientId': sourceClientId }] }
+  )
+
   const archivedClient = await PartyClients.findOneAndUpdate(
     { _id: sourceClientId, tenantId },
     { $set: { status: 'archived' } },

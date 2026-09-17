@@ -79,10 +79,10 @@ export async function GET() {
   const clientFilters = [
     ...new Map(
       orders
-        .map((order) => ({
+        .flatMap((order) => [order.clientId, order.contactRoles?.onsiteClientId].map((clientId) => ({
           tenantId: String(order.tenantId || ''),
-          clientId: String(order.clientId || ''),
-        }))
+          clientId: String(clientId || ''),
+        })))
         .filter((pair) => pair.tenantId && pair.clientId)
         .map((pair) => [`${pair.tenantId}:${pair.clientId}`, pair])
     ).values(),
@@ -94,7 +94,9 @@ export async function GET() {
           tenantId: pair.tenantId,
           status: { $ne: 'archived' },
         })),
-      }).lean()
+      })
+        .select('_id tenantId firstName secondName thirdName phone email whatsapp viber telegram instagram vk')
+        .lean()
     : []
   const serviceFilters = [
     ...new Map(
@@ -166,7 +168,7 @@ export async function GET() {
   )
   const membershipsByStaffId = new Map(
     activeMemberships.map((membership) => [
-      String(membership.staffId),
+      `${String(membership.tenantId)}:${String(membership.staffId)}`,
       membership,
     ])
   )
@@ -176,10 +178,10 @@ export async function GET() {
     data: orders
       .map((order) => {
         const assignment = (order.assignedStaff ?? []).find((item) =>
-          membershipsByStaffId.has(String(item.staffId))
+          membershipsByStaffId.has(`${String(order.tenantId)}:${String(item.staffId)}`)
         )
         const membership = assignment
-          ? membershipsByStaffId.get(String(assignment.staffId))
+          ? membershipsByStaffId.get(`${String(order.tenantId)}:${String(assignment.staffId)}`)
           : null
         if (!membership) return null
         return sanitizePartyOrderForPerformer({

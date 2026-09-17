@@ -164,6 +164,7 @@ function LocationOrder({ order, companyId, onChanged }) {
                 <span>
                   {partyTransactionCategoryLabels[item.category] ||
                     item.category}
+                  {item.groupPaymentId ? ' · Часть общего платежа' : ''}
                 </span>
                 <strong
                   className={

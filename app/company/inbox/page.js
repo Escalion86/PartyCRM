@@ -8,7 +8,15 @@ export const metadata = { title: 'Входящие — PartyCRM' }
 export default async function InboxPage() {
   const { sessionUser, memberships } = await getPartyMembershipContext()
   if (!sessionUser?._id) redirect('/party/login?callbackUrl=/company/inbox')
+  const seenCompanies = new Set()
   const companies = memberships.filter((item) => ['owner', 'admin'].includes(item.role) && (item.status || item.staff?.status || 'active') === 'active')
+    .filter((item) => {
+      const id = String(item.tenantId || '')
+      if (!id || seenCompanies.has(id)) return false
+      // Keep the first membership, matching the API's company lookup priority.
+      seenCompanies.add(id)
+      return true
+    })
     .map((item) => ({
       id: String(item.tenantId),
       title: item.company?.title || 'Компания',

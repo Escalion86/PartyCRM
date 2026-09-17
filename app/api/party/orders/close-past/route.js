@@ -1,3 +1,4 @@
+import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
 import { NextResponse } from 'next/server'
 import {
   getPartyOrderModel,
@@ -72,13 +73,24 @@ export async function POST(req) {
       summary: readiness.summary,
     })
   })
+  const candidates = [...closed]
+  closed.length = 0
+  for (const candidate of candidates) {
+    const original = orders.find((order) => String(order._id) === candidate.orderId)
+    const updated = await PartyOrders.findOneAndUpdate(
+      { _id: candidate.orderId, tenantId: context.tenantId, ...getPartyOrderWriteGuard(original) },
+      { $set: { status: 'closed' }, $inc: { commercialRevision: 1 } },
+      { returnDocument: 'after' }
+    ).lean()
+    if (updated) closed.push(candidate)
+    else skipped.push({
+      orderId: candidate.orderId,
+      blockers: [{ code: 'order_changed', message: 'Заказ изменился во время проверки. Повторите закрытие.' }],
+      summary: candidate.summary,
+    })
+  }
   const closedIds = closed.map((item) => item.orderId)
-
   if (closedIds.length > 0) {
-    await PartyOrders.updateMany(
-      { _id: { $in: closedIds }, tenantId: context.tenantId },
-      { $set: { status: 'closed' } }
-    )
     await Promise.all(
       closedIds.map((orderId) =>
         Promise.all([

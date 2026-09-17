@@ -1,3 +1,37 @@
+import { snapshotInventoryServiceItems, getInventoryServiceQuantity } from './partyInventory.js'
+
+test('automatic saved resources scale with new kit count while keeping original catalog norm', () => {
+  const order = { servicesIds: [serviceId], orderItems: [{ serviceId, quantity: 3 }], eventDate: time('12'), dateEnd: time('13') }
+  const previous = {
+    selectionMode: 'automatic',
+    orderSnapshot: { eventDate: time('12'), dateEnd: time('13') },
+    serviceItems: [{ serviceId, serviceLineId: 'saved', quantity: 1, resources: [{ resourceId, quantity: 2 }], startAt: time('12'), endAt: time('13') }],
+  }
+  const reconciled = reconcileInventoryServiceItems(order, previous)
+  const saved = snapshotInventoryServiceItems(reconciled.serviceItems, [{ serviceId, items: [{ resourceId, quantity: 99 }] }])
+  assert.equal(saved[0].quantity, 3)
+  assert.equal(saved[0].resources[0].quantity, 6)
+  assert.equal(buildInventoryDemand(saved, [])[0].quantity, 6)
+  const again = reconcileInventoryServiceItems(order, { ...previous, serviceItems: saved })
+  assert.equal(buildInventoryDemand(again.serviceItems, [])[0].quantity, 6)
+})
+
+test('manual totals and individual kit count stay unchanged after commercial quantity changes', () => {
+  const result = reconcileInventoryServiceItems(
+    { servicesIds: [serviceId], orderItems: [{ serviceId, quantity: 5 }], eventDate: time('12'), dateEnd: time('13') },
+    { selectionMode: 'manual', serviceItems: [{ serviceId, serviceLineId: 'manual', quantity: 2, resources: [{ resourceId, quantity: 7 }], startAt: time('12'), endAt: time('13') }] }
+  )
+  assert.equal(result.serviceItems[0].quantity, 2)
+  assert.equal(buildInventoryDemand(result.serviceItems, [])[0].quantity, 7)
+})
+
+test('commercial hours and fractions reserve physical whole kits', () => {
+  assert.equal(getInventoryServiceQuantity({ quantity: 2, unit: 'час' }), 1)
+  assert.equal(getInventoryServiceQuantity({ quantity: 1.5, unit: 'услуга' }), 1)
+  assert.equal(getInventoryServiceQuantity({ quantity: 3, unit: 'шт.' }), 3)
+  const result = reconcileInventoryServiceItems({ eventDate: time('12'), dateEnd: time('13'), orderItems: [{ serviceId, quantity: 1.5, unit: 'час' }] })
+  assert.doesNotThrow(() => normalizeInventoryServiceItems(result.serviceItems))
+})
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
@@ -119,6 +153,60 @@ test('norms multiply by service count, manual totals are never multiplied twice'
     )[0].quantity,
     4
   )
+})
+
+test('order items aggregate quantities by service while legacy service ids stay at one', () => {
+  const fromItems = reconcileInventoryServiceItems({
+    orderItems: [
+      { serviceId, quantity: 2 },
+      { serviceId, quantity: 3 },
+      { title: 'Ручная позиция без услуги', quantity: 20 },
+    ],
+    servicesIds: [another],
+    eventDate: time('12'),
+    dateEnd: time('13'),
+  })
+  assert.equal(fromItems.serviceItems.length, 1)
+  assert.equal(fromItems.serviceItems[0].serviceId, serviceId)
+  assert.equal(fromItems.serviceItems[0].quantity, 5)
+  assert.equal(
+    buildInventoryDemand(fromItems.serviceItems, [
+      { serviceId, items: [{ resourceId, quantity: 2 }] },
+    ])[0].quantity,
+    10
+  )
+
+  const legacy = reconcileInventoryServiceItems({
+    orderItems: [],
+    servicesIds: [serviceId],
+    eventDate: time('12'),
+    dateEnd: time('13'),
+  })
+  assert.equal(legacy.serviceItems[0].quantity, 1)
+})
+
+test('commercial aggregate does not discard separate saved service intervals', () => {
+  const result = reconcileInventoryServiceItems(
+    {
+      orderItems: [
+        { serviceId, quantity: 2 },
+        { serviceId, quantity: 2 },
+      ],
+      eventDate: time('12'),
+      dateEnd: time('13'),
+    },
+    {
+      orderSnapshot: { eventDate: time('12'), dateEnd: time('13') },
+      serviceItems: [
+        { serviceId, serviceLineId: 'first', quantity: 1, startAt: time('12'), endAt: time('13') },
+        { serviceId, serviceLineId: 'second', quantity: 1, startAt: time('14'), endAt: time('15') },
+      ],
+    }
+  )
+  assert.equal(result.serviceItems.length, 2)
+  assert.equal(result.serviceItems[0].serviceLineId, 'first')
+  assert.equal(result.serviceItems[0].quantity, 1)
+  assert.equal(result.serviceItems[1].startAt, time('14'))
 })
 
 test('malformed intervals, duplicate resources and invalid stock quantities are rejected', () => {

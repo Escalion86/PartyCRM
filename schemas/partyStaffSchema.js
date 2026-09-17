@@ -76,6 +76,12 @@ const partyStaffSchema = {
     default: [],
   },
   locationScopeRevision: { type: Number, default: 0 },
+  operationalPermissions: {
+    type: [String],
+    enum: ['inventory.movements', 'orders.pricing', 'orders.assignments'],
+    default: [],
+  },
+  permissionRevision: { type: Number, default: 0 },
   status: {
     type: String,
     enum: ['active', 'invited', 'paused', 'archived'],

@@ -34,6 +34,7 @@ import cn from 'classnames'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
+import { canPartyOperationalPermission } from '@helpers/partyOperationalPermissions'
 
 const companyMenu = [
   { href: '/company', label: 'Обзор', icon: faHome },
@@ -97,6 +98,24 @@ const performerMenu = [
     icon: faCalendarCheck,
   },
   { href: '/performer/library', label: 'Опыт команды', icon: faStar },
+  {
+    href: '/performer/inventory',
+    label: 'Выдача реквизита',
+    icon: faBoxesStacked,
+    permission: 'inventory.movements',
+  },
+  {
+    href: '/performer/pricing',
+    label: 'Стоимость заказов',
+    icon: faChartLine,
+    permission: 'orders.pricing',
+  },
+  {
+    href: '/performer/team',
+    label: 'Команда заказов',
+    icon: faUserGroup,
+    permission: 'orders.assignments',
+  },
   { href: '/performer/settings', label: 'Настройки кабинета', icon: faGear },
 ]
 
@@ -236,17 +255,24 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const visibleCompanyMenu = companyMenu.filter(
     (item) => !item.managementOnly || activeMembership?.isAdmin
   )
+  const visiblePerformerMenu = performerMenu.filter(
+    (item) =>
+      !item.permission ||
+      memberships.some((membership) =>
+        canPartyOperationalPermission(membership, item.permission)
+      )
+  )
   const primaryMenu =
     (activeMembership?.role === 'location_owner' && isCompanyVariant) ||
     pathname === '/company/my-locations'
       ? locationOwnerMenu
       : effectiveVariant === 'performer'
-        ? performerMenu
+        ? visiblePerformerMenu
         : effectiveVariant === 'settings'
           ? canUseCompany
             ? visibleCompanyMenu
             : canUsePerformer
-              ? performerMenu
+              ? visiblePerformerMenu
               : []
           : effectiveVariant === 'company-settings'
             ? visibleCompanyMenu

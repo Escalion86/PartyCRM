@@ -10,7 +10,7 @@ import {
   requireReportAuthorAssignment,
   withReportContext,
 } from '@server/partyReportAccess'
-import { reportFailure } from '@server/partyReportCore'
+import { reportFailure, isTeamReport } from '@server/partyReportCore'
 import {
   canAccessReportReconciliation,
   getReportReconciliationFields,
@@ -25,6 +25,7 @@ const loadReport = async (tenantId, id) => {
   const Reports = await getPartyReportModel()
   const report = await Reports.findOne({ _id: reportId(id), tenantId }).lean()
   if (!report) reportFailure('Отчёт не найден', 404)
+  if (isTeamReport(report)) reportFailure('Командный отчёт не используется для персональной финансовой сверки', 409)
   return report
 }
 

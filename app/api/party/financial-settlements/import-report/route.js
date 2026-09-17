@@ -1,6 +1,7 @@
+import { isTeamReport } from '@server/partyReportCore'
 import { parseJsonBody } from '@server/partyApi'
 import { financialResponse, financialRoute } from '@server/partyFinancialApi'
-import { getPartyReportReconciliationModel } from '@server/partyReportModels'
+import { getPartyReportReconciliationModel, getPartyReportModel } from '@server/partyReportModels'
 import { createPartyFinancialSettlement } from '@server/partyFinancialSettlements'
 import { getPartyFinancialSettlementModel } from '@server/partyFinancialModels'
 import {
@@ -22,6 +23,9 @@ export const POST = financialRoute(
       status: 'accepted',
     }).lean()
     if (!source) throw financialError('Принятая сверка отчёта не найдена', 404)
+    const ReportDocuments = await getPartyReportModel()
+    const sourceReport = await ReportDocuments.findOne({ _id: source.reportId, tenantId: context.tenantId }).lean()
+    if (!sourceReport || isTeamReport(sourceReport)) throw financialError('Для импорта нужен персональный отчёт', 409)
     const accepted = source.values.filter(
       (value) =>
         value.valueType === 'money' &&

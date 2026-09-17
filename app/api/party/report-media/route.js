@@ -1,7 +1,7 @@
 import sharp from 'sharp'
 import { getPartyReportModel, getPartyReportMediaModel } from '@server/partyReportModels'
 import { withReportContext, reportId, reportJson, loadReportOrder, requireReportAuthorAssignment } from '@server/partyReportAccess'
-import { reportFailure } from '@server/partyReportCore'
+import { reportFailure, isTeamReport } from '@server/partyReportCore'
 
 export const runtime = 'nodejs'
 
@@ -29,7 +29,7 @@ export const POST = withReportContext(async (req, context) => {
   const report = await Reports.findOne({ _id: reportId(data.get('reportId')), tenantId: context.tenantId }).lean()
   if (!report) reportFailure('Отчёт не найден', 404)
   const order = await loadReportOrder(context.tenantId, String(report.orderId))
-  requireReportAuthorAssignment(context, order, report.staffId)
+  requireReportAuthorAssignment(context, order, report.staffId, isTeamReport(report) ? 'team' : 'individual')
   const fieldId = data.get('fieldId')
   const answer = report.answers.find((item) => item.fieldId === fieldId)
   if (!answer || !['draft', 'revision_requested'].includes(answer.status)) reportFailure('Поле недоступно для изменения', 409)

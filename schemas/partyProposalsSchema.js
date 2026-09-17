@@ -30,6 +30,7 @@ const proposalItemSchema = new Schema(
     description: { type: String, trim: true, default: '', maxlength: 1000 },
     quantity: { type: Number, default: 1, min: 0.01, max: 100000 },
     unit: { type: String, trim: true, default: 'услуга', maxlength: 40 },
+    durationMinutes: { type: Number, default: null, min: 1, max: 10080 },
     unitPrice: { type: Number, default: 0, min: 0 },
     discount: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },

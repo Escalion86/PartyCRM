@@ -111,10 +111,14 @@ export const normalizeInventoryServiceItems = (items, defaults = {}) => {
       serviceId,
       serviceLineId,
       quantity,
+      quantityMode: item.quantityMode === 'manual' ? 'manual' : 'automatic',
       startAt: startAt.toISOString(),
       endAt: endAt.toISOString(),
       ...(item.resources !== undefined
         ? { resources: normalizeInventoryRequirements(item.resources) }
+        : {}),
+      ...(item.resourceNorms !== undefined
+        ? { resourceNorms: normalizeInventoryRequirements(item.resourceNorms) }
         : {}),
     }
   })
@@ -125,7 +129,7 @@ export const buildInventoryDemand = (serviceItems, requirements) => {
     requirements.map((item) => [inventoryId(item.serviceId), item.items])
   )
   return serviceItems.flatMap((service) =>
-    (service.resources ?? byService.get(service.serviceId) ?? []).map(
+    (service.resourceNorms ?? service.resources ?? byService.get(service.serviceId) ?? []).map(
       (item) => ({
         resourceId: inventoryId(item.resourceId),
         serviceId: service.serviceId,
@@ -133,10 +137,46 @@ export const buildInventoryDemand = (serviceItems, requirements) => {
         startAt: service.startAt,
         endAt: service.endAt,
         // Manual resources are already the total for the line; default norms are per service.
-        quantity: item.quantity * (service.resources ? 1 : service.quantity),
+        quantity:
+          item.quantity *
+          (service.resourceNorms || !service.resources ? service.quantity : 1),
       })
     )
   )
+}
+
+// Monetary units (hours, days, etc.) do not describe physical kits. A fractional
+// count also cannot describe half a kit: reserve one per proposal line and let
+// the warehouse editor specify any different physical quantity explicitly.
+export const getInventoryServiceQuantity = (item) => {
+  const quantity = Number(item.quantity ?? 1)
+  const unit = String(item.unit || '').trim().toLowerCase().replace(/\.$/, '')
+  const countUnit = ['', 'шт', 'штука', 'штук', 'услуга', 'услуг', 'комплект', 'комплекта', 'комплектов'].includes(unit)
+  return countUnit && Number.isSafeInteger(quantity) && quantity > 0
+    ? quantity
+    : 1
+}
+
+// Keep the original norm separately from the total displayed by older clients.
+// Future quantity changes scale this snapshot, never the current catalog norm.
+export const snapshotInventoryServiceItems = (serviceItems, requirements) => {
+  const byService = new Map(
+    requirements.map((item) => [inventoryId(item.serviceId), item.items])
+  )
+  return serviceItems.map((item) => {
+    const resourceNorms = item.resourceNorms ??
+      (item.resources === undefined ? byService.get(item.serviceId) || [] : undefined)
+    return {
+      ...item,
+      ...(resourceNorms !== undefined ? { resourceNorms } : {}),
+      resources: resourceNorms !== undefined
+        ? resourceNorms.map((resource) => ({
+            resourceId: inventoryId(resource.resourceId),
+            quantity: resource.quantity * item.quantity,
+          }))
+        : item.resources,
+    }
+  })
 }
 
 export const reconcileInventoryServiceItems = (order, previous = null) => {
@@ -150,30 +190,72 @@ export const reconcileInventoryServiceItems = (order, previous = null) => {
           +new Date(eventDate) + (order.durationMinutes || 60) * 60000
         ).toISOString()
       : ''
-  const serviceIds = (order.servicesIds || []).map(inventoryId)
-  // Existing selections are snapshots, even if originally selected automatically.
-  // Editing a service norm must not silently change a previously booked kit.
+  const hasOrderItems = Array.isArray(order.orderItems) && order.orderItems.length > 0
+  const serviceQuantities = new Map()
+  if (hasOrderItems) {
+    for (const item of order.orderItems) {
+      if (!item?.serviceId) continue
+      const serviceId = inventoryId(item.serviceId)
+      serviceQuantities.set(
+        serviceId,
+        (serviceQuantities.get(serviceId) || 0) + getInventoryServiceQuantity(item)
+      )
+    }
+  } else {
+    for (const value of order.servicesIds || []) {
+      const serviceId = inventoryId(value)
+      if (!serviceQuantities.has(serviceId)) serviceQuantities.set(serviceId, 1)
+    }
+  }
+  const serviceIds = [...serviceQuantities.keys()]
   const manual = previous?.serviceItems || []
+  const lineCounts = new Map()
+  for (const line of manual) {
+    const id = inventoryId(line.serviceId)
+    lineCounts.set(id, (lineCounts.get(id) || 0) + 1)
+  }
   const oldStart = previous?.orderSnapshot?.eventDate
   const oldEnd = previous?.orderSnapshot?.dateEnd
   const sameTime = (left, right) =>
     Boolean(left && right && +new Date(left) === +new Date(right))
   const lines = manual
     .filter((line) => serviceIds.includes(inventoryId(line.serviceId)))
-    .map((line) => ({
+    .map((line) => {
+      const serviceId = inventoryId(line.serviceId)
+      // Older manual reservations and multiple schedules cannot be safely
+      // redistributed from a commercial aggregate. Preserve every interval.
+      const quantityMode = line.quantityMode ||
+        (previous?.selectionMode === 'automatic' && lineCounts.get(serviceId) === 1
+          ? 'automatic' : 'manual')
+      let resourceNorms = line.resourceNorms
+      if (resourceNorms === undefined && previous?.selectionMode === 'automatic' &&
+          line.resources !== undefined && Number.isSafeInteger(line.quantity) && line.quantity > 0 &&
+          line.resources.every((resource) => Number.isSafeInteger(resource.quantity / line.quantity))) {
+        resourceNorms = line.resources.map((resource) => ({
+          resourceId: inventoryId(resource.resourceId),
+          quantity: resource.quantity / line.quantity,
+        }))
+      }
+      return {
       ...line,
+      quantityMode,
+      ...(resourceNorms !== undefined ? { resourceNorms } : {}),
+      quantity: hasOrderItems && quantityMode === 'automatic' && lineCounts.get(serviceId) === 1
+        ? serviceQuantities.get(serviceId) : line.quantity,
       startAt:
         !line.startAt || sameTime(line.startAt, oldStart)
           ? eventDate
           : line.startAt,
       endAt: !line.endAt || sameTime(line.endAt, oldEnd) ? dateEnd : line.endAt,
-    }))
+      }
+    })
   for (const [index, serviceId] of serviceIds.entries()) {
     if (!lines.some((line) => inventoryId(line.serviceId) === serviceId))
       lines.push({
         serviceId,
         serviceLineId: `${serviceId}:${index}`,
-        quantity: 1,
+        quantity: serviceQuantities.get(serviceId),
+        quantityMode: 'automatic',
         startAt: eventDate,
         endAt: dateEnd,
       })

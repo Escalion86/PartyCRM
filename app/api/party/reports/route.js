@@ -1,6 +1,6 @@
 import { getPartyReportModel, getPartyReportRevisionModel, getPartyReportMediaModel } from '@server/partyReportModels'
 import { withReportContext, reportJson, reportId, loadReportOrder, isAssignedToReportOrder, isReportManager, visibleReport, latestReportTemplates, requireReportAuthorAssignment, reportTemplateApplicability } from '@server/partyReportAccess'
-import { reportFailure, reportMediaIds, reportStatusFromAnswers, updateReportAnswers } from '@server/partyReportCore'
+import { reportFailure, reportAudience, isTeamReport, isReportAuthor, isReportCoordinator, reportTeamStaffIds, reportMediaIds, reportStatusFromAnswers, updateReportAnswers } from '@server/partyReportCore'
 import { getPartyOrderModel, getPartyStaffModel } from '@server/partyModels'
 
 export const dynamic = 'force-dynamic'
@@ -10,13 +10,13 @@ const withStaffNames = async (tenantId, reports) => {
   const Staff = await getPartyStaffModel()
   const people = await Staff.find({
     tenantId,
-    _id: { $in: [...new Set(reports.map((report) => String(report.staffId)))] },
+    _id: { $in: [...new Set(reports.flatMap((report) => [String(report.staffId), ...(report.teamStaffIds || []).map(String)]))] },
   }).select('firstName secondName').lean()
   const names = new Map(people.map((person) => [
     String(person._id),
     [person.firstName, person.secondName].filter(Boolean).join(' '),
   ]))
-  return reports.map((report) => ({ ...report, staffName: names.get(String(report.staffId)) || 'Исполнитель' }))
+  return reports.map((report) => ({ ...report, staffName: names.get(String(report.staffId)) || 'Исполнитель', teamStaffNames: (report.teamStaffIds || []).map((id) => ({ _id: String(id), name: names.get(String(id)) || 'Исполнитель' })) }))
 }
 
 export const GET = withReportContext(async (req, context) => {
@@ -32,7 +32,7 @@ export const GET = withReportContext(async (req, context) => {
     const found = await Reports.find(filter).sort({ _id: -1 }).limit(limit + 1).lean()
     const page = found.slice(0, limit)
     const Orders = await getPartyOrderModel()
-    const orders = await Orders.find({ tenantId: context.tenantId, _id: { $in: page.map((report) => report.orderId) } }).select('title serviceTitle eventDate assignedStaff.staffId status').lean()
+    const orders = await Orders.find({ tenantId: context.tenantId, _id: { $in: page.map((report) => report.orderId) } }).select('title serviceTitle eventDate assignedStaff.staffId assignedStaff.confirmationStatus reportCoordinatorStaffId status').lean()
     const reports = page.flatMap((report) => {
       const order = orders.find((item) => String(item._id) === String(report.orderId))
       if (!order) return []
@@ -55,12 +55,12 @@ export const GET = withReportContext(async (req, context) => {
   const assigned = isAssignedToReportOrder(context, order)
   const isReviewer = found.some((report) => report.templateSnapshot.fields.some((field) => String(field.reviewerStaffId || '') === String(context.staff._id)))
   // A shared field is readable through the library, not a grant to the report metadata.
-  if (!isReportManager(context) && !assigned && !isReviewer) reportFailure('Нет доступа к отчётам заказа', 403)
+  if (!isReportManager(context) && !assigned && !isReviewer && !found.some((report) => isTeamReport(report) && isReportAuthor(context, report))) reportFailure('Нет доступа к отчётам заказа', 403)
   const templates = isReportManager(context) || assigned
     ? await reportTemplateApplicability(context.tenantId, order, (await latestReportTemplates(context.tenantId)).filter((template) => template.active && (!stage || template.stage === stage)))
     : []
   const definition = query.get('templateId') ? templates.find((template) => String(template._id) === query.get('templateId')) || null : null
-  return reportJson({ reports: await withStaffNames(context.tenantId, reports), templates, definition })
+  return reportJson({ reports: await withStaffNames(context.tenantId, reports), templates, definition, currentStaffId: String(context.staff._id), canCreateIndividualReport: assigned && order.status !== 'canceled', canCreateTeamReport: isReportCoordinator(context, order) && order.status !== 'canceled' })
 })
 
 export const POST = withReportContext(async (req, context) => {
@@ -70,14 +70,16 @@ export const POST = withReportContext(async (req, context) => {
   requireReportAuthorAssignment(context, order, staffId)
   const template = (await latestReportTemplates(context.tenantId)).find((item) => String(item._id) === reportId(body.templateId) && item.active)
   if (!template) reportFailure('Активная форма не найдена; обновите список', 404)
+  const scope = reportAudience(template)
+  requireReportAuthorAssignment(context, order, staffId, scope)
   const [applicableTemplate] = await reportTemplateApplicability(context.tenantId, order, [template])
   if (!applicableTemplate) reportFailure('В этой форме нет полей, применимых к заказу')
   const Reports = await getPartyReportModel()
   const report = await Reports.create({
     tenantId: context.tenantId, orderId: order._id, staffId,
     templateId: template._id, templateFamilyId: template.familyId,
-    stage: template.stage,
-    templateSnapshot: { title: template.title, stage: template.stage, version: template.version, fields: applicableTemplate.fields },
+    stage: template.stage, scope, teamStaffIds: scope === 'team' ? reportTeamStaffIds(order) : [],
+    templateSnapshot: { audience: scope, title: template.title, stage: template.stage, version: template.version, fields: applicableTemplate.fields },
     answers: applicableTemplate.fields.map((field) => ({ fieldId: field.id, html: '', status: 'draft' })),
   })
   return reportJson((await withStaffNames(context.tenantId, [visibleReport(context, report.toObject(), order)]))[0])
@@ -91,7 +93,7 @@ export const PATCH = withReportContext(async (req, context) => {
   if (!report) reportFailure('Отчёт не найден', 404)
   const order = await loadReportOrder(context.tenantId, String(report.orderId))
   if (!visibleReport(context, report, order)) reportFailure('Нет доступа к отчёту', 403)
-  if (body.action !== 'review') requireReportAuthorAssignment(context, order, report.staffId)
+  if (body.action !== 'review') requireReportAuthorAssignment(context, order, report.staffId, isTeamReport(report) ? 'team' : 'individual')
   if (body.revision !== report.revision) reportFailure('Отчёт изменён в другом окне. Обновите его.', 409)
   const answers = updateReportAnswers({ report, context, action: body.action, answers: body.answers, fieldId: body.fieldId, decision: body.decision, comment: body.comment, eventDate: order.eventDate })
   const Media = await getPartyReportMediaModel()

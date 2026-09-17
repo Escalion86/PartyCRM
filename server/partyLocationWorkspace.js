@@ -61,6 +61,7 @@ export const safeLocationOrder = ({
   const safeTransactions = actualTransactions.map((item) =>
     serializePartyTransaction({
       _id: item._id,
+      groupPaymentId: item.groupPaymentId,
       tenantId: order.tenantId,
       orderId: order._id,
       clientId: order.clientId,

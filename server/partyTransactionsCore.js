@@ -19,9 +19,11 @@ const EXPENSE_CATEGORIES = new Set([
 const isValidObjectIdValue = (value) => OBJECT_ID_RE.test(String(value || ''))
 
 const parseMoney = (value) => {
-  if (value === null || value === undefined || value === '') return 0
-  const number = Math.floor(Number(value))
-  return Number.isFinite(number) && number > 0 ? number : 0
+  if (!['string', 'number'].includes(typeof value)) return 0
+  const match = /^(\d+)(?:[.,](\d{1,2}))?$/.exec(String(value).trim())
+  if (!match) return 0
+  const cents = Number(match[1]) * 100 + Number((match[2] || '').padEnd(2, '0'))
+  return Number.isSafeInteger(cents) && cents > 0 && cents <= 100000000000000 ? cents / 100 : 0
 }
 
 const parseDate = (value) => {
@@ -74,6 +76,7 @@ export const serializePartyTransaction = (doc) => {
     _id: String(item._id),
     tenantId: String(item.tenantId),
     orderId: String(item.orderId),
+    groupPaymentId: item.groupPaymentId ? String(item.groupPaymentId) : null,
     clientId: item.clientId ? String(item.clientId) : null,
     staffId: item.staffId ? String(item.staffId) : null,
     amount: Number(item.amount || 0),

@@ -10,7 +10,13 @@ const parseMoney = (value) => {
 const parseQuantity = (value) => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed) || parsed <= 0) return 1
-  return Math.min(parsed, 100000)
+  return Math.min(Math.max(parsed, 0.01), 100000)
+}
+
+export const normalizePartyProposalDuration = (value) => {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed <= 0) return null
+  return Math.min(Math.max(Math.floor(parsed), 1), 10080)
 }
 
 const normalizeDate = (value) => {
@@ -22,17 +28,48 @@ const normalizeDate = (value) => {
 export const calculatePartyProposalItem = (item = {}) => {
   const quantity = parseQuantity(item.quantity)
   const unitPrice = parseMoney(item.unitPrice)
-  const discount = Math.min(parseMoney(item.discount), quantity * unitPrice)
+  const discount = Math.min(parseMoney(item.discount), parseMoney(quantity * unitPrice))
   return {
     serviceId: item.serviceId || null,
     title: cleanText(item.title, 240),
     description: cleanText(item.description, 1000),
     quantity,
     unit: cleanText(item.unit, 40) || 'услуга',
+    durationMinutes: normalizePartyProposalDuration(item.durationMinutes),
     unitPrice,
     discount,
     total: parseMoney(quantity * unitPrice - discount),
   }
+}
+
+export const buildPartyProposalItemsFromOrder = (order = {}, services = []) => {
+  if (Array.isArray(order.orderItems) && order.orderItems.length > 0) {
+    return order.orderItems.map(calculatePartyProposalItem)
+  }
+  const servicesById = new Map(services.map((service) => [String(service._id), service]))
+  const selected = (order.servicesIds || [])
+    .map((id) => servicesById.get(String(id)))
+    .filter(Boolean)
+  const source = selected.length > 0
+    ? selected
+    : order.serviceTitle
+      ? [{ title: order.serviceTitle, price: order.contractAmount || order.clientPayment?.totalAmount || 0 }]
+      : []
+  const items = source.map((service) => calculatePartyProposalItem({
+    serviceId: service._id || null,
+    title: service.title,
+    description: service.description,
+    quantity: 1,
+    unit: 'услуга',
+    durationMinutes: service.duration,
+    unitPrice: service.price,
+  }))
+  const total = items.reduce((sum, item) => sum + item.total, 0)
+  const orderAmount = Number(order.contractAmount || order.clientPayment?.totalAmount || 0)
+  if (total === 0 && orderAmount > 0 && items.length > 0) {
+    items[0] = calculatePartyProposalItem({ ...items[0], unitPrice: orderAmount })
+  }
+  return items
 }
 
 export const calculatePartyProposalTotals = (items = [], discount = 0) => {

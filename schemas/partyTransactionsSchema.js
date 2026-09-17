@@ -11,6 +11,10 @@ const partyTransactionsSchema = {
     ref: 'Order',
     required: true,
   },
+  groupPaymentId: {
+    type: Schema.Types.ObjectId,
+    default: null,
+  },
   clientId: {
     type: Schema.Types.ObjectId,
     ref: 'Client',
@@ -24,7 +28,7 @@ const partyTransactionsSchema = {
   amount: {
     type: Number,
     required: [true, 'Укажите сумму транзакции'],
-    min: 1,
+    min: 0.01,
   },
   type: {
     type: String,

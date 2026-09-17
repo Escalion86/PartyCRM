@@ -20,6 +20,7 @@ export const findPartyOrderConflicts = async ({
   tenantId,
   payload,
   excludeOrderId = null,
+  sharedLocationOrderIds = [],
 }) => {
   if (!hasDateRange(payload)) {
     return {
@@ -41,6 +42,10 @@ export const findPartyOrderConflicts = async ({
     conflictQueries.push(
       PartyOrders.find({
         ...overlapQuery,
+        // Only IDs resolved from the stored tenant group by the caller are trusted.
+        ...(excludeOrderId && sharedLocationOrderIds.length
+          ? { _id: { $nin: [excludeOrderId, ...sharedLocationOrderIds] } }
+          : {}),
         locationId: payload.locationId,
       })
         .select('_id title eventDate dateEnd locationId')

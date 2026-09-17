@@ -209,7 +209,76 @@ const partyOrderPreparationSchema = new Schema({
   updatedByStaffId: { type: Schema.Types.ObjectId, ref: 'Staff', default: null },
 }, { _id: false })
 
+const partyOrderEventBriefSchema = new Schema(
+  {
+    occasion: { type: String, trim: true, default: '', maxlength: 180 },
+    celebrantName: { type: String, trim: true, default: '', maxlength: 160 },
+    celebrantAge: { type: Number, default: null, min: 0, max: 120 },
+    guestCount: { type: Number, default: null, min: 0, max: 10000 },
+    guestAgeRange: { type: String, trim: true, default: '', maxlength: 180 },
+    interests: { type: String, trim: true, default: '', maxlength: 2000 },
+    previousPrograms: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 2000,
+    },
+    characters: { type: String, trim: true, default: '', maxlength: 2000 },
+    costumeOptions: { type: String, trim: true, default: '', maxlength: 2000 },
+    eventFormat: { type: String, trim: true, default: '', maxlength: 1000 },
+    venueConditions: { type: String, trim: true, default: '', maxlength: 2000 },
+    cakeAndGifts: { type: String, trim: true, default: '', maxlength: 2000 },
+    wishes: { type: String, trim: true, default: '', maxlength: 4000 },
+    restrictions: { type: String, trim: true, default: '', maxlength: 4000 },
+  },
+  { _id: false }
+)
+
+const partyOrderItemSchema = new Schema(
+  {
+    serviceId: { type: Schema.Types.ObjectId, ref: 'Service', default: null },
+    title: { type: String, trim: true, required: true, maxlength: 240 },
+    description: { type: String, trim: true, default: '', maxlength: 1000 },
+    quantity: { type: Number, default: 1, min: 0.01, max: 100000 },
+    unit: { type: String, trim: true, default: 'услуга', maxlength: 40 },
+    durationMinutes: { type: Number, default: null, min: 1, max: 10080 },
+    unitPrice: { type: Number, default: 0, min: 0 },
+    discount: { type: Number, default: 0, min: 0 },
+    total: { type: Number, default: 0, min: 0 },
+  },
+  { _id: false }
+)
+
+const partyOrderAgreedProposalSchema = new Schema(
+  {
+    proposalId: { type: Schema.Types.ObjectId, ref: 'Proposal', default: null },
+    number: { type: String, trim: true, default: '', maxlength: 80 },
+    version: { type: Number, default: null, min: 1 },
+    subtotal: { type: Number, default: 0, min: 0 },
+    discount: { type: Number, default: 0, min: 0 },
+    total: { type: Number, default: 0, min: 0 },
+    appliedAt: { type: Date, default: null },
+    appliedByStaffId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Staff',
+      default: null,
+    },
+    snapshotHash: { type: String, trim: true, default: '', maxlength: 128 },
+  },
+  { _id: false }
+)
+
 const partyOrdersSchema = {
+  sharedLocationRevision: { type: Number, default: 0, min: 0 },
+  legacyLedgerMigrationId: { type: Schema.Types.ObjectId, default: null },
+  legacyLedgerMigratedAt: { type: Date, default: null },
+  sharedLocationBooking: { type: Boolean, default: false },
+  partyEventGroupId: {
+    type: Schema.Types.ObjectId,
+    ref: 'PartyEventGroup',
+    default: null,
+    index: true,
+  },
   tenantId: {
     type: Schema.Types.ObjectId,
     ref: 'Company',
@@ -233,6 +302,18 @@ const partyOrdersSchema = {
     ref: 'Client',
     default: null,
     index: true,
+  },
+  contactRoles: {
+    partnerClientId: { type: Schema.Types.ObjectId, ref: 'Client', default: null },
+    payerClientId: { type: Schema.Types.ObjectId, ref: 'Client', default: null },
+    onsiteClientId: { type: Schema.Types.ObjectId, ref: 'Client', default: null },
+    representAs: { type: String, trim: true, default: '', maxlength: 240 },
+    communicationNotes: { type: String, trim: true, default: '', maxlength: 2000 },
+    allowedContactMethods: {
+      type: [{ type: String, enum: ['phone', 'telegram', 'whatsapp', 'sms', 'email'] }],
+      default: [],
+      validate: (items) => items.length <= 5 && new Set(items).size === items.length,
+    },
   },
   client: {
     name: { type: String, trim: true, default: '', maxlength: 160 },
@@ -294,6 +375,19 @@ const partyOrdersSchema = {
     default: '',
     maxlength: 180,
   },
+  eventBrief: { type: partyOrderEventBriefSchema, default: () => ({}) },
+  orderItems: { type: [partyOrderItemSchema], default: [] },
+  agreedProposal: {
+    type: partyOrderAgreedProposalSchema,
+    default: () => ({}),
+  },
+  commercialRevision: { type: Number, default: 0, min: 0 },
+  reportCoordinatorStaffId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Staff',
+    default: null,
+  },
+  reportCoordinatorRevision: { type: Number, default: 0, min: 0 },
   inventoryHasShortage: { type: Boolean, default: false },
   locationFinanceRevision: { type: Number, default: 0 },
   inventorySyncError: { type: String, default: '', maxlength: 500 },

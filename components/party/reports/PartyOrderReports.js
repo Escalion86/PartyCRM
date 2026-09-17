@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { apiJson } from '@helpers/apiClient'
 import PartyReportReconciliation from './PartyReportReconciliation'
+import PartyReportCoordinator from './PartyReportCoordinator'
 
 const RichEditor = dynamic(() => import('./PartyReportRichEditor'), {
   ssr: false,
@@ -106,6 +107,7 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
           {report.templateSnapshot?.version || 1}
         </p>
       </div>
+      {report.scope === 'team' && <div className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900"><strong>Командный отчёт координатора</strong><p className="mt-1 break-words">Состав при создании: {(report.teamStaffNames || []).map(person => person.name || 'Участник').join(', ') || `${report.teamStaffIds?.length || 0} участников`}.</p><p className="mt-1">Личные расчёты исполнителей оформляются отдельно.</p></div>}
       {(report.templateSnapshot?.fields || []).map((field) => {
         const answer = report.answers?.find((item) => item.fieldId === field.id)
         const localAnswer = answers[field.id] || {
@@ -277,7 +279,7 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
           </section>
         )
       })}
-      {(report.templateSnapshot?.fields || []).some(
+      {report.scope !== 'team' && (report.templateSnapshot?.fields || []).some(
         (field) => field.section === 'finance' && field.reconciliationValueType
       ) && (
         <PartyReportReconciliation
@@ -325,23 +327,27 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
   )
 }
 
-export default function PartyOrderReports({
+function OrderReports({
   companyId,
   orderId,
   staffId,
   staff = [],
   onDirtyChange,
+  manager = false,
 }) {
   const [reports, setReports] = useState([])
   const [templates, setTemplates] = useState([])
   const [templateId, setTemplateId] = useState('')
+  const [permissions, setPermissions] = useState({})
+  const authorStaffId = staffId || permissions.currentStaffId || ''
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
   const availableTemplates = templates.filter(
     (template) =>
+      ((template.audience || 'individual') === 'team' ? permissions.canCreateTeamReport : permissions.canCreateIndividualReport) &&
       !reports.some(
         (report) =>
-          String(report.staffId) === String(staffId) &&
+          String(report.staffId) === String(authorStaffId) &&
           String(report.templateFamilyId) === String(template.familyId)
       )
   )
@@ -357,6 +363,8 @@ export default function PartyOrderReports({
       })
       setReports(json.data.reports || [])
       setTemplates(json.data.templates || [])
+      setPermissions({ currentStaffId: json.data.currentStaffId, canCreateTeamReport: json.data.canCreateTeamReport === true, canCreateIndividualReport: json.data.canCreateIndividualReport === true })
+      setTemplateId('')
     } catch (cause) {
       setError(cause.message)
     } finally {
@@ -373,7 +381,7 @@ export default function PartyOrderReports({
       const json = await apiJson('/api/party/reports', {
         method: 'POST',
         headers: { 'x-partycrm-company-id': companyId },
-        body: JSON.stringify({ orderId, staffId, templateId }),
+        body: JSON.stringify({ orderId, staffId: authorStaffId, templateId }),
       })
       setReports((previous) => [
         ...previous.filter((item) => item._id !== json.data._id),
@@ -388,7 +396,8 @@ export default function PartyOrderReports({
   }
   return (
     <div className="space-y-3">
-      {staffId && availableTemplates.length > 0 && (
+      {manager && <PartyReportCoordinator companyId={companyId} orderId={orderId} onChanged={load} />}
+      {authorStaffId && availableTemplates.length > 0 && (
         <div className="flex flex-col gap-2 sm:flex-row">
           <label className="min-w-0 flex-1 text-sm">
             Форма отчёта
@@ -401,7 +410,7 @@ export default function PartyOrderReports({
               {availableTemplates.map((item) => (
                 <option key={item._id} value={item._id}>
                   {item.title} · {item.stage === 'before' ? 'До' : 'После'}{' '}
-                  мероприятия
+                  мероприятия · {item.audience === 'team' ? 'Командная' : 'Личная'}
                 </option>
               ))}
             </select>
@@ -409,7 +418,7 @@ export default function PartyOrderReports({
           <button
             type="button"
             className={`${button} self-end`}
-            disabled={busy || !templateId}
+            disabled={busy || !availableTemplates.some(item => String(item._id) === templateId)}
             onClick={create}
           >
             Заполнить отчёт
@@ -457,4 +466,8 @@ export default function PartyOrderReports({
       ))}
     </div>
   )
+}
+
+export default function PartyOrderReports(props) {
+  return <OrderReports key={`${props.companyId}:${props.orderId}:${props.staffId || ''}`} {...props} />
 }

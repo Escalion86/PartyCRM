@@ -19,6 +19,7 @@ import {
   inventoryId,
   isInventoryId,
   reconcileInventoryServiceItems,
+  snapshotInventoryServiceItems,
 } from '@helpers/partyInventory'
 
 export const withPartyInventoryTransaction = async (tenantId, callback) => {
@@ -92,7 +93,8 @@ export const preparePartyInventory = async ({
   })
     .session(session)
     .lean()
-  const demand = buildInventoryDemand(normalized, requirements)
+  const snapshotItems = snapshotInventoryServiceItems(normalized, requirements)
+  const demand = buildInventoryDemand(snapshotItems, requirements)
   const resourceIds = [...new Set(demand.map((item) => item.resourceId))]
   const items = await Items.find({ tenantId, _id: { $in: resourceIds } })
     .session(session)
@@ -179,7 +181,7 @@ export const preparePartyInventory = async ({
       })),
       excludeOrderId: orderId,
     }),
-    serviceItems: normalized,
+    serviceItems: snapshotItems,
     items,
   }
 }
@@ -216,8 +218,15 @@ export const reservePartyOrderInventory = async ({
     )
       return { saved: false, released: true }
     const reconciled = reconcileInventoryServiceItems(order, previous)
-    if (automatic) serviceItems = reconciled.serviceItems
     const allowed = new Set((order.servicesIds ?? []).map(inventoryId))
+    if (automatic) {
+      // orderItems keep the accepted proposal as a historical snapshot and may
+      // therefore reference an archived service. Only active services copied to
+      // servicesIds participate in a new automatic inventory reservation.
+      serviceItems = reconciled.serviceItems.filter((item) =>
+        allowed.has(inventoryId(item.serviceId))
+      )
+    }
     if (
       !Array.isArray(serviceItems) ||
       serviceItems.some((item) => !allowed.has(inventoryId(item.serviceId)))
@@ -225,6 +234,9 @@ export const reservePartyOrderInventory = async ({
       throw inventoryValidationError(
         'Добавьте выбранные услуги в заказ перед резервированием'
       )
+    if (!automatic) {
+      serviceItems = serviceItems.map((item) => ({ ...item, quantityMode: 'manual' }))
+    }
     const dateEnd =
       order.dateEnd ||
       (order.eventDate
@@ -242,19 +254,13 @@ export const reservePartyOrderInventory = async ({
     })
     if (availability.hasShortage && confirmShortage !== true && !automatic)
       return { ...availability, saved: false }
-    const snapshotItems = availability.serviceItems.map((item) => ({
-      ...item,
-      resources: availability.demand
-        .filter((row) => row.serviceLineId === item.serviceLineId)
-        .map((row) => ({ resourceId: row.resourceId, quantity: row.quantity })),
-    }))
     const reservation = await Reservations.findOneAndUpdate(
       { tenantId, orderId },
       {
         $set: {
           tenantId,
           orderId,
-          serviceItems: snapshotItems,
+          serviceItems: availability.serviceItems,
           rows: availability.demand,
           selectionMode: automatic
             ? previous?.selectionMode || 'automatic'

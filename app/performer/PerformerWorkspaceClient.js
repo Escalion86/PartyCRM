@@ -98,6 +98,14 @@ const reportStatusLabels = {
   accepted: 'Принят',
 }
 
+const contactMethodLabels = {
+  phone: 'Телефон',
+  telegram: 'Telegram',
+  whatsapp: 'WhatsApp',
+  sms: 'SMS',
+  email: 'Email',
+}
+
 const canEditReport = (order) => isOrderStarted(order)
 
 const getReportAccessMessage = (order) => {
@@ -286,6 +294,40 @@ const PerformerOrderViewModal = ({ order, onClose }) => {
             ) : null}
           </div>
         </DetailSection>
+
+        {order.onsiteContact ? (
+          <DetailSection title="Контакт на месте">
+            <div className="grid gap-2">
+              <DetailLine label="Имя">{order.onsiteContact.name || 'Не указано'}</DetailLine>
+              <DetailLine label="Телефон">{order.onsiteContact.phone || 'Не указан'}</DetailLine>
+              <DetailLine label="Email">{order.onsiteContact.email || 'Не указан'}</DetailLine>
+            </div>
+          </DetailSection>
+        ) : null}
+
+        {order.communicationInstructions?.representAs ||
+        order.communicationInstructions?.communicationNotes ||
+        order.communicationInstructions?.allowedContactMethods?.length > 0 ? (
+          <DetailSection title="Порядок общения">
+            <div className="grid gap-2">
+              {order.communicationInstructions.representAs ? (
+                <DetailLine label="Представляться от имени">
+                  {order.communicationInstructions.representAs}
+                </DetailLine>
+              ) : null}
+              {order.communicationInstructions.allowedContactMethods?.length > 0 ? (
+                <DetailLine label="Согласованные способы связи">
+                  {order.communicationInstructions.allowedContactMethods.map((method) => contactMethodLabels[method]).filter(Boolean).join(', ')}
+                </DetailLine>
+              ) : null}
+              {order.communicationInstructions.communicationNotes ? (
+                <DetailLine label="Инструкции">
+                  <span className="whitespace-pre-wrap">{order.communicationInstructions.communicationNotes}</span>
+                </DetailLine>
+              ) : null}
+            </div>
+          </DetailSection>
+        ) : null}
 
         {order.responsibleStaff ? (
           <DetailSection title="Ответственный">

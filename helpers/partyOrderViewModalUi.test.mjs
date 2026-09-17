@@ -32,7 +32,7 @@ test('closed party order view keeps performers, fees and performer comment visib
   const orderRoute = await source('app/api/party/orders/[id]/route.js')
 
   assert.match(workspace, /\? \{ \.\.\.order, status: 'closed' \}/)
-  assert.match(orderRoute, /\{ \$set: \{ status: nextStatus \} \}/)
+  assert.match(orderRoute, /\$set: \{ status: nextStatus \}/)
   assert.match(
     viewModal,
     /const assignedStaff = Array\.isArray\(order\?\.assignedStaff\)/

@@ -22,6 +22,7 @@ export const reportFieldSchema = new Schema({
 export const templateSnapshotSchema = new Schema({
   title: { type: String, required: true, maxlength: 180 },
   stage: { type: String, enum: ['before', 'after'], required: true },
+  audience: { type: String, enum: ['individual', 'team'], default: 'individual' },
   version: { type: Number, required: true },
   fields: { type: [reportFieldSchema], default: [] },
 }, { _id: false })
@@ -31,6 +32,7 @@ export const partyReportTemplatesSchema = {
   familyId: { type: Schema.Types.ObjectId, required: true },
   title: { type: String, required: true, maxlength: 180 },
   stage: { type: String, enum: ['before', 'after'], required: true },
+  audience: { type: String, enum: ['individual', 'team'], default: 'individual' },
   version: { type: Number, required: true },
   active: { type: Boolean, default: true },
   fields: { type: [reportFieldSchema], default: [] },
@@ -54,6 +56,8 @@ const partyReportsSchema = {
   templateId: { type: Schema.Types.ObjectId, required: true },
   templateFamilyId: { type: Schema.Types.ObjectId, required: true },
   templateSnapshot: { type: templateSnapshotSchema, required: true },
+  scope: { type: String, enum: ['individual', 'team'], default: 'individual' },
+  teamStaffIds: { type: [Schema.Types.ObjectId], default: [] },
   stage: { type: String, enum: ['before', 'after'], required: true },
   revision: { type: Number, default: 0 },
   status: { type: String, enum: ['draft', 'submitted', 'accepted', 'revision_requested'], default: 'draft' },

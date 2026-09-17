@@ -23,7 +23,13 @@ export const getPartyClientDeleteRelations = async ({ tenantId, clientId }) => {
 
   const [orders, transactions, calls, vkConversations, avitoConversations] =
     await Promise.all([
-      PartyOrders.countDocuments({ tenantId, clientId }),
+      PartyOrders.countDocuments({ tenantId, $or: [
+        { clientId },
+        { 'otherContacts.clientId': clientId },
+        { 'contactRoles.partnerClientId': clientId },
+        { 'contactRoles.payerClientId': clientId },
+        { 'contactRoles.onsiteClientId': clientId },
+      ] }),
       PartyTransactions.countDocuments({ tenantId, clientId }),
       PartyCalls.countDocuments({ tenantId, linkedClientId: clientId }),
       PartyVkConversations.countDocuments({ tenantId, clientId }),

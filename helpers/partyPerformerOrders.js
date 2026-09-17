@@ -17,6 +17,14 @@ export const sanitizePartyOrderForPerformer = ({
   const client = order.clientId
     ? clientsById.get(`${String(order.tenantId)}:${String(order.clientId)}`)
     : null
+  const onsiteCandidate = order.contactRoles?.onsiteClientId
+    ? clientsById.get(`${String(order.tenantId)}:${String(order.contactRoles.onsiteClientId)}`)
+    : null
+  const onsite = onsiteCandidate &&
+    String(onsiteCandidate.tenantId) === String(order.tenantId) &&
+    onsiteCandidate.status !== 'archived'
+    ? onsiteCandidate
+    : null
   const responsibleStaffKey = order.responsibleStaffId
     ? `${String(order.tenantId)}:${String(order.responsibleStaffId)}`
     : ''
@@ -55,6 +63,22 @@ export const sanitizePartyOrderForPerformer = ({
     serviceTitle: order.serviceTitle || '',
     serviceTitles,
     performerComment: order.performerComment || '',
+    onsiteContact: onsite
+      ? {
+          name: [onsite.firstName, onsite.secondName, onsite.thirdName].filter(Boolean).join(' '),
+          phone: onsite.phone || '',
+          email: onsite.email || '',
+        }
+      : null,
+    communicationInstructions: {
+      representAs: order.contactRoles?.representAs || '',
+      communicationNotes: order.contactRoles?.communicationNotes || '',
+      allowedContactMethods: Array.isArray(order.contactRoles?.allowedContactMethods)
+        ? order.contactRoles.allowedContactMethods.filter((method) =>
+            ['phone', 'telegram', 'whatsapp', 'sms', 'email'].includes(method)
+          )
+        : [],
+    },
     responsibleStaff: responsibleStaff
       ? {
           _id: String(responsibleStaff._id),

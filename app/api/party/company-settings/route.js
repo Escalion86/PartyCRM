@@ -71,7 +71,12 @@ export async function PATCH(req) {
   const { access, serializedAccess } = await getPartyCompanyTariffAccessState(
     company
   )
-  const { company: companyPatch = null, ...settingsPatch } = body
+  const { company: companyPatch = null, ...rawSettingsPatch } = body
+  const isGenericSetting = (key) => !['inboxSchedule', 'inboxScheduleRevision', '__proto__', 'constructor', 'prototype'].includes(key)
+    && !key.includes('.') && !key.startsWith('$')
+  const settingsPatch = Object.fromEntries(
+    Object.entries(rawSettingsPatch).filter(([key]) => isGenericSetting(key))
+  )
   const filteredBody = filterCompanySettingsPatchByTariffAccess(
     settingsPatch,
     access
@@ -81,7 +86,11 @@ export async function PATCH(req) {
     mergeCompanySettingsPatch(company?.settings ?? {}, filteredBody)
   )
   const nextCompany = normalizeCompanyProfile(companyPatch ?? {})
-  const updateSet = { settings: nextSettings }
+  // Keep schedule writes in their validated, revision-guarded endpoint. Dotted
+  // updates also preserve a schedule changed since this settings read.
+  const updateSet = Object.fromEntries(Object.entries(nextSettings)
+    .filter(([key]) => isGenericSetting(key))
+    .map(([key, value]) => [`settings.${key}`, value]))
   const companySet = {}
   for (const key of ['title', 'legalTitle', 'phone', 'email']) {
     if (!Object.hasOwn(nextCompany, key) || !Object.hasOwn(companyPatch ?? {}, key)) {

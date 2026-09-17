@@ -5,6 +5,7 @@ import Input from '@components/Input'
 import Select from '@components/Select'
 import Modal from '@components/Modal'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
+import PartyStaffOperationalPermissions from '@components/party/PartyStaffOperationalPermissions'
 
 const ALL_ROLE_OPTIONS = [
   { value: 'performer', label: 'Исполнитель' },
@@ -45,6 +46,8 @@ export default function StaffModal({
   isEdit,
   contextRole = '',
   locations = [],
+  companyId = '',
+  staffId = '',
 }) {
   const hasUnsavedChanges = useUnsavedChanges(staffDraft, open)
   const handleChange = (field) => (value) => {
@@ -195,6 +198,7 @@ export default function StaffModal({
             )}
           </fieldset>
         )}
+        {isEdit && <PartyStaffOperationalPermissions companyId={companyId} staffId={staffId} draftRole={staffDraft.role} />}
         <Input
           label="Описание"
           value={staffDraft.description}

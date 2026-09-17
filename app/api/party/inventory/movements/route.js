@@ -18,15 +18,26 @@ import {
 } from '@server/partyInventoryMovements'
 
 export const dynamic = 'force-dynamic'
-export const POST = inventoryRoute(async (req, context) =>
-  inventoryResponse(
-    await performPartyInventoryMovement({
-      tenantId: context.tenantId,
-      actorStaffId: context.staff._id,
-      body: await parseJsonBody(req),
-    })
+const movementFields =
+  '_id operation resourceId orderId fromStaffId toStaffId actorStaffId quantity expectedReturnAt condition comment resourceTitle orderTitle fromStaffName toStaffName actorStaffName createdAt'
+const safeMovement = (movement) =>
+  Object.fromEntries(
+    movementFields
+      .split(' ')
+      .filter((key) => movement?.[key] !== undefined)
+      .map((key) => [key, movement[key]])
   )
-)
+export const POST = inventoryRoute(async (req, context) => {
+  const result = await performPartyInventoryMovement({
+    tenantId: context.tenantId,
+    actorStaffId: context.staff._id,
+    body: await parseJsonBody(req),
+  })
+  return inventoryResponse({
+    movement: safeMovement(result.movement),
+    repeated: Boolean(result.repeated),
+  })
+}, 'inventory.movements')
 export const GET = inventoryRoute(async (req, context) => {
   const orderId = req.nextUrl.searchParams.get('orderId') || ''
   const cursor = req.nextUrl.searchParams.get('cursor') || ''
@@ -43,9 +54,18 @@ export const GET = inventoryRoute(async (req, context) => {
     getPartyInventoryItemModel(),
   ])
   const filter = { tenantId: context.tenantId }
-  if (orderId && !await Orders.exists({ ...filter, _id: orderId }) && !await Holdings.exists({ ...filter, orderId, quantity: { $gt: 0 } })) throw inventoryValidationError('Заказ не найден', 404)
+  if (
+    orderId &&
+    !(await Orders.exists({ ...filter, _id: orderId })) &&
+    !(await Holdings.exists({ ...filter, orderId, quantity: { $gt: 0 } }))
+  )
+    throw inventoryValidationError('Заказ не найден', 404)
   const [allHoldings, movements, items] = await Promise.all([
-    Holdings.find({ ...filter, quantity: { $gt: 0 } }).lean(),
+    Holdings.find({ ...filter, quantity: { $gt: 0 } })
+      .select(
+        '_id resourceId orderId holderStaffId quantity issuedAt expectedReturnAt'
+      )
+      .lean(),
     Movements.find({
       ...filter,
       ...(orderId ? { orderId } : {}),
@@ -53,9 +73,14 @@ export const GET = inventoryRoute(async (req, context) => {
     })
       .sort({ _id: -1 })
       .limit(51)
-      .select('-payloadHash -idempotencyKey')
+      .select(movementFields)
       .lean(),
-    Items.find(filter).sort({ title: 1 }).lean(),
+    Items.find(filter)
+      .sort({ title: 1 })
+      .select(
+        '_id title category unit quantity unavailableQuantity unavailableReason storageLocation status'
+      )
+      .lean(),
   ])
   const holdings = allHoldings.filter(
     (holding) => !orderId || inventoryId(holding.orderId) === orderId
@@ -120,4 +145,4 @@ export const GET = inventoryRoute(async (req, context) => {
     movements: movements.slice(0, 50),
     nextCursor: movements.length > 50 ? inventoryId(movements[49]) : null,
   })
-})
+}, 'inventory.movements')

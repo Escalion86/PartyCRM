@@ -1,3 +1,4 @@
+import CompanySettingsScheduleContent from './CompanySettingsScheduleContent'
 import CompanySettingsGeneralContent from './CompanySettingsGeneralContent'
 import CompanySettingsIntegrationsContent from './CompanySettingsIntegrationsContent'
 import CompanySettingsListsContent from './CompanySettingsListsContent'
@@ -8,6 +9,7 @@ import CompanySettingsReportsContent from './CompanySettingsReportsContent'
 
 export const COMPANY_SETTINGS_CONTENT = Object.freeze({
   general: CompanySettingsGeneralContent,
+  schedule: CompanySettingsScheduleContent,
   integrations: CompanySettingsIntegrationsContent,
   lists: CompanySettingsListsContent,
   notifications: CompanySettingsNotificationsContent,

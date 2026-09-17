@@ -9,12 +9,24 @@ export const reportFailure = (message, status = 400, code = 'partycrm_invalid_re
 
 export const isReportManager = (context) => ['owner', 'admin'].includes(context?.role)
 export const isReportAuthor = (context, report) => String(context?.staff?._id) === String(report?.staffId)
+export const reportAudience = (template) => template?.audience || 'individual'
+export const isTeamReport = (report) => report?.scope === 'team' || report?.templateSnapshot?.audience === 'team'
+export const reportTeamStaffIds = (order) => [...new Set((order.assignedStaff || []).filter((item) => item.confirmationStatus !== 'declined').map((item) => String(item.staffId)))]
+export const isAssignedReportStaff = (context, order) => reportTeamStaffIds(order).includes(String(context?.staff?._id))
+export const isReportCoordinator = (context, order) => isAssignedReportStaff(context, order) && String(order.reportCoordinatorStaffId || '') === String(context?.staff?._id)
+export const canEditPartyReport = (context, report, order) => isReportAuthor(context, report) && isAssignedReportStaff(context, order) && order.status !== 'canceled' && (!isTeamReport(report) || isReportCoordinator(context, order))
+export const validateReportAudience = (value, previous) => {
+  const audience = value ?? reportAudience(previous)
+  if (!['individual', 'team'].includes(audience)) reportFailure('Некорректный тип формы')
+  if (previous && audience !== reportAudience(previous)) reportFailure('Тип опубликованной формы изменить нельзя; создайте новую форму')
+  return audience
+}
 export const canReviewReportField = (context, field) =>
   isReportManager(context) || String(field?.reviewerStaffId || '') === String(context?.staff?._id)
 
 export const canReadReportField = (context, report, field, isAssigned = false) =>
   context?.role !== 'location_owner' && (
-  isReportManager(context) || (isAssigned && isReportAuthor(context, report)) ||
+  isReportManager(context) || ((isAssigned || isTeamReport(report)) && isReportAuthor(context, report)) ||
   canReviewReportField(context, field) ||
   (context?.role === 'performer' && field.section === 'creative' && field.shareCreative === true &&
     report.answers.some((answer) => answer.fieldId === field.id && answer.status === 'accepted')))

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import mongoose from 'mongoose'
 import { getPartyOrderModel, getPartyStaffModel, getPartyServiceModel, getPartyLocationModel } from './partyModels'
 import { getPartyRequestContext, partyError } from './partyApi'
-import { canReadReportField, canReviewReportField, isReportAuthor, isReportManager, reportFailure } from './partyReportCore'
+import { canReadReportField, canReviewReportField, canEditPartyReport, isAssignedReportStaff, isReportCoordinator, isReportManager, reportFailure } from './partyReportCore'
 import { getPartyReportTemplateModel } from './partyReportModels'
 import { isPartyReportFieldApplicable } from '@helpers/partyReportTemplates'
 
@@ -32,10 +32,11 @@ export const loadReportOrder = async (tenantId, id) => {
   return order
 }
 
-export const isAssignedToReportOrder = (context, order) => (order.assignedStaff || []).some((item) => String(item.staffId) === String(context.staff._id))
+export const isAssignedToReportOrder = isAssignedReportStaff
 
-export const requireReportAuthorAssignment = (context, order, staffId) => {
-  if (String(context.staff._id) !== String(staffId) || !(order.assignedStaff || []).some((item) => String(item.staffId) === String(staffId))) reportFailure('Нет назначения на этот заказ', 403)
+export const requireReportAuthorAssignment = (context, order, staffId, scope = 'individual') => {
+  if (String(context.staff._id) !== String(staffId) || !isAssignedReportStaff(context, order)) reportFailure('Нет назначения на этот заказ', 403)
+  if (scope === 'team' && !isReportCoordinator(context, order)) reportFailure('Командный отчёт заполняет текущий координатор', 403)
   if (order.status === 'canceled') reportFailure('Заказ отменён', 409)
 }
 
@@ -45,7 +46,7 @@ export const visibleReport = (context, report, order) => {
   const ids = new Set(fields.map((field) => field.id))
   // Do not leak hidden finance data through history, other answer fields or snapshot.
   const { history: _history, ...safe } = report
-  return { ...safe, canEdit: isReportAuthor(context, report) && isAssignedToReportOrder(context, order) && order.status !== 'canceled', templateSnapshot: { ...report.templateSnapshot, fields: fields.map((field) => ({ ...field, canReview: canReviewReportField(context, field) })) }, answers: report.answers.filter((answer) => ids.has(answer.fieldId)) }
+  return { ...safe, canEdit: canEditPartyReport(context, report, order), templateSnapshot: { ...report.templateSnapshot, fields: fields.map((field) => ({ ...field, canReview: canReviewReportField(context, field) })) }, answers: report.answers.filter((answer) => ids.has(answer.fieldId)) }
 }
 
 export const latestReportTemplates = async (tenantId) => {

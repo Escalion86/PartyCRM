@@ -161,6 +161,7 @@ export const EMPTY_PARTY_SERVICE = {
 }
 
 export const EMPTY_ORDER = {
+  contactRoles: { partnerClientId: null, payerClientId: null, onsiteClientId: null, representAs: '', communicationNotes: '', allowedContactMethods: [] },
   title: '',
   clientId: '',
   eventDate: '',
@@ -178,6 +179,10 @@ export const EMPTY_ORDER = {
   },
   servicesIds: [],
   serviceTitle: '',
+  eventBrief: {},
+  orderItems: [],
+  agreedProposal: {},
+  commercialRevision: 0,
   contractAmount: '',
   clientPayment: {
     totalAmount: '',

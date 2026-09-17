@@ -22,12 +22,13 @@ import Input from '@components/Input'
 import Select from '@components/Select'
 import { buildPartyOrderTransactionsViewModel } from './partyOrderTransactionViewModel'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
+import PartyLegacyLedger from './PartyLegacyLedger'
 
 const money = (value) =>
   new Intl.NumberFormat('ru-RU', {
     style: 'currency',
     currency: 'RUB',
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(Number(value || 0))
 
 const emptyDraft = (orderId) => ({
@@ -102,9 +103,10 @@ const TransactionList = ({
                   ? ` · ${new Date(item.date).toLocaleDateString('ru-RU')}`
                   : ''}
                 {item.comment ? ` · ${item.comment}` : ''}
+                {item.groupPaymentId ? ' · Часть общего платежа' : ''}
               </div>
             </div>
-            {!isClosed ? (
+            {!isClosed && !item.groupPaymentId ? (
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -342,6 +344,7 @@ export default function PartyOrderTransactionsSection({
       </div>
 
       {busy && <p className="text-sm text-gray-500">Обновляем транзакции...</p>}
+      {orderId && activeCompanyId && <PartyLegacyLedger companyId={activeCompanyId} orderId={orderId} onChanged={() => transactionsQuery.refetch()} />}
 
       <div className="grid gap-3 md:grid-cols-2">
         <TransactionList

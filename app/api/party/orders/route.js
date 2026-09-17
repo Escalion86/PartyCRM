@@ -1,9 +1,11 @@
+import { parsePartyOrderContactRoles, PARTY_ORDER_CONTACT_ROLE_KEYS } from '@server/partyOrderContactRoles'
 import { NextResponse } from 'next/server'
 import { syncPartyOrderInventory } from '@server/partyInventory'
 import {
   getPartyClientModel,
   getPartyLocationModel,
   getPartyOrderModel,
+  getPartyProposalModel,
   getPartyServiceModel,
   getPartyStaffModel,
   getPartyTransactionModel,
@@ -33,6 +35,12 @@ import {
 import { applyPartyAssignmentConfirmationDefaults } from '@helpers/partyOrderAssignments'
 import { recordPartyOrderAudit } from '@server/partyAuditLog'
 import { buildPartyOpenPreparationFilter } from '@helpers/partyOrderPreparation'
+import {
+  normalizePartyOrderAgreedProposal,
+  normalizePartyOrderCommercialRevision,
+  normalizePartyOrderEventBrief,
+  normalizePartyOrderItems,
+} from '@server/partyOrderBrief'
 
 const parseDate = (value) => {
   if (!value) return null
@@ -222,6 +230,7 @@ export const normalizeOrderPayload = (
       ? body.status
       : 'draft',
     clientId,
+    contactRoles: body.contactRoles,
     client: {
       name:
         typeof body.client?.name === 'string' ? body.client.name.trim() : '',
@@ -244,6 +253,14 @@ export const normalizeOrderPayload = (
     servicesIds: normalizeServicesIds(body.servicesIds),
     serviceTitle:
       typeof body.serviceTitle === 'string' ? body.serviceTitle.trim() : '',
+    eventBrief: normalizePartyOrderEventBrief(body.eventBrief),
+    orderItems: normalizePartyOrderItems(body.orderItems, { isValidObjectId }),
+    agreedProposal: normalizePartyOrderAgreedProposal(body.agreedProposal, {
+      isValidObjectId,
+    }),
+    commercialRevision: normalizePartyOrderCommercialRevision(
+      body.commercialRevision
+    ),
     contractAmount:
       body.contractAmount !== undefined
         ? parseMoney(body.contractAmount)
@@ -279,8 +296,18 @@ export const normalizeOrderPayload = (
   }
 }
 
-export const validateOrderReferences = async ({ tenantId, payload }) => {
+export const validateOrderReferences = async ({
+  tenantId,
+  payload,
+  orderId = null,
+}) => {
+  const parsedContactRoles = parsePartyOrderContactRoles(payload.contactRoles)
+  if (parsedContactRoles.error) {
+    return partyError(400, 'partycrm_invalid_contact_roles', parsedContactRoles.error, 'validation')
+  }
+  payload.contactRoles = parsedContactRoles.value
   const clientIds = [
+    ...PARTY_ORDER_CONTACT_ROLE_KEYS.map((key) => payload.contactRoles[key]),
     payload.clientId,
     ...(payload.otherContacts ?? []).map((item) => item.clientId),
   ].filter(Boolean)
@@ -362,18 +389,61 @@ export const validateOrderReferences = async ({ tenantId, payload }) => {
     }
   }
 
-  if (payload.servicesIds.length > 0) {
+  const uniqueServiceIds = [...new Set(payload.servicesIds.map(String))]
+
+  if (uniqueServiceIds.length > 0) {
     const PartyServices = await getPartyServiceModel()
     const count = await PartyServices.countDocuments({
-      _id: { $in: payload.servicesIds },
+      _id: { $in: uniqueServiceIds },
       tenantId,
       status: { $ne: 'archived' },
     })
-    if (count !== payload.servicesIds.length) {
+    if (count !== uniqueServiceIds.length) {
       return partyError(
         400,
         'partycrm_service_not_found',
         'Одна или несколько услуг не найдены',
+        'validation'
+      )
+    }
+  }
+
+  const snapshotServiceIds = [
+    ...new Set(
+      (payload.orderItems ?? [])
+        .map((item) => item.serviceId)
+        .filter(Boolean)
+        .map(String)
+    ),
+  ]
+  if (snapshotServiceIds.length > 0) {
+    const PartyServices = await getPartyServiceModel()
+    const count = await PartyServices.countDocuments({
+      _id: { $in: snapshotServiceIds },
+      tenantId,
+    })
+    if (count !== snapshotServiceIds.length) {
+      return partyError(
+        400,
+        'partycrm_service_not_found',
+        'Одна из услуг согласованного состава недоступна в этой компании',
+        'validation'
+      )
+    }
+  }
+
+  if (payload.agreedProposal?.proposalId) {
+    const PartyProposals = await getPartyProposalModel()
+    const proposal = await PartyProposals.exists({
+      _id: payload.agreedProposal.proposalId,
+      tenantId,
+      ...(orderId ? { orderId } : {}),
+    })
+    if (!proposal) {
+      return partyError(
+        400,
+        'partycrm_proposal_not_found',
+        'Принятое коммерческое предложение не найдено',
         'validation'
       )
     }
@@ -467,6 +537,9 @@ export async function GET(req) {
     if (!map.has(orderId)) map.set(orderId, [])
     map.get(orderId).push({
       _id: String(transaction._id),
+      groupPaymentId: transaction.groupPaymentId
+        ? String(transaction.groupPaymentId)
+        : null,
       amount: Number(transaction.amount || 0),
       type: transaction.type,
       category: transaction.category,
@@ -524,14 +597,21 @@ export async function POST(req) {
   if (error) return error
 
   const body = await parseJsonBody(req)
-  const payload = normalizeOrderPayload(body, {
+  const normalizedPayload = normalizeOrderPayload(body, {
     fallbackResponsibleStaffId: context.staff?._id,
   })
+  // Applying an accepted proposal is the only API allowed to create this link.
+  const payload = {
+    ...normalizedPayload,
+    agreedProposal: {},
+    commercialRevision: 0,
+  }
 
   if (
     !payload.clientId &&
     !payload.client.name &&
     payload.servicesIds.length === 0 &&
+    payload.orderItems.length === 0 &&
     !payload.serviceTitle
   ) {
     return partyError(

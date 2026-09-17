@@ -20,7 +20,7 @@ test('normalizePartyTransactionPayload normalizes income transaction', () => {
 
   assert.equal(payload.orderId, '507f1f77bcf86cd799439011')
   assert.equal(payload.clientId, '507f1f77bcf86cd799439012')
-  assert.equal(payload.amount, 15000)
+  assert.equal(payload.amount, 15000.7)
   assert.equal(payload.type, 'income')
   assert.equal(payload.category, 'deposit')
   assert.equal(payload.paymentMethod, 'cash')
@@ -83,4 +83,10 @@ test('serializePartyTransaction returns stable string ids', () => {
   assert.equal(serialized.orderId, 'order-1')
   assert.equal(serialized.staffId, 'staff-1')
   assert.equal(serialized.date, '2026-01-02T10:00:00.000Z')
+})
+
+test('transaction edits preserve kopecks and reject silent rounding', () => {
+  for (const [input, expected] of [[0.01, 0.01], [11.25, 11.25], ['11,25', 11.25], ['1.001', 0], [NaN, 0], [Infinity, 0], [-1, 0], [true, 0]]) {
+    assert.equal(normalizePartyTransactionPayload({ amount: input }).amount, expected)
+  }
 })

@@ -1,5 +1,7 @@
 'use client'
 
+import { PartyOrderContactRolesEditor } from '@components/party/orders/PartyOrderContactRoles'
+
 import { useState, useCallback, useMemo } from 'react'
 import { useSetAtom } from 'jotai'
 import { apiJson } from '@helpers/apiClient'
@@ -22,6 +24,7 @@ import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPic
 import PartyOrderTypePicker from '@components/party/inputs/PartyOrderTypePicker'
 import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTransactionsSection'
 import PartyOrderDocumentsSection from '@components/party/orders/PartyOrderDocumentsSection'
+import { PartyEventBriefEditor } from '@components/party/orders/PartyEventBrief'
 import {
   AdditionalEventCard,
   AdditionalEventEditModal,
@@ -120,6 +123,7 @@ export default function OrderModal({
   onCompanySettingsChange,
   onServiceCreated,
   onClientCreated,
+  onOrderApplied,
   isEdit,
 }) {
   const [clientModal, setClientModal] = useState('')
@@ -673,7 +677,11 @@ export default function OrderModal({
     }
 
     // Проверка: услуги не выбраны
-    if (!orderDraft.servicesIds || orderDraft.servicesIds.length === 0) {
+    if (
+      (!orderDraft.servicesIds || orderDraft.servicesIds.length === 0) &&
+      (!orderDraft.orderItems || orderDraft.orderItems.length === 0) &&
+      !orderDraft.serviceTitle
+    ) {
       setSubmitError('Укажите услугу')
       return
     }
@@ -683,7 +691,13 @@ export default function OrderModal({
     } catch (err) {
       setSubmitError(err.message || 'Ошибка при сохранении заказа')
     }
-  }, [orderDraft.clientId, orderDraft.servicesIds, onSubmit])
+  }, [
+    orderDraft.clientId,
+    orderDraft.orderItems,
+    orderDraft.serviceTitle,
+    orderDraft.servicesIds,
+    onSubmit,
+  ])
 
   // Footer with action buttons
   const footerContent = ({ requestClose }) => (
@@ -878,6 +892,13 @@ export default function OrderModal({
           </div>
         </TabPanel>
 
+        <TabPanel tabName="Бриф">
+          <PartyEventBriefEditor
+            value={orderDraft.eventBrief || {}}
+            onChange={(eventBrief) => handleChange('eventBrief', eventBrief)}
+          />
+        </TabPanel>
+
         {/* ====== Вкладка 2: Клиенты и контакты ====== */}
         <TabPanel tabName="Клиенты и контакты">
           <div className="flex flex-col gap-2">
@@ -900,6 +921,7 @@ export default function OrderModal({
               fullWidth
               tone="party"
             />
+            <PartyOrderContactRolesEditor value={orderDraft.contactRoles || {}} clients={clients} onChange={value => handleChange('contactRoles', value)} />
             <OtherContactsPicker
               label="Доп. контакты"
               contacts={orderDraft.otherContacts || []}
@@ -1090,6 +1112,28 @@ export default function OrderModal({
                 services={services}
                 companySettings={companySettings}
                 activeCompanyId={activeCompanyId}
+                onOrderUpdated={(updatedOrder) => {
+                  setOrderDraft((current) => ({
+                    ...current,
+                    orderItems: updatedOrder.orderItems || [],
+                    agreedProposal: updatedOrder.agreedProposal || {},
+                    servicesIds: updatedOrder.servicesIds || [],
+                    serviceTitle: updatedOrder.serviceTitle || '',
+                    contractAmount: updatedOrder.contractAmount || 0,
+                    clientPayment: {
+                      ...(current.clientPayment || {}),
+                      totalAmount:
+                        updatedOrder.clientPayment?.totalAmount ??
+                        updatedOrder.contractAmount ??
+                        0,
+                    },
+                    commercialRevision:
+                      updatedOrder.commercialRevision ??
+                      current.commercialRevision ??
+                      0,
+                  }))
+                  onOrderApplied?.(updatedOrder)
+                }}
               />
             </div>
           </div>

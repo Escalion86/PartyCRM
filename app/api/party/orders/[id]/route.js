@@ -1,4 +1,6 @@
+import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
 import { NextResponse } from 'next/server'
+import { getPartySharedLocationOrderIds } from '@server/partyRelatedOrders'
 import { syncPartyOrderInventory } from '@server/partyInventory'
 import {
   getPartyOrderModel,
@@ -153,11 +155,23 @@ export async function PATCH(req, { params }) {
   }
 
   if (isStatusOnlyPatch) {
+    if (['draft', 'active'].includes(nextStatus)) {
+      const conflicts = await findPartyOrderConflicts({
+        PartyOrders,
+        tenantId: context.tenantId,
+        payload: { ...currentOrder, status: nextStatus },
+        excludeOrderId: id,
+        sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }),
+      })
+      if (hasPartyOrderConflicts(conflicts)) return partyError(409, 'partycrm_order_conflict', 'Найдены пересечения по точке или исполнителю', 'validation', { conflicts })
+    }
     const order = await PartyOrders.findOneAndUpdate(
-      { _id: id, tenantId: context.tenantId },
-      { $set: { status: nextStatus } },
+      { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
+      { $set: { status: nextStatus }, $inc: { commercialRevision: 1 } },
       { returnDocument: 'after' }
     ).lean()
+
+    if (!order) return partyError(409, 'partycrm_order_revision_conflict', 'Заказ изменился. Обновите его перед изменением статуса.', 'conflict')
 
     const inventory = await syncPartyOrderInventory({
       tenantId: context.tenantId,
@@ -186,12 +200,86 @@ export async function PATCH(req, { params }) {
     ? {
         ...body,
         assignedStaff: preservePartyAssignmentConfirmationStatuses({
-          assignedStaff: body.assignedStaff,
+          assignedStaff: body.assignedStaff.map(item => ({
+            ...(currentOrder.assignedStaff || []).find(previous => String(previous.staffId) === String(item.staffId)),
+            ...item,
+          })),
           previousAssignedStaff: currentOrder.assignedStaff,
         }),
       }
     : body
-  const payload = normalizeOrderPayload(bodyWithPreservedAssignmentStatuses)
+  const bodyWithBackwardCompatibleBrief = {
+    // Contact-role updates must not reset unrelated order or financial fields.
+    ...(['contactRoles', 'assignedStaff'].some((field) => Object.prototype.hasOwnProperty.call(body || {}, field)) ? currentOrder : {}),
+    ...bodyWithPreservedAssignmentStatuses,
+    contactRoles: Object.prototype.hasOwnProperty.call(body || {}, 'contactRoles')
+      ? body.contactRoles
+      : currentOrder.contactRoles,
+    eventBrief: Object.prototype.hasOwnProperty.call(body || {}, 'eventBrief')
+      ? body?.eventBrief
+      : currentOrder.eventBrief,
+    orderItems: Object.prototype.hasOwnProperty.call(body || {}, 'orderItems')
+      ? body?.orderItems
+      : currentOrder.orderItems,
+    // These fields are server-owned and can only change through apply-to-order.
+    agreedProposal: currentOrder.agreedProposal,
+    commercialRevision: currentOrder.commercialRevision,
+  }
+  const payload = normalizeOrderPayload(bodyWithBackwardCompatibleBrief)
+  // Assignment forms cannot overwrite server-owned reports/calendar linkage.
+  if (Array.isArray(payload.assignedStaff)) {
+    const previousById = new Map((currentOrder.assignedStaff || []).map(item => [String(item.staffId), item]))
+    payload.assignedStaff = payload.assignedStaff.map(item => {
+      const previous = previousById.get(String(item.staffId))
+      if (!previous) return item
+      const preserved = {}
+      for (const key of ['report', 'performerGoogleCalendarEventId', 'performerGoogleCalendarCalendarId', 'performerCalendarSyncedAt', 'performerCalendarSyncError']) {
+        if (Object.prototype.hasOwnProperty.call(previous, key)) preserved[key] = previous[key]
+      }
+      return { ...item, ...preserved }
+    })
+  }
+  // A stale editor must never resurrect the embedded ledger after migration.
+  if (currentOrder.legacyLedgerMigrationId) payload.transactions = []
+  const touchesCommercialFields = [
+    'servicesIds',
+    'serviceTitle',
+    'contractAmount',
+    'clientPayment',
+    'orderItems',
+  ].some((field) => Object.prototype.hasOwnProperty.call(body || {}, field))
+  const currentCommercialRevision = Number(currentOrder.commercialRevision || 0)
+  if (
+    currentCommercialRevision > 0 &&
+    (touchesCommercialFields || Object.prototype.hasOwnProperty.call(body || {}, 'assignedStaff')) &&
+    Number(body?.commercialRevision) !== currentCommercialRevision
+  ) {
+    return partyError(
+      409,
+      'partycrm_order_revision_conflict',
+      'Коммерческие условия заказа уже изменились. Обновите заказ.',
+      'conflict'
+    )
+  }
+  const ids = (value) =>
+    (Array.isArray(value) ? value : []).map(String).sort().join(',')
+  const servicesOrAmountChanged =
+    ids(payload.servicesIds) !== ids(currentOrder.servicesIds) ||
+    Number(payload.contractAmount || 0) !== Number(currentOrder.contractAmount || 0)
+  const orderItemsChanged =
+    JSON.stringify(payload.orderItems || []) !==
+    JSON.stringify(currentOrder.orderItems || [])
+  const commercialChanged =
+    touchesCommercialFields && (servicesOrAmountChanged || orderItemsChanged)
+  if (commercialChanged) {
+    if (servicesOrAmountChanged && !orderItemsChanged) payload.orderItems = []
+    payload.agreedProposal = {}
+    payload.commercialRevision = currentCommercialRevision + 1
+  }
+  if (Object.prototype.hasOwnProperty.call(body || {}, 'assignedStaff') &&
+      JSON.stringify(payload.assignedStaff || []) !== JSON.stringify(currentOrder.assignedStaff || [])) {
+    payload.commercialRevision = currentCommercialRevision + 1
+  }
 
   // Валидация клиента и услуги — только если эти поля явно переданы в теле запроса
   // (при частичном обновлении, например только статуса, пропускаем проверку)
@@ -206,6 +294,7 @@ export async function PATCH(req, { params }) {
     !payload.clientId &&
     !payload.client.name &&
     payload.servicesIds.length === 0 &&
+    payload.orderItems.length === 0 &&
     !payload.serviceTitle
   ) {
     return partyError(
@@ -219,8 +308,21 @@ export async function PATCH(req, { params }) {
   const referenceError = await validateOrderReferences({
     tenantId: context.tenantId,
     payload,
+    orderId: id,
   })
   if (referenceError) return referenceError
+  if (nextStatus === 'closed') {
+    const PartyTransactions = await getPartyTransactionModel()
+    const transactions = await PartyTransactions.find({ tenantId: context.tenantId, orderId: id }).lean()
+    const readiness = getPartyOrderCloseReadiness({
+      order: { ...currentOrder, ...payload },
+      transactions: transactions.length ? transactions : payload.transactions,
+    })
+    if (!readiness.ok) return partyError(409, 'partycrm_order_close_blocked', 'Заказ нельзя закрыть: есть незавершенные финансовые или рабочие пункты', 'validation', { blockers: readiness.blockers })
+  }
+  if (payload.status !== currentOrder.status) {
+    payload.commercialRevision = currentCommercialRevision + 1
+  }
   const payloadWithAssignmentDefaults = await applyPartyAssignmentAccountDefaults({
     tenantId: context.tenantId,
     payload,
@@ -240,6 +342,7 @@ export async function PATCH(req, { params }) {
     tenantId: context.tenantId,
     payload: limitedPayload,
     excludeOrderId: id,
+    sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }),
   })
   if (hasPartyOrderConflicts(conflicts)) {
     return partyError(
@@ -251,14 +354,20 @@ export async function PATCH(req, { params }) {
     )
   }
 
+  const revisionFilter = getPartyOrderWriteGuard(currentOrder)
   const order = await PartyOrders.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId },
+    { _id: id, tenantId: context.tenantId, ...revisionFilter },
     { $set: limitedPayload },
     { returnDocument: 'after' }
   ).lean()
 
   if (!order) {
-    return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+    return partyError(
+      409,
+      'partycrm_order_revision_conflict',
+      'Заказ уже изменился. Обновите его перед сохранением.',
+      'conflict'
+    )
   }
 
   await recordPartyOrderAudit({
@@ -322,14 +431,29 @@ export async function DELETE(req, { params }) {
   }
 
   if (permanent) {
+    const PartyTransactions = await getPartyTransactionModel()
+    const groupPaymentPart = await PartyTransactions.findOne({
+      tenantId: context.tenantId,
+      orderId: id,
+      groupPaymentId: { $ne: null },
+    }).select('_id').lean()
+    if (groupPaymentPart) {
+      return partyError(
+        409,
+        'partycrm_order_group_payment_readonly',
+        'Заказ с частью общего платежа нельзя удалить безвозвратно. Можно отменить заказ.',
+        'validation'
+      )
+    }
     // Полное удаление заказа из БД
     const order = await PartyOrders.findOneAndDelete({
       _id: id,
       tenantId: context.tenantId,
+      ...getPartyOrderWriteGuard(currentOrder),
     }).lean()
 
     if (!order) {
-      return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+      return partyError(409, 'partycrm_order_changed', 'Заказ изменился. Обновите страницу и повторите действие.', 'validation')
     }
 
     await recordPartyOrderAudit({

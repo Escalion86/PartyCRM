@@ -3,7 +3,10 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const source = await readFile(new URL('./partyMembershipResponse.js', import.meta.url), 'utf8')
-const { serializePartyMembershipResponse, serializePartyMembershipCompany } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
+const permissionsSource = await readFile(new URL('../helpers/partyOperationalPermissions.js', import.meta.url), 'utf8')
+const permissionsUrl = `data:text/javascript;base64,${Buffer.from(permissionsSource).toString('base64')}`
+const resolvedSource = source.replace('../helpers/partyOperationalPermissions.js', permissionsUrl)
+const { serializePartyMembershipResponse, serializePartyMembershipCompany } = await import(`data:text/javascript;base64,${Buffer.from(resolvedSource).toString('base64')}`)
 const secret = 'secret-must-never-appear'
 const company = {
   _id: 'company', title: 'Компания', status: 'active', balance: 4000, legalTitle: 'Юрлицо',
@@ -55,4 +58,15 @@ test('integration free-form error and unknown status payloads cannot leak via in
   assert.equal(result.settings.integrations.avitoStatus, '')
   assert.equal(result.settings.integrations.avitoLastCheckedAt, null)
   assert.ok(!JSON.stringify(result).includes(secret))
+})
+
+test('operational permissions expose only known grants and no arbitrary staff payload', () => {
+  const original = membership('performer')
+  original.staff.operationalPermissions = ['inventory.movements', 'inventory.movements', 'company.settings', { token: secret }]
+  const result = serializePartyMembershipResponse(original)
+  assert.deepEqual(result.staff.operationalPermissions, ['inventory.movements'])
+  assert.equal(result.isAdmin, false)
+  assert.equal(result.company.balance, undefined)
+  assert.ok(!JSON.stringify(result).includes(secret))
+  assert.deepEqual(serializePartyMembershipResponse(membership('performer')).staff.operationalPermissions, [])
 })

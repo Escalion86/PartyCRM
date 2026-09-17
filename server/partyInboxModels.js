@@ -12,6 +12,8 @@ export const getPartyInboxStateModel = () => getProductModel({
     schema.index({ tenantId: 1, channel: 1, sourceId: 1 }, { unique: true })
     schema.index({ tenantId: 1, nextContactAt: 1 })
     schema.index({ tenantId: 1, responseDueAt: 1 })
+    schema.index({ tenantId: 1, channel: 1, respondedAt: 1, responseDueAt: 1 })
+    schema.index({ tenantId: 1, channel: 1, nextContactAt: 1, status: 1 })
     schema.index({ tenantId: 1, proposedAssigneeStaffId: 1 })
   },
 })

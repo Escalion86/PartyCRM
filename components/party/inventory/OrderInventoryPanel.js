@@ -97,6 +97,8 @@ export default function OrderInventoryPanel({
   }, [activeCompanyId, orderId])
 
   const changeLine = (index, patch) => {
+    if (Object.hasOwn(patch, 'resources')) patch = { ...patch, resourceNorms: undefined }
+    if (Object.hasOwn(patch, 'quantity')) patch = { ...patch, quantityMode: 'manual' }
     setLines((current) =>
       current.map((line, i) => (i === index ? { ...line, ...patch } : line))
     )
@@ -104,7 +106,9 @@ export default function OrderInventoryPanel({
     setNotice('Комплект изменён. Проверьте и сохраните резерв.')
   }
   const getResources = (line) =>
-    line.resources ??
+    line.resourceNorms?.map((item) => ({
+      resourceId: String(item.resourceId), quantity: item.quantity * (line.quantity || 1),
+    })) ?? line.resources ??
     (
       catalog.requirements.find(
         (item) => String(item.serviceId) === String(line.serviceId)
@@ -118,6 +122,8 @@ export default function OrderInventoryPanel({
       serviceItems.map((item, index) => ({
         ...item,
         resources: undefined,
+        resourceNorms: undefined,
+        quantityMode: 'automatic',
         quantity: item.quantity || 1,
         serviceLineId: item.serviceLineId || `${item.serviceId}:${index}`,
         startAt: item.startAt || eventDate,
@@ -150,6 +156,7 @@ export default function OrderInventoryPanel({
       )
       setResult(response.data)
       if (save) {
+        setLines(response.data.serviceItems || lines)
         setNotice('Резерв сохранён.')
         onSaved?.(response.data)
       }
@@ -187,7 +194,7 @@ export default function OrderInventoryPanel({
         <h3 className="text-lg font-semibold">Реквизит по услугам</h3>
         <p className="text-sm text-gray-600">
           Каждая услуга имеет свой интервал. Количество в комплекте — на всю
-          позицию услуги.
+          позицию услуги. Часы и дробные коммерческие количества подбирают один комплект на позицию; нужное количество комплектов можно уточнить здесь.
         </p>
       </div>
       {error && (
@@ -226,7 +233,7 @@ export default function OrderInventoryPanel({
           </strong>
           <div className="grid gap-3 sm:grid-cols-3">
             <TextField
-              label="Количество услуг"
+              label="Количество комплектов"
               type="number"
               size="small"
               value={line.quantity}
@@ -256,7 +263,7 @@ export default function OrderInventoryPanel({
               }
             />
           </div>
-          {line.resources !== undefined && (
+          {line.resources !== undefined && line.resourceNorms === undefined && (
             <p className="text-xs text-amber-800">
               Сохранённый комплект: изменение количества услуг не меняет его
               автоматически.

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import exportDocxFromTemplate from '@helpers/exportDocxFromTemplate'
 import {
+  buildPartyProposalItemsFromOrder,
   calculatePartyProposalItem,
   calculatePartyProposalTotals,
 } from '@helpers/partyProposalCore'
@@ -63,41 +64,6 @@ const getOrderAddress = (order = {}) => {
     .join(', ')
 }
 
-const buildInitialItems = (order, services) => {
-  const servicesById = new Map(
-    (services || []).map((service) => [String(service._id), service])
-  )
-  const selected = (order.servicesIds || [])
-    .map((id) => servicesById.get(String(id)))
-    .filter(Boolean)
-  const source =
-    selected.length > 0
-      ? selected
-      : order.serviceTitle
-        ? [{ title: order.serviceTitle, price: order.contractAmount || 0 }]
-        : []
-  const items = source.map((service) => ({
-    serviceId: service._id || null,
-    title: service.title || '',
-    description: service.description || '',
-    quantity: 1,
-    unit: service.duration ? 'час' : 'услуга',
-    unitPrice: Number(service.price || 0),
-    discount: 0,
-  }))
-  const calculated = calculatePartyProposalTotals(items)
-  if (
-    calculated.total === 0 &&
-    Number(order.contractAmount || order.clientPayment?.totalAmount || 0) > 0 &&
-    items.length > 0
-  ) {
-    items[0].unitPrice = Number(
-      order.contractAmount || order.clientPayment?.totalAmount || 0
-    )
-  }
-  return items
-}
-
 const buildInitialDraft = ({ order, client, services, documents }) => {
   const now = new Date()
   return {
@@ -116,8 +82,8 @@ const buildInitialDraft = ({ order, client, services, documents }) => {
       date: toDateTimeInput(order.eventDate),
       address: getOrderAddress(order),
     },
-    items: buildInitialItems(order, services),
-    discount: 0,
+    items: buildPartyProposalItemsFromOrder(order, services),
+    discount: Number(order.agreedProposal?.discount || 0),
     taxText:
       documents?.proposalTaxText ||
       'НДС не облагается в связи с применением специального налогового режима.',
@@ -157,12 +123,15 @@ export default function PartyOrderProposalsSection({
   services = [],
   companySettings,
   activeCompanyId,
+  onOrderUpdated,
 }) {
   const documents = companySettings?.documents || {}
   const [proposals, setProposals] = useState([])
   const [draft, setDraft] = useState(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [applyingId, setApplyingId] = useState('')
+  const [appliedMessage, setAppliedMessage] = useState('')
   const [error, setError] = useState('')
 
   const headers = useMemo(
@@ -266,6 +235,41 @@ export default function PartyOrderProposalsSection({
     }
   }
 
+  const applyToOrder = async (proposal) => {
+    if (applyingId) return
+    const confirmed = window.confirm(
+      `Заменить коммерческий состав заказа позициями КП №${proposal.number}, версия ${proposal.version}, на сумму ${formatPartyProposalMoney(proposal.total)}? Оплаты и фактические движения денег не изменятся.`
+    )
+    if (!confirmed) return
+    setApplyingId(String(proposal._id))
+    setAppliedMessage('')
+    setError('')
+    try {
+      const response = await apiJson(
+        `/api/party/proposals/${proposal._id}/apply-to-order`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            expectedCommercialRevision: Number(order.commercialRevision || 0),
+          }),
+        }
+      )
+      onOrderUpdated?.(response.data.order)
+      if (response.data.inventory?.warning) setError(response.data.inventory.warning)
+      else if (response.data.inventory?.hasShortage) setError('КП перенесено, но реквизита не хватает. Откройте комплект заказа для проверки.')
+      setAppliedMessage(
+        response.data.repeated
+          ? 'Эта версия уже перенесена в заказ.'
+          : 'Состав и договорная сумма перенесены в заказ.'
+      )
+    } catch (requestError) {
+      setError(requestError.message || 'Не удалось перенести КП в заказ')
+    } finally {
+      setApplyingId('')
+    }
+  }
+
   const downloadProposal = async (proposal) => {
     setError('')
     try {
@@ -306,6 +310,11 @@ export default function PartyOrderProposalsSection({
       {error ? (
         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
           {error}
+        </div>
+      ) : null}
+      {appliedMessage ? (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          {appliedMessage}
         </div>
       ) : null}
 
@@ -535,7 +544,7 @@ export default function PartyOrderProposalsSection({
                     <input
                       type="number"
                       min="0.01"
-                      step="0.5"
+                      step="any"
                       className={fieldClassName}
                       value={item.quantity}
                       onChange={(event) =>
@@ -587,6 +596,12 @@ export default function PartyOrderProposalsSection({
                   >
                     ×
                   </button>
+                  <label className="grid gap-1 text-xs text-slate-500 md:col-span-4">
+                    Длительность, минут
+                    <input type="number" min="1" max="10080" step="1"
+                      className={fieldClassName} value={item.durationMinutes ?? ''}
+                      onChange={(event) => updateItem(index, 'durationMinutes', event.target.value)} />
+                  </label>
                   <div className="text-right text-sm font-semibold text-slate-700 md:col-span-12">
                     {formatPartyProposalMoney(calculated?.total || 0)}
                   </div>
@@ -716,6 +731,25 @@ export default function PartyOrderProposalsSection({
                     </option>
                   ))}
                 </select>
+                {proposal.status === 'accepted' ? (
+                  <button
+                    type="button"
+                    disabled={
+                      Boolean(applyingId) ||
+                      String(order.agreedProposal?.proposalId || '') ===
+                        String(proposal._id)
+                    }
+                    onClick={() => applyToOrder(proposal)}
+                    className="h-8 cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {String(order.agreedProposal?.proposalId || '') ===
+                    String(proposal._id)
+                      ? 'Перенесено в заказ'
+                      : applyingId === String(proposal._id)
+                        ? 'Переносим...'
+                        : 'Перенести в заказ'}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => setDraft(buildDraftFromProposal(proposal))}

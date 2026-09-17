@@ -3,7 +3,7 @@
 import { useSetAtom } from 'jotai'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   faCalendarAlt,
   faCheck,
@@ -13,6 +13,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { apiJson } from '@helpers/apiClient'
+import { sharePartyLocationBooking } from '@helpers/partySharedLocationBooking'
 import DropDown from '@components/DropDown'
 import OrdersList from '@components/party/lists/OrdersList'
 import PartyOrdersCalendar from '@components/party/orders/PartyOrdersCalendar'
@@ -171,7 +172,9 @@ const hasOrderConflict = (order, orders) => {
     const otherStaffIds = getAssignedStaffIds(other)
     const sameStaff = [...orderStaffIds].some((id) => otherStaffIds.has(id))
 
-    return Boolean(sameLocation || sameStaff)
+    return Boolean(
+      (sameLocation && !sharePartyLocationBooking(order, other)) || sameStaff
+    )
   })
 }
 
@@ -424,6 +427,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [context, setContext] = useState(null)
   const [memberships, setMemberships] = useState([])
   const [activeCompanyId, setActiveCompanyId] = useState('')
+  const workspaceLoadToken = useRef(null)
+  const relatedOrdersLoadToken = useRef(null)
   const [locations, setLocations] = useState([])
   const [archivedLocations, setArchivedLocations] = useState([])
   const [clients, setClients] = useState([])
@@ -467,12 +472,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   // Load workspace data
   const loadWorkspace = useCallback(
     async (preferredCompanyId = '') => {
+      const token = { companyId: preferredCompanyId }
+      workspaceLoadToken.current = token
       setLoading(true)
       setError('')
       try {
         const membershipsResponse = await apiJson('/api/party/memberships', {
           cache: 'no-store',
         })
+        if (workspaceLoadToken.current !== token) return
         const availableMemberships = membershipsResponse.data?.memberships ?? []
         setMemberships(availableMemberships)
 
@@ -505,6 +513,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           availableMemberships.find((membership) => membership.isAdmin) ||
           availableMemberships[0]
         const selectedCompanyId = selectedMembership.tenantId
+        token.companyId = selectedCompanyId
 
         setActiveCompanyId(selectedCompanyId)
         if (typeof window !== 'undefined') {
@@ -572,6 +581,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
           ),
         ])
+        if (workspaceLoadToken.current !== token) return
         setLocations(locationsResponse.data ?? [])
         setArchivedLocations(archivedLocationsResponse.data ?? [])
         setClients(clientsResponse.data ?? [])
@@ -587,6 +597,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         )
         setCompanyAccess(companySettingsResponse.data?.access ?? null)
       } catch (loadError) {
+        if (workspaceLoadToken.current !== token) return
         if (loadError.status === 401) {
           setContext(null)
           setAccessStatus('unauthenticated')
@@ -598,7 +609,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           setError('Не удалось загрузить данные')
         }
       } finally {
-        setLoading(false)
+        if (workspaceLoadToken.current === token) setLoading(false)
       }
     },
     [setServiceGroups]
@@ -606,7 +617,35 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   useEffect(() => {
     loadWorkspace()
+    return () => { workspaceLoadToken.current = null }
   }, [loadWorkspace])
+
+  const reloadRelatedOrders = useCallback(async () => {
+    const workspaceToken = workspaceLoadToken.current
+    if (!activeCompanyId || workspaceToken?.companyId !== activeCompanyId) return
+    const token = {}
+    relatedOrdersLoadToken.current = token
+    const response = await apiJson(
+      '/api/party/orders',
+      buildCompanyRequestOptions(activeCompanyId, { cache: 'no-store' })
+    )
+    if (
+      workspaceLoadToken.current !== workspaceToken ||
+      relatedOrdersLoadToken.current !== token
+    ) return
+    const nextOrders = response.data ?? []
+    setOrders(nextOrders)
+    // Preserve edits if the user opened the editor while this refresh was pending.
+    setOrderDraft((current) => {
+      const refreshed = nextOrders.find((order) => String(order._id) === String(current._id))
+      return refreshed ? {
+        ...current,
+        partyEventGroupId: refreshed.partyEventGroupId,
+        sharedLocationBooking: refreshed.sharedLocationBooking,
+        sharedLocationRevision: refreshed.sharedLocationRevision,
+      } : current
+    })
+  }, [activeCompanyId])
 
   const switchCompany = (companyId) => {
     setActiveCompanyId(companyId)
@@ -2265,6 +2304,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       {activeModal === 'order-view' && (
         <OrderViewModal
           open={true}
+          onRelatedOrdersChanged={reloadRelatedOrders}
           order={orderDraft}
           locations={locations}
           staff={staff}
@@ -2348,6 +2388,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           onLocationCreated={(newLocation) =>
             setLocations((prev) => [...prev, newLocation])
           }
+          onOrderApplied={(updatedOrder) =>
+            setOrders((current) =>
+              current.map((item) =>
+                String(item._id) === String(updatedOrder._id)
+                  ? updatedOrder
+                  : item
+              )
+            )
+          }
         />
       )}
 
@@ -2381,6 +2430,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           onLocationCreated={(newLocation) =>
             setLocations((prev) => [...prev, newLocation])
           }
+          onOrderApplied={(updatedOrder) =>
+            setOrders((current) =>
+              current.map((item) =>
+                String(item._id) === String(updatedOrder._id)
+                  ? updatedOrder
+                  : item
+              )
+            )
+          }
           isEdit
         />
       )}
@@ -2402,6 +2460,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         <StaffModal
           open={true}
           title="Редактировать сотрудника"
+          companyId={activeCompanyId}
+          staffId={editingStaffId}
           staffDraft={staffDraft}
           setStaffDraft={setStaffDraft}
           saving={saving}

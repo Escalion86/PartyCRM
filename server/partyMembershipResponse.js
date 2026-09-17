@@ -1,3 +1,5 @@
+import { normalizePartyOperationalPermissions } from '../helpers/partyOperationalPermissions.js'
+
 // API response boundary only. Internal membership context retains server credentials.
 const text = (value) => (typeof value === 'string' ? value : '')
 const id = (value) => (value == null ? null : String(value))
@@ -114,6 +116,9 @@ export const serializePartyMembershipStaff = (staff) => {
   ])
     safe[key] = date(staff[key])
   safe.visibleToPerformer = staff.visibleToPerformer !== false
+  safe.operationalPermissions = normalizePartyOperationalPermissions(
+    staff.operationalPermissions
+  )
   safe.isDeveloperAccess = staff.isDeveloperAccess === true
   safe.locationIds = Array.isArray(staff.locationIds)
     ? staff.locationIds
