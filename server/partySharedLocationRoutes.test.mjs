@@ -46,6 +46,9 @@ test('preview rejects another tenant order before resolving its group', async ()
 test('status-only reactivation checks venue and staff before writing', async () => {
   const PATCH = await load('../app/api/party/orders/[id]/route.js', {
     ...base, getPartyOrderWriteGuard,
+    canPartyAccess: () => true,
+    maskPartyOrderConflicts: (_context, value) => value,
+    guardPartyOrderPatch: () => ({ ok: true, forbiddenFields: [] }),
     getPartyOrderModel: async () => ({ findOne: () => q({ _id: id, status: 'canceled' }), findOneAndUpdate: () => assert.fail('must not write conflicting activation') }),
     getPartySharedLocationOrderIds: async () => ['trusted'],
     findPartyOrderConflicts: async args => { assert.equal(args.payload.status, 'active'); assert.deepEqual(args.sharedLocationOrderIds, ['trusted']); return { locationConflicts: [{ _id: 'outside' }] } },

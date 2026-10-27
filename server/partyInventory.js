@@ -21,6 +21,7 @@ import {
   reconcileInventoryServiceItems,
   snapshotInventoryServiceItems,
 } from '@helpers/partyInventory'
+import { canPartyInventoryAccess } from '@helpers/partyInventoryAccess'
 
 export const withPartyInventoryTransaction = async (tenantId, callback) => {
   if (!isInventoryId(tenantId))
@@ -193,6 +194,7 @@ export const reservePartyOrderInventory = async ({
   confirmShortage = false,
   staffId,
   automatic = false,
+  context = null,
 }) => {
   if (!isInventoryId(orderId))
     throw inventoryValidationError('Некорректный заказ')
@@ -204,6 +206,15 @@ export const reservePartyOrderInventory = async ({
       .session(session)
       .lean()
     if (!order) throw inventoryValidationError('Заказ не найден', 404)
+    if (
+      context &&
+      !canPartyInventoryAccess(context, {
+        resource: 'inventory.reservations',
+        action: 'edit',
+        order,
+      })
+    )
+      throw inventoryValidationError('Заказ не найден', 404)
     if (order.status === 'canceled')
       throw inventoryValidationError(
         'Нельзя резервировать реквизит для отменённого заказа'
@@ -235,7 +246,10 @@ export const reservePartyOrderInventory = async ({
         'Добавьте выбранные услуги в заказ перед резервированием'
       )
     if (!automatic) {
-      serviceItems = serviceItems.map((item) => ({ ...item, quantityMode: 'manual' }))
+      serviceItems = serviceItems.map((item) => ({
+        ...item,
+        quantityMode: 'manual',
+      }))
     }
     const dateEnd =
       order.dateEnd ||
@@ -306,17 +320,32 @@ export const releasePartyOrderInventory = async ({
   tenantId,
   orderId,
   reason = 'manual',
+  context = null,
 }) => {
   if (!isInventoryId(orderId))
     throw inventoryValidationError('Некорректный заказ')
   const Reservations = await getPartyInventoryReservationModel()
   return withPartyInventoryTransaction(tenantId, async (session) => {
+    const Orders = await getPartyOrderModel()
+    if (context) {
+      const order = await Orders.findOne({ _id: orderId, tenantId })
+        .session(session)
+        .lean()
+      if (
+        !order ||
+        !canPartyInventoryAccess(context, {
+          resource: 'inventory.reservations',
+          action: 'edit',
+          order,
+        })
+      )
+        throw inventoryValidationError('Заказ не найден', 404)
+    }
     const reservation = await Reservations.findOneAndUpdate(
       { tenantId, orderId },
       { $set: { status: 'released', releasedReason: reason } },
       { new: true, session }
     ).lean()
-    const Orders = await getPartyOrderModel()
     await Orders.updateOne(
       { tenantId, _id: orderId },
       {

@@ -17,7 +17,7 @@ const settlement = (id, status = 'approved') => ({
   totals: { earned: 1000, paid: 0, balance: 1000 },
 })
 function setup() {
-  const state = { settlements: [settlement('a')], statement: null }
+  const state = { settlements: [settlement('a')], statement: null, blockedStaffId: null, gateCalls: [], permitted: true }
   let activeSession, tail = Promise.resolve()
   const matches = (item, filter) => Object.entries(filter).every(([key, value]) =>
     value && typeof value === 'object' && '$ne' in value
@@ -54,6 +54,15 @@ function setup() {
     getPartyFinancialSettlementModel: async () => Settlements,
     getCompanyFinancialTimeZone: () => 'Asia/Krasnoyarsk',
     isFinancialManager: (ctx) => ctx.role === 'owner',
+    canPartyAccess: () => state.permitted,
+    getPartyOrderModel: async () => ({ findOneAndUpdate: (filter, _update, options) => query(() => ({ _id: filter._id, tenantId: filter.tenantId })).session(options.session) }),
+    assertPartyReportGate: async ({ tenantId, order, staffId, action, session }) => {
+      assert.equal(tenantId, context.tenantId)
+      assert.equal(session, activeSession)
+      assert.equal(action, 'payout')
+      state.gateCalls.push({ orderId: order._id, staffId })
+      if (state.blockedStaffId === staffId) throw financial.financialError('Отчёт ещё не принят', 409)
+    },
     enrichSettlements: async (items, { session }) => { assert.equal(session, activeSession); return items },
     withPartyFinancialTransaction: (tenantId, callback) => {
       assert.equal(tenantId, context.tenantId)
@@ -113,4 +122,25 @@ test('regeneration shares approval lock and cannot overwrite an approved snapsho
   assert.equal(results[1].status, 'rejected')
   assert.equal(results[1].reason.status, 409)
   assert.equal(state.statement.status, 'approved')
+})
+
+test('payroll cannot be marked paid while a selected employee report blocks payout', async () => {
+  const { state, generate, change } = setup()
+  await generate()
+  await change('approve')
+  state.settlements[0].totals.balance = 0
+  state.blockedStaffId = 'a'
+  await assert.rejects(change('mark_paid'), { status: 409 })
+  assert.equal(state.statement.status, 'approved')
+  assert.deepEqual(state.gateCalls, [{ orderId: 'order-a', staffId: 'a' }])
+  state.blockedStaffId = null
+  await change('mark_paid')
+  assert.equal(state.statement.status, 'paid')
+})
+
+test('a revoked payout permission prevents generating or approving payroll', async () => {
+  const { state, generate, change } = setup()
+  state.permitted = false
+  await assert.rejects(generate(), { status: 403 })
+  await assert.rejects(change('approve'), { status: 403 })
 })

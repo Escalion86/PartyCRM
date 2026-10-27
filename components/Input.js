@@ -5,18 +5,13 @@ import { faPaste } from '@fortawesome/free-solid-svg-icons/faPaste'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import cn from 'classnames'
 import { forwardRef } from 'react'
-import { MaskedInput } from '@thaborach/react-text-mask'
+import { PhoneNumberField } from './PhoneInput'
 import {
   normalizeNumberInputString,
   toNormalizedNumber,
 } from '@helpers/numberInput'
 import copyToClipboard from '@helpers/copyToClipboard'
 import InputWrapper from './InputWrapper'
-
-const toPhoneValue = (digits) => {
-  if (!digits) return null
-  return Number(`7${digits.slice(0, 10)}`)
-}
 
 const Input = forwardRef(
   (
@@ -50,39 +45,15 @@ const Input = forwardRef(
       autoComplete,
       maxLength,
       dataList,
-      copyPasteButtons = false,
+      copyPasteButtons,
       normalizePastedValue,
+      help,
       tone = 'default',
     },
     ref
   ) => {
     const isParty = tone === 'party'
-    const isPhone = type === 'phone'
-    const prefixValue = isPhone && prefix === undefined ? '+7' : prefix
-    const phoneMask = [
-      '(',
-      /[1-9]/,
-      /\d/,
-      /\d/,
-      ')',
-      ' ',
-      /\d/,
-      /\d/,
-      /\d/,
-      '-',
-      /\d/,
-      /\d/,
-      '-',
-      /\d/,
-      /\d/,
-    ]
-    const phoneDisplayValue = (() => {
-      if (!isPhone) return value
-      if (value === null || value === undefined) return ''
-      const digits = String(value).replace(/[^\d]/g, '')
-      if (!digits || digits === '7') return ''
-      return digits[0] === '7' ? digits.slice(1, 11) : digits.slice(0, 10)
-    })()
+    const isPhone = type === 'phone' || type === 'tel'
     const placeholderValue = floatingLabel ? ' ' : label
     const resolvedStep =
       step ??
@@ -113,13 +84,13 @@ const Input = forwardRef(
           type === 'number' && !fullWidth ? 'max-w-fit' : ''
         )}
         required={required}
-        floatingLabel={floatingLabel}
+        floatingLabel={isPhone ? false : floatingLabel}
         error={error}
         showErrorText={showErrorText}
         paddingY={paddingY}
         paddingX={paddingX}
         postfix={postfix}
-        prefix={prefixValue}
+        prefix={isPhone ? undefined : prefix}
         ref={ref}
         disabled={disabled}
         fullWidth={fullWidth}
@@ -128,6 +99,7 @@ const Input = forwardRef(
         smallMargin={smallMargin}
         showDisabledIcon={showDisabledIcon}
         tone={tone}
+        help={help}
         comment={
           maxLength ? `${String(value)?.length} / ${maxLength}` : undefined
         }
@@ -151,57 +123,24 @@ const Input = forwardRef(
               else onChange(Math.max(Number(value) - Number(resolvedStep), min))
             }}
           >
-            <FontAwesomeIcon icon={faArrowDown} className="w-4 h-4 min-h-4" />
+            <FontAwesomeIcon icon={faArrowDown} className="h-4 min-h-4 w-4" />
           </div>
         )}
 
         {isPhone ? (
-          <MaskedInput
-            type="tel"
-            className={cn(
-              'peer h-7 flex-1 bg-transparent px-1 text-black placeholder-transparent focus:outline-none',
-              disabled ? 'text-disabled cursor-not-allowed' : '',
+          <PhoneNumberField
+            value={value}
+            onChange={onChange}
+            label={label}
+            disabled={disabled}
+            autoComplete={autoComplete}
+            prefix={prefix === undefined ? '+7' : prefix}
+            copyPasteButtons={copyPasteButtons ?? true}
+            inputClassName={cn(
+              disabled ? 'text-disabled cursor-not-allowed' : 'text-black',
               inputClassName
             )}
-            guide={false}
-            mask={phoneMask}
-            value={phoneDisplayValue}
-            onKeyDown={(e) => {
-              if (e.key !== 'Backspace') return
-              const target = e.currentTarget
-              const cursorAtEnd =
-                target.selectionStart === target.selectionEnd &&
-                target.selectionStart === target.value.length
-              if (!cursorAtEnd || /\d$/.test(target.value)) return
-
-              const digits = target.value.replace(/[^\d]/g, '')
-              if (!digits) return
-              e.preventDefault()
-              onChange(toPhoneValue(digits.slice(0, -1)))
-            }}
-            onChange={(e) => {
-              const raw = e.target.value.replace(/[^\d]/g, '')
-              if (!raw) {
-                onChange(null)
-                return
-              }
-              if (raw.length === 1 && (raw === '7' || raw === '8')) {
-                onChange(null)
-                return
-              }
-              let digits = raw
-              if (
-                digits.length === 11 &&
-                (digits.startsWith('7') || digits.startsWith('8'))
-              ) {
-                digits = digits.slice(1)
-              }
-              if (digits.length > 10) digits = digits.slice(-10)
-              onChange(toPhoneValue(digits))
-            }}
-            placeholder={placeholderValue}
-            autoComplete={autoComplete}
-            disabled={disabled}
+            tone={tone}
           />
         ) : (
           <input
@@ -265,10 +204,10 @@ const Input = forwardRef(
           </datalist>
         )}
         {copyPasteButtons && !disabled && type !== 'number' && !isPhone && (
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              className="flex items-center justify-center text-gray-600 transition border border-gray-300 rounded cursor-pointer h-7 w-7 hover:bg-gray-50"
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-gray-300 text-gray-600 transition hover:bg-gray-50"
               onClick={() => {
                 if (!navigator?.clipboard) return
                 navigator.clipboard.readText().then((text) => {
@@ -285,7 +224,7 @@ const Input = forwardRef(
             </button>
             <button
               type="button"
-              className="flex items-center justify-center text-gray-600 transition border border-gray-300 rounded cursor-pointer h-7 w-7 hover:bg-gray-50"
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-gray-300 text-gray-600 transition hover:bg-gray-50"
               onClick={() => {
                 copyToClipboard(String(value ?? ''))
               }}
@@ -309,7 +248,7 @@ const Input = forwardRef(
               else onChange(Math.min(Number(value) + Number(resolvedStep), max))
             }}
           >
-            <FontAwesomeIcon icon={faArrowUp} className="w-4 h-4 min-h-4" />
+            <FontAwesomeIcon icon={faArrowUp} className="h-4 min-h-4 w-4" />
           </div>
         )}
       </InputWrapper>

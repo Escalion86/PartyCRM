@@ -60,7 +60,7 @@ const ASSIGNMENT_STATUS_META = {
   confirmed: {
     label: 'Подтвердил',
     summaryLabel: 'Подтвердили',
-    className: 'bg-emerald-100 text-emerald-700',
+    className: 'bg-slate-100 text-slate-600',
   },
   declined: {
     label: 'Отказ',
@@ -70,7 +70,7 @@ const ASSIGNMENT_STATUS_META = {
   done: {
     label: 'Выполнено',
     summaryLabel: 'Выполнено',
-    className: 'bg-sky-100 text-sky-700',
+    className: 'bg-slate-100 text-slate-600',
   },
 }
 
@@ -91,7 +91,7 @@ const hasConnectedMessengerIntegration = (companySettings) => {
 const OrderActionMenuItem = ({ icon, label, color = 'blue', onClick }) => (
   <button
     type="button"
-    className={`flex h-9 w-full cursor-pointer items-center gap-2 bg-white px-3 text-left text-sm font-semibold transition ${MENU_ITEM_TONE[color] || MENU_ITEM_TONE.blue}`}
+    className={`flex min-h-11 w-full cursor-pointer items-center gap-2 bg-white px-3 text-left text-sm font-semibold transition ${MENU_ITEM_TONE[color] || MENU_ITEM_TONE.blue}`}
     onClick={(event) => {
       event.stopPropagation()
       onClick?.()
@@ -114,7 +114,7 @@ const OrderActionMenu = ({
     trigger={
       <button
         type="button"
-        className="action-icon-button action-icon-button--neutral flex h-9 w-9 cursor-pointer items-center justify-center rounded-bl-xl text-base font-normal duration-200"
+        className="action-icon-button action-icon-button--neutral flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-base font-normal duration-200"
         aria-label="Открыть меню действий заказа"
         title="Действия"
       >
@@ -134,7 +134,7 @@ const OrderActionMenu = ({
       />
       <OrderActionMenuItem
         icon={faCalendarAlt}
-        label="Доп. события"
+        label="Задачи"
         color="blue"
         onClick={() => onAdditionalEvents?.(order)}
       />
@@ -258,7 +258,7 @@ const getOrderClient = (order, clientsById) => {
 const OrderMessengerButton = ({ onClick, unreadCount = 0 }) => (
   <button
     type="button"
-    className="relative flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center text-sky-600 duration-300 hover:scale-110 hover:text-sky-800"
+    className="relative flex h-11 w-11 shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 cursor-pointer items-center justify-center text-sky-600 duration-300 hover:text-sky-800"
     title="Открыть переписки заказа"
     aria-label="Открыть переписки заказа"
     onClick={(event) => {
@@ -398,7 +398,7 @@ const OrderContactsSummary = ({ order, clientsById, onMessenger, unreadCount = 0
           <button
             ref={triggerRef}
             type="button"
-            className="action-icon-button inline-flex h-7 max-h-7 min-w-8 cursor-pointer items-center justify-center rounded-xl bg-amber-200 text-xs font-bold text-slate-900 shadow-sm transition hover:bg-amber-300"
+            className="action-icon-button inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-xl bg-amber-200 text-xs font-bold text-slate-900 shadow-sm transition hover:bg-amber-300"
             aria-label="Показать дополнительные контакты"
             onClick={(event) => {
               event.stopPropagation()
@@ -580,7 +580,7 @@ const OrderAmountSummary = ({
   }
 
   return (
-    <div className="flex min-h-7 items-end justify-end gap-2 text-lg leading-none font-semibold whitespace-nowrap">
+    <div className="flex min-h-7 items-end justify-end gap-2 text-lg leading-none font-semibold tabular-nums whitespace-nowrap">
       {paid > 0 && contractAmount > 0 && isFullyPaid ? (
         <span className="text-green-700">{formatCardAmount(paid)}</span>
       ) : paid > 0 || contractAmount > 0 ? (
@@ -651,6 +651,12 @@ const formatAdditionalEventDate = (date, now) => {
 }
 
 const getNearestAdditionalEventInfo = (order, now = new Date()) => {
+  if (order.taskSummary) {
+    const task = order.taskSummary.nearestTask
+    if (!task?.dueAt) return null
+    const dateInfo = formatAdditionalEventDate(new Date(task.dueAt), now)
+    return { title: task.title || 'Задача', ...dateInfo, isOverdue: +new Date(task.dueAt) < +now, totalCount: order.taskSummary.openCount, remainingCount: Math.max(0, order.taskSummary.openCount - 1) }
+  }
   const prepared = (
     Array.isArray(order.additionalEvents) ? order.additionalEvents : []
   )
@@ -659,7 +665,7 @@ const getNearestAdditionalEventInfo = (order, now = new Date()) => {
       const date = item?.date ? new Date(item.date) : null
       if (!date || Number.isNaN(date.getTime())) return null
       return {
-        title: item?.title || 'Доп. событие',
+        title: item?.title || 'Задача',
         date,
       }
     })
@@ -709,21 +715,11 @@ const getAdditionalStatusClassName = (info) => {
   return 'bg-slate-100 text-slate-700'
 }
 
-const getReportBadges = (order) =>
-  (order.assignedStaff ?? []).reduce(
-    (counts, assignment) => {
-      const status = assignment.report?.status
-      if (!status || status === 'draft') {
-        if (assignment.confirmationStatus === 'done') counts.waiting += 1
-      } else if (status === 'submitted') {
-        counts.submitted += 1
-      } else if (status === 'revision_requested') {
-        counts.revision += 1
-      }
-      return counts
-    },
-    { waiting: 0, submitted: 0, revision: 0 }
-  )
+const getReportBadges = (order) => ({
+  waiting: Number(order.reportSummary?.waiting || 0),
+  submitted: Number(order.reportSummary?.submitted || 0),
+  revision: Number(order.reportSummary?.revision || 0),
+})
 
 const currentStatusIcon = (status) => {
   const found = ORDER_STATUSES.find((s) => s.value === status)
@@ -873,7 +869,12 @@ const OrderCard = ({
         <PartyCardHeader>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate font-semibold">{orderTypeTitle}</p>
+              <p className="min-w-0 break-words text-base font-semibold text-slate-900">{orderTypeTitle}</p>
+            </div>
+            <p className="mt-1 text-sm font-medium text-slate-700">
+              {formatDateTime(order.eventDate)}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5 empty:hidden">
               {hasConflict && (
                 <span className="shrink-0 rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
                   Конфликт
@@ -920,7 +921,7 @@ const OrderCard = ({
                 </span>
               )}
               {reportBadges.submitted > 0 && (
-                <span className="shrink-0 rounded bg-violet-100 px-2 py-1 text-xs font-semibold text-violet-700">
+                <span className="shrink-0 rounded bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
                   Отчет на проверке: {reportBadges.submitted}
                 </span>
               )}
@@ -936,7 +937,6 @@ const OrderCard = ({
               </p>
             ) : null}
             <p className="mt-1 text-sm text-black/60">
-              {formatDateTime(order.eventDate)} ·{' '}
               {order.placeType === 'company_location'
                 ? location?.title || 'Точка не выбрана'
                 : order.customAddress || 'Выездной адрес не указан'}

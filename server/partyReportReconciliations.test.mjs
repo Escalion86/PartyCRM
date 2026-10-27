@@ -2,9 +2,10 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { canAccessReportReconciliation, getReportReconciliationFields, normalizeReconciliationValue, reconciliationStatusFromValues, serializeReportReconciliation, updateReportReconciliation } from './partyReportReconciliations.js'
 
-const author = { role: 'performer', staff: { _id: 'author' } }
-const reviewer = { role: 'performer', staff: { _id: 'reviewer' } }
-const manager = { role: 'admin', staff: { _id: 'manager' } }
+const actor = (staffId, role = 'performer', position = {}) => ({ tenantId: 'tenant', role, staff: { _id: staffId, tenantId: 'tenant', status: 'active', role }, position: { permissions: { reports: 'edit', 'reports.general': 'edit', 'reports.creative': 'edit', 'reports.inventory': 'edit', 'reports.finance': 'edit', 'reports.review': 'edit' }, ...position } })
+const author = actor('author')
+const reviewer = actor('reviewer')
+const manager = actor('manager', 'admin')
 const fields = [
   { fieldId: 'received', label: 'Получено', key: 'received_from_client', valueType: 'money', required: true, reviewerStaffId: 'reviewer' },
   { fieldId: 'method', label: 'Способ', key: 'payment_method', valueType: 'payment_method', required: false, reviewerStaffId: 'other-reviewer' },
@@ -60,7 +61,7 @@ test('only author edits values; assigned financier or management reviews separat
   const reconciliation = fixture()
   assert.throws(() => updateReportReconciliation({ reconciliation, context: reviewer, action: 'save', values: { received: 10 } }), /только автор/)
   const submitted = { ...reconciliation, submittedAt: new Date(), values: [{ ...reconciliation.values[0], hasValue: true, moneyMinor: 1000, status: 'submitted' }, reconciliation.values[1]] }
-  assert.throws(() => updateReportReconciliation({ reconciliation: submitted, context: { role: 'performer', staff: { _id: 'other' } }, action: 'review', fieldId: 'received', decision: 'accepted' }), /Нет доступа/)
+  assert.throws(() => updateReportReconciliation({ reconciliation: submitted, context: actor('other'), action: 'review', fieldId: 'received', decision: 'accepted' }), /Нет доступа/)
   assert.equal(updateReportReconciliation({ reconciliation: submitted, context: reviewer, action: 'review', fieldId: 'received', decision: 'accepted' })[0].status, 'accepted')
   assert.equal(updateReportReconciliation({ reconciliation: submitted, context: manager, action: 'review', fieldId: 'received', decision: 'accepted' })[0].status, 'accepted')
 })
@@ -91,6 +92,6 @@ test('access before draft creation is limited to assigned author, finance review
   assert.equal(canAccessReportReconciliation({ context: author, report, order }), true)
   assert.equal(canAccessReportReconciliation({ context: reviewer, report, order }), true)
   assert.equal(canAccessReportReconciliation({ context: manager, report, order }), true)
-  assert.equal(canAccessReportReconciliation({ context: { role: 'performer', staff: { _id: 'other' } }, report, order }), false)
-  assert.equal(canAccessReportReconciliation({ context: { role: 'location_owner', staff: { _id: 'reviewer' } }, report, order }), false)
+  assert.equal(canAccessReportReconciliation({ context: actor('other'), report, order }), false)
+  assert.equal(canAccessReportReconciliation({ context: actor('reviewer', 'location_owner'), report, order }), false)
 })

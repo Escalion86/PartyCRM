@@ -5,11 +5,18 @@ import {
   reportJson,
   withReportContext,
 } from '@server/partyReportAccess'
-import { serializeReportLibraryItems } from '@server/partyReportCore'
+import {
+  serializeReportLibraryItems,
+  hasPartyReportPermission,
+  canReadReportField,
+  reportFailure,
+} from '@server/partyReportCore'
 
 export const dynamic = 'force-dynamic'
 
 export const GET = withReportContext(async (req, context) => {
+  if (!hasPartyReportPermission(context, 'reports.creative', 'read'))
+    reportFailure('Нет доступа к творческой библиотеке отчётов', 403)
   const query = new URL(req.url).searchParams
   const requested = Number(query.get('limit') || 15)
   const limit = Number.isFinite(requested)
@@ -38,7 +45,9 @@ export const GET = withReportContext(async (req, context) => {
       tenantId: context.tenantId,
       _id: { $in: page.map((report) => report.orderId) },
     })
-      .select('title serviceTitle eventDate')
+      .select(
+        'tenantId title serviceTitle eventDate status workflowStageId locationId assignedStaff responsibleStaffId'
+      )
       .lean(),
     Staff.find({
       tenantId: context.tenantId,
@@ -57,11 +66,34 @@ export const GET = withReportContext(async (req, context) => {
   const items = page.flatMap((report) => {
     const order = orderMap.get(String(report.orderId))
     if (!order) return []
-    return serializeReportLibraryItems(report, {
-      orderTitle: order.title || order.serviceTitle || 'Мероприятие',
-      eventDate: order.eventDate || null,
-      staffName: peopleMap.get(String(report.staffId)) || 'Исполнитель',
-    })
+    const fields = report.templateSnapshot.fields.filter((field) =>
+      canReadReportField(context, report, field, false, order)
+    )
+    return serializeReportLibraryItems(
+      { ...report, templateSnapshot: { ...report.templateSnapshot, fields } },
+      {
+        orderTitle:
+          (hasPartyReportPermission(context, 'orders.title', 'read', order) &&
+            order.title) ||
+          (hasPartyReportPermission(
+            context,
+            'orders.serviceTitle',
+            'read',
+            order
+          ) &&
+            order.serviceTitle) ||
+          'Мероприятие',
+        eventDate: hasPartyReportPermission(
+          context,
+          'orders.eventDate',
+          'read',
+          order
+        )
+          ? order.eventDate || null
+          : null,
+        staffName: peopleMap.get(String(report.staffId)) || 'Исполнитель',
+      }
+    )
   })
   return reportJson({
     items,

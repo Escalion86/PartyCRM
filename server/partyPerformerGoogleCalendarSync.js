@@ -2,6 +2,7 @@ import { createPartyGoogleCalendarClient } from './partyGoogleCalendarClient.js'
 import { normalizePartyGoogleCalendarSettings } from './partyGoogleCalendarSettings.js'
 import { buildPartyPerformerGoogleCalendarPayload } from '../helpers/partyPerformerCalendar.js'
 import { sanitizePartyOrderForPerformer } from '../helpers/partyPerformerOrders.js'
+import { canPartyAccess } from '../helpers/partyRolePermissions.js'
 
 const asArray = (value) => (Array.isArray(value) ? value : [])
 const idOf = (value) => String(value?._id ?? value?.id ?? value ?? '')
@@ -47,6 +48,7 @@ const defaultLoadModels = async () => {
     Staff: await models.getPartyStaffModel(),
     Client: await models.getPartyClientModel(),
     User: await models.getPartyUserModel(),
+    Role: await models.getPartyRoleModel(),
   }
 }
 
@@ -89,6 +91,7 @@ export const syncPartyOrderToPerformerCalendars = async ({
     if (!tenantId || !orderId) return { ok: false, status: 'hook_failed' }
     const models = dependencies.models || (await defaultLoadModels())
     const { Company, Order, Location, Service, Staff, Client, User } = models
+    const positions = models.Role ? await models.Role.find({ tenantId }).lean() : []
     const order = await Order.findOne({ _id: orderId, tenantId }).lean()
     if (!order) return { ok: false, status: 'hook_failed' }
 
@@ -126,7 +129,7 @@ export const syncPartyOrderToPerformerCalendars = async ({
     const locationsById = new Map(
       location ? [[`${String(tenantId)}:${idOf(location)}`, location]] : []
     )
-    const clientsById = new Map(client ? [[idOf(client), client]] : [])
+    const clientsById = new Map(client ? [[`${String(tenantId)}:${idOf(client)}`, client]] : [])
     const servicesById = new Map(services.map((item) => [idOf(item), item]))
 
     let synced = 0
@@ -136,6 +139,8 @@ export const syncPartyOrderToPerformerCalendars = async ({
       const staffItem = staffById.get(staffId)
       const userId = String(staffItem?.linkedAuthUserId || staffItem?.authUserId || '')
       const user = usersById.get(userId)
+      const accessContext = { tenantId, company, role: staffItem?.role || 'performer', staff: { ...staffItem, tenantId: staffItem?.tenantId || tenantId, role: staffItem?.role || 'performer', status: staffItem?.status || 'active' }, position: positions.find((position) => staffItem?.positionId ? idOf(position) === idOf(staffItem.positionId) : position.systemKey === staffItem?.role) }
+      const can = (resource) => canPartyAccess(accessContext, { resource, order })
       const settings = normalizePartyGoogleCalendarSettings(
         user?.performerSettings?.googleCalendar
       )
@@ -151,6 +156,7 @@ export const syncPartyOrderToPerformerCalendars = async ({
         : null
       const shouldSync =
         staffItem?.role !== 'location_owner' &&
+        can('orders') && can('orders.eventDate') &&
         order.status !== 'canceled' &&
         order.status !== 'closed' &&
         acceptedStatuses.has(String(assignment.confirmationStatus || 'pending'))
@@ -208,7 +214,15 @@ export const syncPartyOrderToPerformerCalendars = async ({
         locationsById,
         clientsById,
         servicesById,
+        canViewContacts: can('orders.client.name') || can('orders.client.phone') || can('orders.client.email'),
+        contactFieldAccess: { name: can('orders.client.name'), phone: can('orders.client.phone'), email: can('orders.client.email'), channels: can('orders.client.phone') },
       })
+      if (!can('orders.title')) delete sanitizedOrder.title
+      if (!can('orders.dateEnd')) delete sanitizedOrder.dateEnd
+      if (!can('orders.serviceTitle') && !can('orders.servicesIds')) { delete sanitizedOrder.serviceTitle; delete sanitizedOrder.serviceTitles }
+      if (!can('orders.performerComment')) delete sanitizedOrder.performerComment
+      if (!can('orders.locationId')) delete sanitizedOrder.location
+      if (!can('orders.customAddress')) delete sanitizedOrder.customAddress
       const payload = buildPartyPerformerGoogleCalendarPayload({
         order: sanitizedOrder,
         settings,

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose'
+import { isPartyRestrictedManagementContext } from '../helpers/partyRolePermissions.js'
 
 export const PARTY_MANAGEMENT_ROLES = Object.freeze(['owner', 'admin'])
 
@@ -12,6 +13,8 @@ export const buildPartyContextShell = (membershipContext) => ({
   tenantId: null,
   role: null,
   activeMembership: null,
+  position: null,
+  access: null,
 })
 
 export const partyContextError = (status, code, message, type = 'server') => ({
@@ -26,6 +29,7 @@ export const resolvePartyRequestContext = ({
   requestedCompanyId = '',
   managementOnly = false,
   allowLocationOwner = false,
+  permissionAware = false,
 } = {}) => {
   if (!membershipContext?.sessionUser?._id) {
     return {
@@ -109,6 +113,12 @@ export const resolvePartyRequestContext = ({
     tenantId: membership.tenantId,
     role: membership.role,
     activeMembership: membership,
+    position: membership.position || null,
+    access: membership.access || null,
+  }
+
+  if ((context.staff?.positionId && !context.position) || context.position?.active === false) {
+    return { context, error: partyContextError(403, 'partycrm_position_inactive', 'Должность сотрудника недоступна', 'permission') }
   }
 
   if (!context.tenantId || !context.staff) {
@@ -136,6 +146,12 @@ export const resolvePartyRequestContext = ({
         'permission'
       ),
     }
+  }
+
+  // Legacy management APIs do not mask fields or apply order scopes. A server
+  // handler must explicitly opt in only after implementing its granular checks.
+  if (managementOnly && !permissionAware && isPartyRestrictedManagementContext(context)) {
+    return { context, error: partyContextError(403, 'partycrm_granular_permissions_required', 'Этот раздел пока недоступен для администратора с ограниченными полномочиями', 'permission') }
   }
 
   return { context, error: null }

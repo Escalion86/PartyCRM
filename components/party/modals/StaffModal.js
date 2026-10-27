@@ -1,11 +1,13 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import PhoneInput from '@components/PhoneInput'
 import Input from '@components/Input'
 import Select from '@components/Select'
 import Modal from '@components/Modal'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
 import PartyStaffOperationalPermissions from '@components/party/PartyStaffOperationalPermissions'
+import { apiJson } from '@helpers/apiClient'
 
 const ALL_ROLE_OPTIONS = [
   { value: 'performer', label: 'Исполнитель' },
@@ -50,6 +52,18 @@ export default function StaffModal({
   staffId = '',
 }) {
   const hasUnsavedChanges = useUnsavedChanges(staffDraft, open)
+  const [positions, setPositions] = useState([])
+  const [positionError, setPositionError] = useState('')
+  useEffect(() => {
+    if (!open || !companyId) return
+    let alive = true
+    apiJson('/api/party/roles', { cache: 'no-store', headers: { 'x-partycrm-company-id': companyId } })
+      .then((result) => { if (alive) { setPositions(result.data || []); setPositionError('') } })
+      .catch(() => { if (alive) { setPositions([]); setPositionError('Не удалось загрузить должности. Доступны системные роли.') } })
+    return () => { alive = false }
+  }, [open, companyId])
+  const positionOptions = positions.filter((position) => position.active && (position.baseRole !== 'owner' || contextRole === 'owner' && staffDraft.authUserId))
+  const selectedPositionId = staffDraft.positionId || positionOptions.find((position) => position.systemKey === staffDraft.role)?._id || ''
   const handleChange = (field) => (value) => {
     setStaffDraft((prev) => ({ ...prev, [field]: value }))
   }
@@ -133,12 +147,13 @@ export default function StaffModal({
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Select
-            label="Роль"
-            value={staffDraft.role}
-            onChange={(value) =>
-              setStaffDraft((prev) => ({ ...prev, role: value }))
-            }
-            options={getRoleOptions(contextRole, staffDraft)}
+            label="Должность"
+            value={positions.length ? selectedPositionId : staffDraft.role}
+            onChange={(value) => {
+              const position = positions.find((item) => String(item._id) === value)
+              setStaffDraft((prev) => ({ ...prev, role: position?.baseRole || value, positionId: position?._id || null }))
+            }}
+            options={positions.length ? positionOptions.map((position) => ({ value: String(position._id), label: position.title })) : getRoleOptions(contextRole, staffDraft)}
             fullWidth
             tone="party"
           />
@@ -153,6 +168,8 @@ export default function StaffModal({
             tone="party"
           />
         </div>
+        {positionError && <p role="status" className="text-sm text-amber-800">{positionError}</p>}
+        <p className="text-sm text-slate-500">У сотрудника одна должность. Её полномочия и доступные заказы настраиваются в разделе «Настройки → Должности».</p>
         {staffDraft.role === 'location_owner' && (
           <fieldset className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3">
             <legend className="px-1 text-sm font-semibold">
@@ -198,7 +215,7 @@ export default function StaffModal({
             )}
           </fieldset>
         )}
-        {isEdit && <PartyStaffOperationalPermissions companyId={companyId} staffId={staffId} draftRole={staffDraft.role} />}
+        {isEdit && !staffDraft.positionId && <PartyStaffOperationalPermissions companyId={companyId} staffId={staffId} draftRole={staffDraft.role} />}
         <Input
           label="Описание"
           value={staffDraft.description}

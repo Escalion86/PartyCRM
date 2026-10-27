@@ -1,8 +1,10 @@
 'use client'
 
 import Input from '@components/Input'
+import Select from '@components/Select'
 import { useMemo, useState } from 'react'
 import useCompanySettings from '../useCompanySettings'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
 const TIME_ZONE_OPTIONS = [
   { value: 'UTC', label: 'UTC' },
@@ -29,8 +31,16 @@ function CompanyProfileForm({ company, saving, savePatch }) {
   )
 
   const saveProfile = async () => {
-    await savePatch({ company: profileForm })
+    try {
+      await savePatch({ company: profileForm })
+    } catch {
+      /* useCompanySettings shows the error; the draft stays dirty. */
+    }
   }
+  usePartyUnsavedChanges(profileChanged, {
+    label: 'профиль компании',
+    pending: saving,
+  })
 
   return (
     <div className="rounded-2xl border border-sky-100 bg-white p-5">
@@ -45,6 +55,7 @@ function CompanyProfileForm({ company, saving, savePatch }) {
       <div className="grid gap-3 md:grid-cols-2">
         <Input
           label="Название в кабинете"
+          disabled={saving}
           value={profileForm.title}
           onChange={(value) =>
             setProfileForm((current) => ({ ...current, title: value }))
@@ -55,6 +66,7 @@ function CompanyProfileForm({ company, saving, savePatch }) {
         />
         <Input
           label="Юридическое название"
+          disabled={saving}
           value={profileForm.legalTitle}
           onChange={(value) =>
             setProfileForm((current) => ({ ...current, legalTitle: value }))
@@ -65,6 +77,7 @@ function CompanyProfileForm({ company, saving, savePatch }) {
         />
         <Input
           label="Телефон компании"
+          disabled={saving}
           value={profileForm.phone}
           onChange={(value) =>
             setProfileForm((current) => ({ ...current, phone: value }))
@@ -75,6 +88,7 @@ function CompanyProfileForm({ company, saving, savePatch }) {
         />
         <Input
           label="Email компании"
+          disabled={saving}
           type="email"
           value={profileForm.email}
           onChange={(value) =>
@@ -112,13 +126,22 @@ function OrderNumberFormatField({ value, saving, savePatch }) {
     orderNumberFormat !== (value || DEFAULT_ORDER_NUMBER_FORMAT)
 
   const saveOrderNumberFormat = async () => {
-    await savePatch({ orderNumberFormat })
+    try {
+      await savePatch({ orderNumberFormat })
+    } catch {
+      /* The hook retains the error and unsaved input. */
+    }
   }
+  usePartyUnsavedChanges(orderNumberFormatChanged, {
+    label: 'формат номера заказа',
+    pending: saving,
+  })
 
   return (
     <div className="rounded-2xl border border-sky-100 bg-white p-5">
       <Input
         label="Формат номера заказа"
+        disabled={saving}
         value={orderNumberFormat}
         onChange={setOrderNumberFormat}
         tone="party"
@@ -155,6 +178,25 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
 
   return (
     <div className="grid gap-4">
+      <div className="rounded-2xl border border-sky-100 bg-white p-5">
+        <Select
+          label="Вид формы заказа"
+          value={settings?.orderFormVariant || 'compact'}
+          options={[
+            { value: 'compact', label: 'Компактная' },
+            { value: 'classic', label: 'Классическая' },
+          ]}
+          disabled={saving}
+          tone="party"
+          onChange={(orderFormVariant) => {
+            savePatch({ orderFormVariant }).catch(() => {})
+          }}
+        />
+        <p className="mt-2 text-sm text-slate-500">
+          Компактная — раскрываемые разделы со сводками. Классическая — вкладки.
+          Выбор применяется к созданию и редактированию заказов всей компании.
+        </p>
+      </div>
       {error ? (
         <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-3 text-sm">
           {error}
@@ -178,7 +220,10 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
           <span className="text-sm font-semibold">Часовой пояс компании</span>
           <select
             value={settings?.timeZone ?? 'Asia/Krasnoyarsk'}
-            onChange={(event) => savePatch({ timeZone: event.target.value })}
+            onChange={(event) => {
+              savePatch({ timeZone: event.target.value }).catch(() => {})
+            }}
+            disabled={saving}
             className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
           >
             {TIME_ZONE_OPTIONS.map((option) => (
@@ -195,7 +240,10 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
           <span className="text-sm font-semibold">Город по умолчанию</span>
           <select
             value={settings?.defaultTown ?? ''}
-            onChange={(event) => savePatch({ defaultTown: event.target.value })}
+            onChange={(event) => {
+              savePatch({ defaultTown: event.target.value }).catch(() => {})
+            }}
+            disabled={saving}
             className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
           >
             <option value="">Не выбран</option>
@@ -211,6 +259,7 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
         <Input
           label="Стандартная длительность заказа, мин"
+          disabled={saving}
           type="number"
           min={15}
           step={5}
@@ -218,7 +267,7 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
           onChange={(val) =>
             savePatch({
               defaultOrderDurationMinutes: Number(val) || 60,
-            })
+            }).catch(() => {})
           }
           tone="party"
           showArrows

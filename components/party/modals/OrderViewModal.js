@@ -4,6 +4,7 @@ import { PartyOrderContactRolesView } from '@components/party/orders/PartyOrderC
 
 import { getInventoryServiceQuantity } from '@helpers/partyInventory'
 import { useState } from 'react'
+import PartyTasks from '@components/party/tasks/PartyTasks'
 import dynamic from 'next/dynamic'
 import Modal from '@components/Modal'
 import ContactsIconsButtons from '@components/ContactsIconsButtons'
@@ -53,13 +54,6 @@ const ORDER_STATUS_LABELS = {
 const PLACE_TYPE_LABELS = {
   company_location: 'Точка компании',
   client_address: 'Выезд к клиенту',
-}
-
-const REPORT_STATUS_LABELS = {
-  draft: 'Черновик',
-  submitted: 'На проверке',
-  accepted: 'Принят',
-  revision_requested: 'Нужны правки',
 }
 
 const ASSIGNMENT_STATUS_META = {
@@ -260,7 +254,6 @@ export default function OrderViewModal({
   activeCompanyId = '',
   onClose,
   onEdit,
-  onReviewReport,
   onUpdateOrder,
   onRelatedOrdersChanged,
 }) {
@@ -482,27 +475,11 @@ export default function OrderViewModal({
         </Section>
 
         <Section title="Бриф праздника">
-          <PartyEventBriefView value={order?.eventBrief || {}} />
+          <PartyEventBriefView value={order?.eventBrief || {}} companyId={activeCompanyId} orderId={String(order._id)} orderStatus={order.status} />
         </Section>
 
-        <Section title="Клиент">
-          <div className="grid gap-2">
-            <ContactCard contact={mainContact} onView={openClientView} />
-            {otherContacts.length > 0 ? (
-              <div className="grid gap-2">
-                <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-                  Доп. контакты
-                </div>
-                {otherContacts.map((contact) => (
-                  <ContactCard
-                    key={`${contact.client?._id || contact.name}-${contact.label}`}
-                    contact={contact}
-                    onView={openClientView}
-                  />
-                ))}
-              </div>
-            ) : null}
-          </div>
+        <Section title="Контакты по заказу">
+          <PartyOrderContactRolesView value={order.contactRoles || {}} clientsById={safeClientsById} primaryClientId={order.clientId} otherContacts={order.otherContacts || []} />
         </Section>
 
         {canManage && activeCompanyId && <Section title="Связанные части праздника">
@@ -510,9 +487,7 @@ export default function OrderViewModal({
           {showRelatedOrders && <PartyRelatedOrders companyId={activeCompanyId} orderId={String(order._id)} onChanged={onRelatedOrdersChanged} />}
         </Section>}
 
-        <Section title="Роли контактов и правила связи">
-          <PartyOrderContactRolesView value={order?.contactRoles || {}} clientsById={safeClientsById} />
-        </Section>
+
 
         <Section title="Услуги">
           {Array.isArray(order?.orderItems) && order.orderItems.length > 0 ? (
@@ -741,7 +716,7 @@ export default function OrderViewModal({
           </Section>
         )}
         {activeCompanyId && (
-          <Section title="Отчёты по формам">
+          <Section title="Отчёты">
             <button
               type="button"
               className="mb-3 min-h-10 cursor-pointer rounded-lg border border-sky-200 px-3 text-sm font-semibold text-sky-800"
@@ -759,102 +734,6 @@ export default function OrderViewModal({
             )}
           </Section>
         )}
-        <Section title="Отчеты исполнителей">
-          {assignedStaff.length > 0 ? (
-            <div className="grid gap-2">
-              {assignedStaff.map((assignment) => {
-                const staffMember = staff.find(
-                  (item) => String(item._id) === String(assignment.staffId)
-                )
-                const report = assignment.report || {}
-                const files = Array.isArray(report.files) ? report.files : []
-                return (
-                  <div
-                    key={`report-${assignment.staffId}`}
-                    className="rounded-md border border-slate-100 bg-slate-50 p-2 text-sm"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-semibold text-slate-900">
-                        {getStaffLabel(staffMember)}
-                      </div>
-                      <span className="rounded bg-white px-2 py-0.5 text-xs font-semibold text-slate-600">
-                        {REPORT_STATUS_LABELS[report.status] || 'Ждет отчет'}
-                      </span>
-                    </div>
-                    {report.text ? (
-                      <div className="mt-2 whitespace-pre-wrap text-slate-700">
-                        {report.text}
-                      </div>
-                    ) : (
-                      <p className="mt-2 text-slate-500">
-                        Отчет еще не отправлен.
-                      </p>
-                    )}
-                    {files.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {files.map((file) => (
-                          <a
-                            key={file._id || file.url || file.name}
-                            href={file.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded border border-sky-200 bg-white px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50"
-                          >
-                            {file.name || 'Файл отчета'}
-                          </a>
-                        ))}
-                      </div>
-                    ) : null}
-                    {report.reviewComment ? (
-                      <div className="mt-2 rounded bg-white p-2 text-xs text-slate-600">
-                        Комментарий проверки: {report.reviewComment}
-                      </div>
-                    ) : null}
-                    {canManage && report.status === 'submitted' ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="cursor-pointer rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-700"
-                          onClick={() =>
-                            onReviewReport?.({
-                              orderId: order._id,
-                              staffId: assignment.staffId,
-                              status: 'accepted',
-                            })
-                          }
-                        >
-                          Принять
-                        </button>
-                        <button
-                          type="button"
-                          className="cursor-pointer rounded border border-orange-200 bg-white px-3 py-1.5 text-xs font-semibold text-orange-700 transition hover:bg-orange-50"
-                          onClick={() => {
-                            const reviewComment = window.prompt(
-                              'Что нужно исправить в отчете?',
-                              report.reviewComment || ''
-                            )
-                            if (reviewComment === null) return
-                            onReviewReport?.({
-                              orderId: order._id,
-                              staffId: assignment.staffId,
-                              status: 'revision_requested',
-                              reviewComment,
-                            })
-                          }}
-                        >
-                          Запросить правки
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                )
-              })}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">Исполнители не назначены.</p>
-          )}
-        </Section>
-
         <Section title="Финансы">
           <div className="grid grid-cols-2 gap-2 text-sm md:grid-cols-3">
             <InfoLine label="Договор">{formatMoney(contractAmount)}</InfoLine>
@@ -872,28 +751,8 @@ export default function OrderViewModal({
           </div>
         </Section>
 
-        <Section title="Доп. события">
-          {additionalEvents.length > 0 ? (
-            <div className="grid gap-2">
-              {additionalEvents.map((item, index) => (
-                <AdditionalEventCard
-                  key={`${item?.title || 'event'}-${index}`}
-                  item={item}
-                  index={index}
-                  canManage={canManage && !isClosed}
-                  disabled={isClosed}
-                  responsibleLabel={getAdditionalEventResponsibleLabel(item)}
-                  onOpen={openAdditionalEvent}
-                  onToggleDone={toggleAdditionalEventDone}
-                  onEdit={openAdditionalEventEditor}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-slate-500">
-              Дополнительные события не добавлены.
-            </p>
-          )}
+        <Section title="Задачи">
+          <PartyTasks companyId={activeCompanyId} orderId={String(order._id)} compact />
         </Section>
 
         {canManage ? (
@@ -914,7 +773,7 @@ export default function OrderViewModal({
         <Modal
           open={true}
           onClose={closeAdditionalEvent}
-          title={activeAdditionalEventItem.title || 'Доп. событие'}
+          title={activeAdditionalEventItem.title || 'Задача'}
           tone="party"
           size="sm"
           footer={
@@ -990,7 +849,7 @@ export default function OrderViewModal({
       {editingAdditionalEvent !== null ? (
         <AdditionalEventEditModal
           open={true}
-          title="Редактировать доп. событие"
+          title="Редактировать задачу"
           draft={editingAdditionalEventDraft}
           setDraft={setEditingAdditionalEventDraft}
           adminStaffOptions={adminStaffOptions}

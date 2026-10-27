@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const source = await readFile(new URL('./partyMembershipResponse.js', import.meta.url), 'utf8')
-const permissionsSource = await readFile(new URL('../helpers/partyOperationalPermissions.js', import.meta.url), 'utf8')
-const permissionsUrl = `data:text/javascript;base64,${Buffer.from(permissionsSource).toString('base64')}`
-const resolvedSource = source.replace('../helpers/partyOperationalPermissions.js', permissionsUrl)
-const { serializePartyMembershipResponse, serializePartyMembershipCompany } = await import(`data:text/javascript;base64,${Buffer.from(resolvedSource).toString('base64')}`)
+const permissionsUrl = new URL('../helpers/partyOperationalPermissions.js', import.meta.url).href
+const rolePermissionsUrl = new URL('../helpers/partyRolePermissions.js', import.meta.url).href
+const resolvedSource = source.replace('../helpers/partyOperationalPermissions.js', permissionsUrl).replace('../helpers/partyRolePermissions.js', rolePermissionsUrl)
+const { serializePartyMembershipResponse, serializePartyMembershipCompany, serializePartyRestrictedCompanySettings } = await import(`data:text/javascript;base64,${Buffer.from(resolvedSource).toString('base64')}`)
 const secret = 'secret-must-never-appear'
 const company = {
   _id: 'company', title: 'Компания', status: 'active', balance: 4000, legalTitle: 'Юрлицо',
@@ -69,4 +69,18 @@ test('operational permissions expose only known grants and no arbitrary staff pa
   assert.equal(result.company.balance, undefined)
   assert.ok(!JSON.stringify(result).includes(secret))
   assert.deepEqual(serializePartyMembershipResponse(membership('performer')).staff.operationalPermissions, [])
+})
+
+test('restricted administrator profile and settings metadata do not expose company finance or integration credentials', () => {
+  const actor = { ...membership('admin'), position: { _id: 'position', tenantId: 'company', active: true, permissions: { orders: 'read' }, orderScope: {} } }
+  const result = serializePartyMembershipResponse(actor)
+  assert.equal(result.company.balance, undefined)
+  assert.equal(result.company.tariffId, undefined)
+  assert.deepEqual(result.company.settings, { timeZone: 'Asia/Krasnoyarsk' })
+  const settings = serializePartyRestrictedCompanySettings(company.settings)
+  assert.equal(settings.integrations.avitoStatus, 'connected')
+  assert.equal(settings.googleCalendar.connected, true)
+  assert.equal(JSON.stringify(settings).includes(secret), false)
+  assert.equal(Object.hasOwn(settings, 'documents'), false)
+  assert.equal(Object.hasOwn(settings, 'publicLeadApiKeys'), false)
 })

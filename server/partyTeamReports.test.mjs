@@ -2,9 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as core from './partyReportCore.js'
+import * as policy from '../helpers/partyReportPolicy.js'
+import { getPartyDefaultRolePermissions } from '../helpers/partyRolePermissions.js'
 
-const author = { role: 'performer', staff: { _id: 'a'.repeat(24) }, tenantId: 't' }
-const next = { role: 'performer', staff: { _id: 'b'.repeat(24) }, tenantId: 't' }
+const author = { role: 'performer', staff: { _id: 'a'.repeat(24), tenantId: 't', role: 'performer', status: 'active' }, tenantId: 't', position: { permissions: { ...getPartyDefaultRolePermissions('performer'), 'reports.finance': 'edit' } } }
+const next = { ...author, staff: { ...author.staff, _id: 'b'.repeat(24) } }
 const order = { _id: 'o', status: 'active', reportCoordinatorStaffId: author.staff._id, assignedStaff: [{ staffId: author.staff._id }, { staffId: next.staff._id }, { staffId: 'declined', confirmationStatus: 'declined', payoutAmount: 900 }] }
 const team = { staffId: author.staff._id, scope: 'team', templateSnapshot: { audience: 'team', fields: [] }, answers: [] }
 
@@ -37,7 +39,7 @@ test('audience is immutable within family and missing legacy audience stays indi
 const loadRoute = async (path, bindings) => {
   const source = (await readFile(new URL(path, import.meta.url), 'utf8')).replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '')
   const key = `__teamReportTest${Math.random().toString(36).slice(2)}`
-  globalThis[key] = { ...core, ...bindings }
+  globalThis[key] = { ...core, ...policy, filterPartyReportTemplatesForAuthor: (templates, context, order) => templates.map(template => ({ ...template, fields: core.effectivePartyReportFields(context, template, order) })).filter(template => template.fields.length), ...bindings }
   const names = Object.keys(globalThis[key]).join(',')
   try { return await import(`data:text/javascript;base64,${Buffer.from(`const {${names}}=globalThis.${key};\n${source}`).toString('base64')}`) }
   finally { delete globalThis[key] }

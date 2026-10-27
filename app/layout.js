@@ -5,6 +5,7 @@ import '../fonts/FuturaPT.css'
 
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter'
 import ClientErrorLogger from '@components/ClientErrorLogger'
+import PartyUnsavedChangesBootstrap from '@components/party/navigation/PartyUnsavedChangesBootstrap'
 import DevelopmentServiceWorkerCleanup from '@components/DevelopmentServiceWorkerCleanup'
 import ServiceWorkerRegistration from '@components/ServiceWorkerRegistration'
 import AppSnackbarProvider from '@components/AppSnackbarProvider'
@@ -72,6 +73,7 @@ export default function RootLayout({ children }) {
       <body>
         <AppRouterCacheProvider options={{ enableCssLayer: true }}>
           <ClientErrorLogger enabled={isProduction} />
+          <PartyUnsavedChangesBootstrap />
           {!isProduction && <DevelopmentServiceWorkerCleanup />}
           {isProduction && <ServiceWorkerRegistration />}
           {isProduction && (

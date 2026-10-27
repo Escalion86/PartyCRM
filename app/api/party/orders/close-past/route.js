@@ -1,10 +1,19 @@
+import { assertPartyReportGate } from '@server/partyReportGates'
+import { withPartyFinancialTransaction } from '@server/partyFinancialSettlements'
+import { getPartyTaskOrderReadiness } from '@server/partyTaskReadiness'
+import { snapshotPartyBriefForClose } from '@server/partyBriefTemplates'
+import { maskPartyOrderBlockers, maskPartyOrderFinancialSummary } from '@helpers/partyOrderAccess'
+import {
+  canPartyAccess,
+  buildPartyOrderAccessFilter,
+} from '@helpers/partyRolePermissions'
 import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
 import { NextResponse } from 'next/server'
 import {
   getPartyOrderModel,
   getPartyTransactionModel,
 } from '@server/partyModels'
-import { getPartyRequestContext } from '@server/partyApi'
+import { getPartyRequestContext, partyError } from '@server/partyApi'
 import { getPartyOrderCloseReadiness } from '@helpers/partyOrderCloseReadiness'
 import { syncPartyOrderCalendarAfterCrud } from '@server/partyOrderCalendarHooks'
 import { recordPartyOrderAudit } from '@server/partyAuditLog'
@@ -17,9 +26,19 @@ const startOfToday = () => {
 export async function POST(req) {
   const { context, error } = await getPartyRequestContext({
     req,
-    managementOnly: true,
+    allowLocationOwner: true,
   })
   if (error) return error
+  if (
+    !canPartyAccess(context, { resource: 'orders', action: 'transition' }) ||
+    !canPartyAccess(context, { resource: 'orders.status', action: 'edit' })
+  )
+    return partyError(
+      403,
+      'partycrm_order_close_forbidden',
+      'Нет права закрывать заказы',
+      'permission'
+    )
 
   const PartyOrders = await getPartyOrderModel()
   const today = startOfToday()
@@ -37,57 +56,132 @@ export async function POST(req) {
     ],
   }
 
-  const orders = await PartyOrders.find(match).lean()
-  const orderIds = orders.map((order) => String(order._id))
+  const orders = await PartyOrders.find({
+    ...match,
+    $and: [buildPartyOrderAccessFilter(context)],
+  }).lean()
   const PartyTransactions = await getPartyTransactionModel()
-  const transactions = orderIds.length
-    ? await PartyTransactions.find({
-        tenantId: context.tenantId,
-        orderId: { $in: orderIds },
-      }).lean()
-    : []
-  const transactionsByOrderId = transactions.reduce((map, transaction) => {
-    const orderId = String(transaction.orderId)
-    if (!map.has(orderId)) map.set(orderId, [])
-    map.get(orderId).push(transaction)
-    return map
-  }, new Map())
   const closed = []
   const skipped = []
 
-  orders.forEach((order) => {
-    const orderId = String(order._id)
-    const orderTransactions = transactionsByOrderId.get(orderId) ?? []
-    const readiness = getPartyOrderCloseReadiness({
-      order,
-      transactions:
-        orderTransactions.length > 0 ? orderTransactions : order.transactions,
-    })
-    if (readiness.ok) {
-      closed.push({ orderId, summary: readiness.summary })
-      return
-    }
-    skipped.push({
-      orderId,
-      blockers: readiness.blockers,
-      summary: readiness.summary,
-    })
-  })
-  const candidates = [...closed]
-  closed.length = 0
-  for (const candidate of candidates) {
-    const original = orders.find((order) => String(order._id) === candidate.orderId)
-    const updated = await PartyOrders.findOneAndUpdate(
-      { _id: candidate.orderId, tenantId: context.tenantId, ...getPartyOrderWriteGuard(original) },
-      { $set: { status: 'closed' }, $inc: { commercialRevision: 1 } },
-      { returnDocument: 'after' }
-    ).lean()
-    if (updated) closed.push(candidate)
-    else skipped.push({
-      orderId: candidate.orderId,
-      blockers: [{ code: 'order_changed', message: 'Заказ изменился во время проверки. Повторите закрытие.' }],
-      summary: candidate.summary,
-    })
+  for (const original of orders) {
+    const orderId = String(original._id)
+    const outcome = await withPartyFinancialTransaction(
+      context.tenantId,
+      async (session) => {
+        const order = await PartyOrders.findOne({
+          _id: orderId,
+          tenantId: context.tenantId,
+          ...getPartyOrderWriteGuard(original),
+        })
+          .session(session)
+          .lean()
+        if (!order)
+          return {
+            orderId,
+            blockers: [
+              {
+                code: 'order_changed',
+                message:
+                  'Заказ изменился во время проверки. Повторите закрытие.',
+              },
+            ],
+          }
+        if (
+          !canPartyAccess(context, {
+            resource: 'orders',
+            action: 'transition',
+            order,
+          }) ||
+          !canPartyAccess(context, {
+            resource: 'orders.status',
+            action: 'edit',
+            order,
+          })
+        )
+          return {
+            orderId,
+            blockers: [
+              {
+                code: 'forbidden',
+                message: 'Недостаточно прав для закрытия заказа.',
+              },
+            ],
+          }
+        const currentTransactions = await PartyTransactions.find({
+          tenantId: context.tenantId,
+          orderId,
+        })
+          .session(session)
+          .lean()
+        const tasks = await getPartyTaskOrderReadiness({
+          tenantId: context.tenantId,
+          order,
+          session,
+        })
+        const readiness = getPartyOrderCloseReadiness({
+          order: tasks.order,
+          transactions: currentTransactions.length
+            ? currentTransactions
+            : order.transactions,
+        })
+        readiness.blockers.push(...tasks.blockers)
+        if (readiness.blockers.length)
+          return {
+            orderId,
+            blockers: readiness.blockers,
+            summary: readiness.summary,
+          }
+        try {
+          await assertPartyReportGate({
+            tenantId: context.tenantId,
+            order,
+            action: 'close',
+            session,
+          })
+        } catch (error) {
+          if (error.status === 409)
+            return {
+              orderId,
+              blockers: [{ code: error.code, message: error.message }],
+              summary: readiness.summary,
+            }
+          throw error
+        }
+        const eventBrief = await snapshotPartyBriefForClose({
+          tenantId: context.tenantId,
+          order,
+        })
+        const updated = await PartyOrders.findOneAndUpdate(
+          {
+            _id: orderId,
+            tenantId: context.tenantId,
+            ...getPartyOrderWriteGuard(order),
+          },
+          {
+            $set: { status: 'closed', eventBrief },
+            $inc: { commercialRevision: 1, sharedLocationRevision: 1 },
+          },
+          { returnDocument: 'after', session }
+        ).lean()
+        return updated
+          ? { orderId, summary: readiness.summary }
+          : {
+              orderId,
+              blockers: [
+                {
+                  code: 'order_changed',
+                  message:
+                    'Заказ изменился во время проверки. Повторите закрытие.',
+                },
+              ],
+              summary: readiness.summary,
+            }
+      }
+    )
+    const safeOutcome = { ...outcome, ...(outcome.summary ? { summary: maskPartyOrderFinancialSummary(context, original, outcome.summary) } : {}), ...(outcome.blockers ? { blockers: maskPartyOrderBlockers(context, original, outcome.blockers) } : {}) }
+    if (outcome.blockers) skipped.push(safeOutcome)
+    else closed.push(safeOutcome)
   }
   const closedIds = closed.map((item) => item.orderId)
   if (closedIds.length > 0) {
@@ -97,7 +191,9 @@ export async function POST(req) {
           syncPartyOrderCalendarAfterCrud({
             tenantId: context.tenantId,
             orderId,
-            previousOrder: orders.find((order) => String(order._id) === orderId),
+            previousOrder: orders.find(
+              (order) => String(order._id) === orderId
+            ),
           }),
           recordPartyOrderAudit({
             context,
@@ -106,7 +202,9 @@ export async function POST(req) {
               ...orders.find((order) => String(order._id) === orderId),
               status: 'closed',
             },
-            previousOrder: orders.find((order) => String(order._id) === orderId),
+            previousOrder: orders.find(
+              (order) => String(order._id) === orderId
+            ),
             action: 'order_status_changed',
             summary: 'Закрыл прошедший заказ',
           }),

@@ -1,4 +1,5 @@
 import { normalizePartyOperationalPermissions } from '../helpers/partyOperationalPermissions.js'
+import { isPartyRestrictedManagementContext, normalizePartyRolePermissions } from '../helpers/partyRolePermissions.js'
 
 // API response boundary only. Internal membership context retains server credentials.
 const text = (value) => (typeof value === 'string' ? value : '')
@@ -34,7 +35,7 @@ const serializeIntegrationIndicators = (integrations = {}) => {
   return output
 }
 
-export const serializePartyMembershipCompany = (company, role) => {
+export const serializePartyMembershipCompany = (company, role, position = null) => {
   if (!company) return null
   const settings = company.settings || {}
   const safe = {
@@ -44,7 +45,7 @@ export const serializePartyMembershipCompany = (company, role) => {
     status: text(company.status),
     settings: { timeZone: text(settings.timeZone) || 'Asia/Krasnoyarsk' },
   }
-  if (!isManager(role)) return safe
+  if (!isManager(role) || isPartyRestrictedManagementContext({ role, position })) return safe
   Object.assign(safe, {
     legalTitle: text(company.legalTitle),
     phone: text(company.phone),
@@ -90,6 +91,21 @@ export const serializePartyMembershipCompany = (company, role) => {
   return safe
 }
 
+export const serializePartyRestrictedCompanySettings = (settings = {}) => {
+  const safe = {
+    timeZone: text(settings.timeZone) || 'Asia/Krasnoyarsk',
+    defaultTown: text(settings.defaultTown),
+    defaultOrderDurationMinutes: number(settings.defaultOrderDurationMinutes) || 60,
+    orderNumberFormat: text(settings.orderNumberFormat),
+    publicLeadEnabled: settings.publicLeadEnabled === true,
+    notifications: { pushEnabled: settings.notifications?.pushEnabled === true },
+    integrations: serializeIntegrationIndicators(settings.integrations),
+    googleCalendar: { enabled: settings.googleCalendar?.enabled === true, connected: Boolean(settings.googleCalendar?.refreshToken || settings.googleCalendar?.accessToken) },
+  }
+  for (const key of ['towns', 'orderTypes', 'eventTypes', 'serviceTypes', 'preparationStatuses', 'leadSources', 'paymentMethods', 'expenseCategories']) safe[key] = Array.isArray(settings[key]) ? settings[key].filter((value) => typeof value === 'string') : []
+  return safe
+}
+
 export const serializePartyMembershipStaff = (staff) => {
   if (!staff) return null
   const safe = { _id: id(staff._id), tenantId: id(staff.tenantId) }
@@ -125,8 +141,23 @@ export const serializePartyMembershipStaff = (staff) => {
         .map(String)
         .filter((value) => /^[a-f\d]{24}$/i.test(value))
     : []
+  safe.positionId = id(staff.positionId)
   return safe
 }
+
+const serializePosition = (position) => position ? {
+  _id: id(position._id), tenantId: id(position.tenantId), title: text(position.title),
+  systemKey: text(position.systemKey), baseRole: text(position.baseRole), active: position.active !== false,
+  revision: number(position.revision),
+  permissions: normalizePartyRolePermissions(position.permissions),
+  orderScope: {
+    stageIds: (position.orderScope?.stageIds || []).filter((value) => typeof value === 'string'),
+    statuses: (position.orderScope?.statuses || []).filter((value) => ['draft', 'active', 'canceled', 'closed'].includes(value)),
+    locationIds: (position.orderScope?.locationIds || []).map(String),
+    includeUnlocated: position.orderScope?.includeUnlocated !== false,
+    assignedOnly: position.orderScope?.assignedOnly === true,
+  },
+} : null
 
 export const serializePartyMembershipResponse = (membership) => {
   const role = text(membership.role)
@@ -146,6 +177,12 @@ export const serializePartyMembershipResponse = (membership) => {
           .filter((value) => /^[a-f\d]{24}$/i.test(value))
       : [],
     staff: serializePartyMembershipStaff(membership.staff),
-    company: serializePartyMembershipCompany(membership.company, role),
+    position: serializePosition(membership.position),
+    access: membership.position ? {
+      positionId: id(membership.position._id), revision: number(membership.position.revision),
+      permissions: serializePosition(membership.position).permissions,
+      orderScope: serializePosition(membership.position).orderScope,
+    } : null,
+    company: serializePartyMembershipCompany(membership.company, role, membership.position),
   }
 }

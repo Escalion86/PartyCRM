@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
 import { uniquePartyCompanyMemberships } from '../helpers/uniquePartyCompanyMemberships.js'
 import { canAccessCompanySettingsTab, getCompanySettingsTab } from '../app/company/settings/companySettingsTabs.js'
+import { isPartyRestrictedManagementContext } from '../helpers/partyRolePermissions.js'
 
 const member = (id, role = 'owner', status = 'active') => ({ tenantId: id, role, status, company: { title: `Компания ${id}` } })
 const routes = [
@@ -19,7 +20,7 @@ for (const [path, name] of routes) {
     .replace(/return <(?:CompanySettingsPageContent|PartyPayrollWorkspace)[^\n]+\/>/, 'return companies')
   const render = (memberships, sessionUser = { _id: 'user' }, tab = 'reports') => {
     const deps = {
-      uniquePartyCompanyMemberships, canAccessCompanySettingsTab, getCompanySettingsTab,
+      uniquePartyCompanyMemberships, canAccessCompanySettingsTab, getCompanySettingsTab, isPartyRestrictedManagementContext,
       redirect: (url) => { throw new Error(url) },
       notFound: () => { throw new Error('not-found') },
       getPartyMembershipContext: async () => ({ sessionUser, memberships }),
@@ -31,7 +32,8 @@ for (const [path, name] of routes) {
     const id = '6a1828661014527ee8515e4e'
     const memberships = [member(id), member(id, 'admin'), member('second', 'admin'), member('hidden', 'performer'), member('paused', 'admin', 'paused')]
     const before = JSON.stringify(memberships)
-    assert.deepEqual(await render(memberships), [{ id, title: `Компания ${id}` }, { id: 'second', title: 'Компания second' }])
+    const restriction = name.startsWith('CompanySettings') ? { restricted: false } : {}
+    assert.deepEqual(await render(memberships), [{ id, title: `Компания ${id}`, ...restriction }, { id: 'second', title: 'Компания second', ...restriction }])
     assert.equal(JSON.stringify(memberships), before)
     if (name === 'CompanySettingsTabPage') {
       for (const tab of ['integrations', 'notifications', 'documents', 'tariffs', 'schedule'])
@@ -41,7 +43,7 @@ for (const [path, name] of routes) {
   test(`${name}: duplicates do not grant management access or bypass login`, async () => {
     await assert.rejects(render([member('a')], null), /\/party\/login/)
     await assert.rejects(render([member('a', 'performer'), member('a', 'location_owner')]), /\/company|\/party\/entry/)
-    assert.deepEqual(await render([member('a', 'performer'), member('a', 'admin')]), [{ id: 'a', title: 'Компания a' }])
+    assert.deepEqual(await render([member('a', 'performer'), member('a', 'admin')]), [{ id: 'a', title: 'Компания a', ...(name.startsWith('CompanySettings') ? { restricted: false } : {}) }])
   })
 }
 

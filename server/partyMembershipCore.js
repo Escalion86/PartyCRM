@@ -20,7 +20,7 @@ export const sanitizePartyStaff = (staff) => sanitizeDocument(staff)
 
 export const sanitizePartyCompany = (company) => sanitizeDocument(company)
 
-export const buildPartyMembership = (staff, company) => {
+export const buildPartyMembership = (staff, company, position = null) => {
   const sanitizedStaff = sanitizePartyStaff(staff)
   const sanitizedCompany = sanitizePartyCompany(company)
 
@@ -35,6 +35,13 @@ export const buildPartyMembership = (staff, company) => {
     isLocationOwner: sanitizedStaff.role === 'location_owner',
     locationIds: (sanitizedStaff.locationIds || []).map(String),
     staff: sanitizedStaff,
+    position: position ? {
+      ...position,
+      _id: String(position._id),
+      tenantId: String(position.tenantId),
+      orderScope: { ...position.orderScope, locationIds: (position.orderScope?.locationIds || []).map(String) },
+    } : null,
+    access: position ? { positionId: String(position._id), revision: position.revision || 0, permissions: position.permissions || {}, orderScope: { ...position.orderScope, locationIds: (position.orderScope?.locationIds || []).map(String) } } : null,
     company: sanitizedCompany,
   }
 }

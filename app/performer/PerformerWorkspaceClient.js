@@ -4,9 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import ContactsIconsButtons from '@components/ContactsIconsButtons'
 import Modal from '@components/Modal'
+import { PartyPerformerContacts } from '@components/party/orders/PartyOrderContactRoles'
+import { PartyEventBriefView } from '@components/party/orders/PartyEventBrief'
 import { apiJson } from '@helpers/apiClient'
 import getPersonFullName from '@helpers/getPersonFullName'
 import { isPushSupported, syncPushSubscription } from '@helpers/pushClient'
+
+const PartyTasks = dynamic(() => import('@components/party/tasks/PartyTasks'))
 
 const PartyOrderReports = dynamic(
   () => import('@components/party/reports/PartyOrderReports')
@@ -85,18 +89,8 @@ const isOrderStarted = (order) => {
   )
 }
 
-const getClientName = (client) =>
-  getPersonFullName(client, { fallback: client?.name || 'не указан' })
-
 const getContactName = (person, fallback = 'не указан') =>
   getPersonFullName(person, { fallback: person?.name || fallback })
-
-const reportStatusLabels = {
-  draft: 'Черновик',
-  submitted: 'На проверке',
-  revision_requested: 'Нужны правки',
-  accepted: 'Принят',
-}
 
 const contactMethodLabels = {
   phone: 'Телефон',
@@ -104,13 +98,6 @@ const contactMethodLabels = {
   whatsapp: 'WhatsApp',
   sms: 'SMS',
   email: 'Email',
-}
-
-const canEditReport = (order) => isOrderStarted(order)
-
-const getReportAccessMessage = (order) => {
-  if (canEditReport(order)) return ''
-  return 'Отчет будет доступен после начала заказа.'
 }
 
 const DetailSection = ({ title, children }) => (
@@ -128,95 +115,6 @@ const DetailLine = ({ label, children }) => (
     <div className="min-w-0 break-words text-slate-900">{children || '-'}</div>
   </div>
 )
-
-const PerformerReportEditor = ({
-  report,
-  reportDraft,
-  canSubmitReport,
-  reportAccessMessage,
-  isSavingReport,
-  onDraftChange,
-  onSubmit,
-}) => {
-  const reportFiles = Array.isArray(report?.files) ? report.files : []
-
-  return (
-    <div className="grid gap-3 rounded-lg border border-sky-100 bg-sky-50/60 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-slate-800">Отчет по заказу</p>
-        <span className="rounded bg-white px-2 py-1 text-xs font-semibold text-slate-600">
-          {reportStatusLabels[report?.status] || 'Черновик'}
-        </span>
-      </div>
-      {report?.reviewComment ? (
-        <p className="rounded bg-white p-2 text-xs text-orange-700">
-          Комментарий: {report.reviewComment}
-        </p>
-      ) : null}
-      {!canSubmitReport ? (
-        <p className="rounded bg-white p-2 text-sm text-slate-600">
-          {reportAccessMessage}
-        </p>
-      ) : (
-        <>
-          <textarea
-            value={reportDraft.text}
-            onChange={(event) => onDraftChange({ text: event.target.value })}
-            rows={4}
-            className="w-full resize-y rounded-md border border-sky-100 bg-white px-3 py-2 text-sm outline-none focus:border-sky-500"
-            placeholder="Напишите, как прошло мероприятие, что выполнено и что важно знать менеджеру."
-            disabled={report?.status === 'accepted'}
-          />
-          <div className="grid gap-2 sm:grid-cols-2">
-            <input
-              value={reportDraft.fileName}
-              onChange={(event) =>
-                onDraftChange({ fileName: event.target.value })
-              }
-              className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
-              placeholder="Название файла"
-              disabled={report?.status === 'accepted'}
-            />
-            <input
-              value={reportDraft.fileUrl}
-              onChange={(event) =>
-                onDraftChange({ fileUrl: event.target.value })
-              }
-              className="h-10 rounded-md border border-sky-100 bg-white px-3 text-sm outline-none focus:border-sky-500"
-              placeholder="Ссылка на файл"
-              disabled={report?.status === 'accepted'}
-            />
-          </div>
-        </>
-      )}
-      {reportFiles.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {reportFiles.map((file) => (
-            <a
-              key={file._id || file.url || file.name}
-              href={file.url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded border border-sky-200 bg-white px-2 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50"
-            >
-              {file.name || 'Файл отчета'}
-            </a>
-          ))}
-        </div>
-      ) : null}
-      {canSubmitReport && report?.status !== 'accepted' ? (
-        <button
-          type="button"
-          disabled={isSavingReport}
-          onClick={onSubmit}
-          className={primaryButtonClass}
-        >
-          {isSavingReport ? 'Отправляем...' : 'Отправить отчет'}
-        </button>
-      ) : null}
-    </div>
-  )
-}
 
 const PerformerOrderViewModal = ({ order, onClose }) => {
   if (!order) return null
@@ -251,18 +149,28 @@ const PerformerOrderViewModal = ({ order, onClose }) => {
                 {order.title || order.serviceTitle || 'Заказ'}
               </h3>
             </div>
-            <DetailLine label="Дата и время">
-              {formatDateTime(order.eventDate)}
-            </DetailLine>
-            <DetailLine label="Окончание">
-              {order.dateEnd ? formatDateTime(order.dateEnd) : 'Не указано'}
-            </DetailLine>
-            <DetailLine label="Место">{getAddressText(order)}</DetailLine>
-            <DetailLine label="Услуги">
-              {order.serviceTitles?.length > 0
-                ? order.serviceTitles.join(', ')
-                : order.serviceTitle || 'Не указаны'}
-            </DetailLine>
+            {order.permissions?.fields?.eventDate !== false && (
+              <DetailLine label="Дата и время">
+                {formatDateTime(order.eventDate)}
+              </DetailLine>
+            )}
+            {order.permissions?.fields?.dateEnd !== false && (
+              <DetailLine label="Окончание">
+                {order.dateEnd ? formatDateTime(order.dateEnd) : 'Не указано'}
+              </DetailLine>
+            )}
+            {(order.permissions?.fields?.locationId !== false ||
+              order.permissions?.fields?.customAddress !== false) && (
+              <DetailLine label="Место">{getAddressText(order)}</DetailLine>
+            )}
+            {(order.permissions?.fields?.servicesIds !== false ||
+              order.permissions?.fields?.serviceTitle !== false) && (
+              <DetailLine label="Услуги">
+                {order.serviceTitles?.length > 0
+                  ? order.serviceTitles.join(', ')
+                  : order.serviceTitle || 'Не указаны'}
+              </DetailLine>
+            )}
             {order.performerComment ? (
               <DetailLine label="Комментарий">
                 {order.performerComment}
@@ -271,39 +179,31 @@ const PerformerOrderViewModal = ({ order, onClose }) => {
           </div>
         </DetailSection>
 
-        <DetailSection title="Клиент">
-          <div className="grid gap-2 text-sm">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="font-semibold text-slate-500">Клиент:</span>
-              <span className="font-semibold text-slate-900">
-                {getClientName(order.client)}
-              </span>
-              <ContactsIconsButtons
-                user={order.client}
-                showChat
-                className="my-0 shrink-0"
-              />
-            </div>
-            {order.client?.phone ? (
-              <div className="text-slate-600">
-                Телефон: {order.client.phone}
-              </div>
-            ) : null}
-            {order.client?.email ? (
-              <div className="text-slate-600">Email: {order.client.email}</div>
-            ) : null}
-          </div>
-        </DetailSection>
-
-        {order.onsiteContact ? (
-          <DetailSection title="Контакт на месте">
-            <div className="grid gap-2">
-              <DetailLine label="Имя">{order.onsiteContact.name || 'Не указано'}</DetailLine>
-              <DetailLine label="Телефон">{order.onsiteContact.phone || 'Не указан'}</DetailLine>
-              <DetailLine label="Email">{order.onsiteContact.email || 'Не указан'}</DetailLine>
-            </div>
+        {order.permissions?.canViewContacts !== false &&
+          order.performerContacts?.length > 0 && (
+            <DetailSection title="Контакты заказа">
+              <PartyPerformerContacts contacts={order.performerContacts} />
+            </DetailSection>
+          )}
+        {order.permissions?.canViewBrief !== false && order.eventBrief && (
+          <DetailSection title="Бриф">
+            <PartyEventBriefView
+              value={order.eventBrief}
+              companyId={order.companyId}
+              orderId={String(order._id)}
+              orderStatus={order.status}
+            />
           </DetailSection>
-        ) : null}
+        )}
+        {order.permissions?.canViewTasks && (
+          <DetailSection title="Задачи">
+            <PartyTasks
+              companyId={order.companyId}
+              orderId={String(order._id)}
+              compact
+            />
+          </DetailSection>
+        )}
 
         {order.communicationInstructions?.representAs ||
         order.communicationInstructions?.communicationNotes ||
@@ -315,14 +215,20 @@ const PerformerOrderViewModal = ({ order, onClose }) => {
                   {order.communicationInstructions.representAs}
                 </DetailLine>
               ) : null}
-              {order.communicationInstructions.allowedContactMethods?.length > 0 ? (
+              {order.communicationInstructions.allowedContactMethods?.length >
+              0 ? (
                 <DetailLine label="Согласованные способы связи">
-                  {order.communicationInstructions.allowedContactMethods.map((method) => contactMethodLabels[method]).filter(Boolean).join(', ')}
+                  {order.communicationInstructions.allowedContactMethods
+                    .map((method) => contactMethodLabels[method])
+                    .filter(Boolean)
+                    .join(', ')}
                 </DetailLine>
               ) : null}
               {order.communicationInstructions.communicationNotes ? (
                 <DetailLine label="Инструкции">
-                  <span className="whitespace-pre-wrap">{order.communicationInstructions.communicationNotes}</span>
+                  <span className="whitespace-pre-wrap">
+                    {order.communicationInstructions.communicationNotes}
+                  </span>
                 </DetailLine>
               ) : null}
             </div>
@@ -360,120 +266,50 @@ const PerformerOrderViewModal = ({ order, onClose }) => {
             <DetailLine label="Статус">
               {confirmationLabels[confirmationStatus] || confirmationStatus}
             </DetailLine>
-            <DetailLine label="Выплата">
-              {formatMoney(order.assignment?.payoutAmount)}
-            </DetailLine>
-          </div>
-        </DetailSection>
-
-        <DetailSection title="Подготовка">
-          <PartyOrderPreparationPanel
-            companyId={order.companyId}
-            orderId={String(order._id)}
-            staffId={String(order.staffId)}
-          />
-        </DetailSection>
-
-        <DetailSection title="Расчёт по празднику">
-          <PartyFinancialSettlementsPanel
-            companyId={order.companyId}
-            orderId={String(order._id)}
-            staffId={String(order.staffId)}
-            assignments={[{ ...order.assignment, staffId: order.staffId }]}
-            staff={[
-              {
-                _id: order.staffId,
-                firstName: order.staffName || 'Исполнитель',
-              },
-            ]}
-          />
-        </DetailSection>
-
-        <DetailSection title="Денежные поручения">
-          <PartyFinancialTasksPanel
-            companyId={order.companyId}
-            orderId={String(order._id)}
-            staffId={String(order.staffId)}
-          />
-        </DetailSection>
-      </div>
-    </Modal>
-  )
-}
-
-const PerformerReportModal = ({
-  order,
-  onClose,
-  reportDraft,
-  onReportDraftChange,
-  onSaveReport,
-  isSavingReport,
-  canSubmitReport,
-  reportAccessMessage,
-}) => {
-  if (!order) return null
-
-  const report = order.assignment?.report || {}
-
-  return (
-    <Modal
-      open={true}
-      onClose={onClose}
-      title="Отчет по заказу"
-      tone="party"
-      size="lg"
-      footer={
-        <button
-          type="button"
-          className={secondaryButtonClass}
-          onClick={onClose}
-        >
-          Закрыть
-        </button>
-      }
-    >
-      <div className="grid gap-3">
-        <DetailSection title="Заказ">
-          <div className="grid gap-2">
-            <div>
-              <p className="text-sm font-semibold text-sky-700">
-                {formatCompanyTitle(order.companyTitle)}
-              </p>
-              <h3 className="mt-1 text-xl font-semibold text-slate-950">
-                {order.title || order.serviceTitle || 'Заказ'}
-              </h3>
-            </div>
-            <DetailLine label="Дата и время">
-              {formatDateTime(order.eventDate)}
-            </DetailLine>
-            <DetailLine label="Окончание">
-              {order.dateEnd ? formatDateTime(order.dateEnd) : 'Не указано'}
-            </DetailLine>
-            <DetailLine label="Место">{getAddressText(order)}</DetailLine>
-            <DetailLine label="Услуги">
-              {order.serviceTitles?.length > 0
-                ? order.serviceTitles.join(', ')
-                : order.serviceTitle || 'Не указаны'}
-            </DetailLine>
-            {order.performerComment ? (
-              <DetailLine label="Комментарий">
-                {order.performerComment}
+            {order.permissions?.canViewPayout !== false && (
+              <DetailLine label="Выплата">
+                {formatMoney(order.assignment?.payoutAmount)}
               </DetailLine>
-            ) : null}
+            )}
           </div>
         </DetailSection>
 
-        <DetailSection title="Отчет">
-          <PerformerReportEditor
-            report={report}
-            reportDraft={reportDraft}
-            canSubmitReport={canSubmitReport}
-            reportAccessMessage={reportAccessMessage}
-            isSavingReport={isSavingReport}
-            onDraftChange={onReportDraftChange}
-            onSubmit={onSaveReport}
-          />
-        </DetailSection>
+        {order.permissions?.canViewPreparation !== false && (
+          <DetailSection title="Подготовка">
+            <PartyOrderPreparationPanel
+              companyId={order.companyId}
+              orderId={String(order._id)}
+              staffId={String(order.staffId)}
+            />
+          </DetailSection>
+        )}
+
+        {order.permissions?.canViewFinancialSettlement !== false && (
+          <DetailSection title="Расчёт по празднику">
+            <PartyFinancialSettlementsPanel
+              companyId={order.companyId}
+              orderId={String(order._id)}
+              staffId={String(order.staffId)}
+              assignments={[{ ...order.assignment, staffId: order.staffId }]}
+              staff={[
+                {
+                  _id: order.staffId,
+                  firstName: order.staffName || 'Исполнитель',
+                },
+              ]}
+            />
+          </DetailSection>
+        )}
+
+        {order.permissions?.canViewFinancialTasks !== false && (
+          <DetailSection title="Денежные поручения">
+            <PartyFinancialTasksPanel
+              companyId={order.companyId}
+              orderId={String(order._id)}
+              staffId={String(order.staffId)}
+            />
+          </DetailSection>
+        )}
       </div>
     </Modal>
   )
@@ -484,8 +320,6 @@ export default function PerformerWorkspaceClient() {
   const [linkRequests, setLinkRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [savingOrderId, setSavingOrderId] = useState('')
-  const [savingReportKey, setSavingReportKey] = useState('')
-  const [reportDrafts, setReportDrafts] = useState({})
   const [savingLinkRequestId, setSavingLinkRequestId] = useState('')
   const [error, setError] = useState('')
   const [companyFilter, setCompanyFilter] = useState('all')
@@ -495,7 +329,6 @@ export default function PerformerWorkspaceClient() {
   const [pushBusy, setPushBusy] = useState(false)
   const [pushMessage, setPushMessage] = useState('')
   const [viewingOrderKey, setViewingOrderKey] = useState('')
-  const [reportOrderKey, setReportOrderKey] = useState('')
   const [formReportOrder, setFormReportOrder] = useState(null)
   const [dirtyFormReports, setDirtyFormReports] = useState({})
   const handleReportDirty = useCallback(
@@ -609,7 +442,10 @@ export default function PerformerWorkspaceClient() {
   const payoutTotal = useMemo(
     () =>
       filteredOrders.reduce(
-        (sum, order) => sum + Number(order.assignment?.payoutAmount || 0),
+        (sum, order) =>
+          order.permissions?.canViewPayout === false
+            ? sum
+            : sum + Number(order.assignment?.payoutAmount || 0),
         0
       ),
     [filteredOrders]
@@ -621,14 +457,6 @@ export default function PerformerWorkspaceClient() {
         (order) => `${order._id}:${order.staffId}` === viewingOrderKey
       ) || null,
     [orders, viewingOrderKey]
-  )
-
-  const reportOrder = useMemo(
-    () =>
-      orders.find(
-        (order) => `${order._id}:${order.staffId}` === reportOrderKey
-      ) || null,
-    [orders, reportOrderKey]
   )
 
   const updateConfirmationStatus = async ({
@@ -666,76 +494,6 @@ export default function PerformerWorkspaceClient() {
     }
   }
 
-  const updateReportDraft = (orderKey, patch) => {
-    setReportDrafts((prev) => ({
-      ...prev,
-      [orderKey]: {
-        ...(prev[orderKey] || {}),
-        ...patch,
-      },
-    }))
-  }
-
-  const getReportDraft = (order) => {
-    const orderKey = `${order._id}:${order.staffId}`
-    const report = order.assignment?.report || {}
-    return {
-      text: reportDrafts[orderKey]?.text ?? report.text ?? '',
-      fileName: reportDrafts[orderKey]?.fileName ?? '',
-      fileUrl: reportDrafts[orderKey]?.fileUrl ?? '',
-    }
-  }
-
-  const savePerformerReport = async (order) => {
-    const orderKey = `${order._id}:${order.staffId}`
-    const draft = getReportDraft(order)
-    const files =
-      draft.fileName || draft.fileUrl
-        ? [{ name: draft.fileName || 'Файл отчета', url: draft.fileUrl }]
-        : order.assignment?.report?.files || []
-    setSavingReportKey(orderKey)
-    setError('')
-    try {
-      const response = await apiJson(
-        `/api/party/performer/orders/${order._id}/report`,
-        {
-          method: 'PATCH',
-          body: JSON.stringify({
-            staffId: order.staffId,
-            status: 'submitted',
-            text: draft.text,
-            files,
-          }),
-        }
-      )
-      setOrders((items) =>
-        items.map((item) =>
-          item._id === order._id && item.staffId === order.staffId
-            ? {
-                ...item,
-                assignment: {
-                  ...item.assignment,
-                  report: response.data.report,
-                },
-              }
-            : item
-        )
-      )
-      setReportDrafts((prev) => ({
-        ...prev,
-        [orderKey]: {
-          text: response.data.report?.text || '',
-          fileName: '',
-          fileUrl: '',
-        },
-      }))
-    } catch (saveError) {
-      setError(saveError.message || 'Не удалось отправить отчет')
-    } finally {
-      setSavingReportKey('')
-    }
-  }
-
   const updateLinkRequest = async ({ staffId, action }) => {
     setSavingLinkRequestId(staffId)
     setError('')
@@ -760,17 +518,6 @@ export default function PerformerWorkspaceClient() {
     }
   }
 
-  const reportOrderReportDraft = reportOrder
-    ? getReportDraft(reportOrder)
-    : { text: '', fileName: '', fileUrl: '' }
-  const reportOrderCanSubmitReport = reportOrder && canEditReport(reportOrder)
-  const reportOrderReportAccessMessage = reportOrder
-    ? getReportAccessMessage(reportOrder)
-    : ''
-  const reportOrderIsSavingReport = reportOrder
-    ? savingReportKey === `${reportOrder._id}:${reportOrder.staffId}`
-    : false
-
   if (loading) {
     return (
       <section className="mx-auto max-w-5xl px-5 py-10">
@@ -788,8 +535,8 @@ export default function PerformerWorkspaceClient() {
         Кабинет исполнителя
       </h1>
       <p className="mt-4 max-w-2xl leading-7 text-slate-700">
-        Видны только назначенные заказы и сумма выплаты исполнителю. Полная
-        клиентская смета здесь не показывается.
+        Назначенные заказы, контакты команды, задачи и отчёты — в пределах прав
+        вашей должности.
       </p>
       {error && (
         <div className="border-danger/30 bg-danger/10 text-danger mt-5 rounded-md border p-3 text-sm">
@@ -887,7 +634,11 @@ export default function PerformerWorkspaceClient() {
           {[
             ['Компаний', `${companyOptions.length || 0}`],
             ['Назначено', `${filteredOrders.length} заказов`],
-            ['К выплате', formatMoney(payoutTotal)],
+            ...(filteredOrders.some(
+              (order) => order.permissions?.canViewPayout !== false
+            )
+              ? [['К выплате', formatMoney(payoutTotal)]]
+              : []),
           ].map(([title, value]) => (
             <div key={title} className="bg-white p-5">
               <p className="text-sm text-black/55">{title}</p>
@@ -975,12 +726,17 @@ export default function PerformerWorkspaceClient() {
                     {formatCompanyTitle(order.companyTitle)}
                   </p>
                   <p className="text-lg font-semibold">{order.title}</p>
-                  <p className="mt-1 text-sm text-black/60">
-                    {formatDateTime(order.eventDate)}
-                  </p>
-                  <p className="mt-1 text-sm text-black/60">
-                    {getAddressText(order)}
-                  </p>
+                  {order.permissions?.fields?.eventDate !== false && (
+                    <p className="mt-1 text-sm text-black/60">
+                      {formatDateTime(order.eventDate)}
+                    </p>
+                  )}
+                  {(order.permissions?.fields?.locationId !== false ||
+                    order.permissions?.fields?.customAddress !== false) && (
+                    <p className="mt-1 text-sm text-black/60">
+                      {getAddressText(order)}
+                    </p>
+                  )}
                   {order.performerComment ? (
                     <p className="mt-2 max-w-2xl rounded bg-sky-50 p-2 text-sm whitespace-pre-wrap text-slate-700">
                       {order.performerComment}
@@ -1001,17 +757,14 @@ export default function PerformerWorkspaceClient() {
                       ))}
                     </div>
                   ) : null}
-                  <div className="mt-2 flex min-h-[25px] flex-wrap items-center gap-x-2 gap-y-1 text-sm text-black/60">
-                    <span className="font-medium text-black/70">Клиент:</span>
-                    <span className="min-w-0 truncate">
-                      {getClientName(order.client)}
-                    </span>
-                    <ContactsIconsButtons
-                      user={order.client}
-                      showChat
-                      className="my-0 shrink-0"
-                    />
-                  </div>
+                  {order.permissions?.canViewContacts !== false &&
+                    order.performerContacts?.length > 0 && (
+                      <div className="mt-2">
+                        <PartyPerformerContacts
+                          contacts={order.performerContacts}
+                        />
+                      </div>
+                    )}
                   {order.responsibleStaff ? (
                     <div className="mt-2 flex min-h-[25px] flex-wrap items-center gap-x-2 gap-y-1 text-sm text-black/60">
                       <span className="font-medium text-black/70">
@@ -1031,10 +784,14 @@ export default function PerformerWorkspaceClient() {
                   ) : null}
                 </div>
                 <div className="sm:text-right">
-                  <p className="text-sm text-black/55">Выплата</p>
-                  <p className="text-2xl font-semibold">
-                    {formatMoney(order.assignment?.payoutAmount)}
-                  </p>
+                  {order.permissions?.canViewPayout !== false && (
+                    <>
+                      <p className="text-sm text-black/55">Выплата</p>
+                      <p className="text-2xl font-semibold">
+                        {formatMoney(order.assignment?.payoutAmount)}
+                      </p>
+                    </>
+                  )}
                   <p className="mt-1 text-xs text-black/50">
                     {confirmationLabels[confirmationStatus] ||
                       confirmationStatus}
@@ -1047,57 +804,53 @@ export default function PerformerWorkspaceClient() {
                     >
                       Подробнее
                     </button>
-                    <button
-                      type="button"
-                      className={secondaryButtonClass}
-                      onClick={() => {
-                        setDirtyFormReports({})
-                        setFormReportOrder(order)
-                      }}
-                    >
-                      Формы отчёта
-                    </button>
-                    {hasStarted ? (
+                    {order.permissions?.canViewReports !== false && (
                       <button
                         type="button"
-                        onClick={() => setReportOrderKey(orderKey)}
                         className={secondaryButtonClass}
+                        onClick={() => {
+                          setDirtyFormReports({})
+                          setFormReportOrder(order)
+                        }}
                       >
-                        Отчет
-                      </button>
-                    ) : null}
-                    {confirmationStatus === 'pending' && (
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() =>
-                          updateConfirmationStatus({
-                            orderId: order._id,
-                            staffId: order.staffId,
-                            confirmationStatus: 'confirmed',
-                          })
-                        }
-                        className={primaryButtonClass}
-                      >
-                        Подтвердить участие
+                        Отчёт
                       </button>
                     )}
-                    {confirmationStatus === 'confirmed' && hasStarted && (
-                      <button
-                        type="button"
-                        disabled={isSaving}
-                        onClick={() =>
-                          updateConfirmationStatus({
-                            orderId: order._id,
-                            staffId: order.staffId,
-                            confirmationStatus: 'done',
-                          })
-                        }
-                        className={secondaryButtonClass}
-                      >
-                        Отметить выполненным
-                      </button>
-                    )}
+                    {order.permissions?.canChangeAssignment !== false &&
+                      confirmationStatus === 'pending' && (
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          onClick={() =>
+                            updateConfirmationStatus({
+                              orderId: order._id,
+                              staffId: order.staffId,
+                              confirmationStatus: 'confirmed',
+                            })
+                          }
+                          className={primaryButtonClass}
+                        >
+                          Подтвердить участие
+                        </button>
+                      )}
+                    {order.permissions?.canChangeAssignment !== false &&
+                      confirmationStatus === 'confirmed' &&
+                      hasStarted && (
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          onClick={() =>
+                            updateConfirmationStatus({
+                              orderId: order._id,
+                              staffId: order.staffId,
+                              confirmationStatus: 'done',
+                            })
+                          }
+                          className={secondaryButtonClass}
+                        >
+                          Отметить выполненным
+                        </button>
+                      )}
                   </div>
                 </div>
               </div>
@@ -1125,22 +878,6 @@ export default function PerformerWorkspaceClient() {
       <PerformerOrderViewModal
         order={viewingOrder}
         onClose={() => setViewingOrderKey('')}
-      />
-      <PerformerReportModal
-        order={reportOrder}
-        onClose={() => setReportOrderKey('')}
-        reportDraft={reportOrderReportDraft}
-        onReportDraftChange={(patch) => {
-          if (!reportOrder) return
-          updateReportDraft(`${reportOrder._id}:${reportOrder.staffId}`, patch)
-        }}
-        onSaveReport={() => {
-          if (!reportOrder) return
-          savePerformerReport(reportOrder)
-        }}
-        isSavingReport={reportOrderIsSavingReport}
-        canSubmitReport={Boolean(reportOrderCanSubmitReport)}
-        reportAccessMessage={reportOrderReportAccessMessage}
       />
     </section>
   )

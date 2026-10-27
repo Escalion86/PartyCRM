@@ -116,7 +116,7 @@ export default function PartyUpcomingEventsModal({
     >
       <div className="flex flex-col gap-1">
         <div className="text-sm font-bold text-slate-900">
-          {normalizeText(item.title, 'Доп. событие')}
+          {normalizeText(item.title, 'Задача')}
         </div>
         <div className="text-xs text-slate-600">{formatDateTime(item.date)}</div>
         {item.description ? (
@@ -162,7 +162,7 @@ export default function PartyUpcomingEventsModal({
     >
       <div className="flex flex-col gap-1">
         <div className="text-sm font-bold text-slate-900">
-          {normalizeText(item.title, 'Доп. событие')}
+          {normalizeText(item.title, 'Задача')}
         </div>
         <div className="text-xs text-slate-600">
           Выполнено: {formatDateTime(item.doneAt)}
@@ -215,28 +215,28 @@ export default function PartyUpcomingEventsModal({
         <Section
           title="Просрочено"
           count={segments.overdue.length}
-          emptyText="Просроченных доп. событий нет"
+          emptyText="Просроченных задач нет"
         >
           {segments.overdue.map(renderAdditionalItem)}
         </Section>
         <Section
           title="Сегодня"
           count={segments.today.length}
-          emptyText="На сегодня доп. событий нет"
+          emptyText="На сегодня задач нет"
         >
           {segments.today.map(renderAdditionalItem)}
         </Section>
         <Section
           title="Завтра"
           count={segments.tomorrow.length}
-          emptyText="На завтра доп. событий нет"
+          emptyText="На завтра задач нет"
         >
           {segments.tomorrow.map(renderAdditionalItem)}
         </Section>
         <Section
           title="Выполнено сегодня"
           count={segments.completedToday.length}
-          emptyText="Сегодня выполненных доп. событий нет"
+          emptyText="Сегодня выполненных задач нет"
         >
           {segments.completedToday.map(renderCompletedAdditionalItem)}
         </Section>

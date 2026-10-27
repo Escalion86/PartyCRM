@@ -6,6 +6,9 @@ import CompanySettingsNotificationsContent from './CompanySettingsNotificationsC
 import CompanySettingsDocumentsContent from './CompanySettingsDocumentsContent'
 import CompanySettingsTariffsContent from './CompanySettingsTariffsContent'
 import CompanySettingsReportsContent from './CompanySettingsReportsContent'
+import CompanySettingsRolesContent from './CompanySettingsRolesContent'
+import CompanySettingsBriefContent from './CompanySettingsBriefContent'
+import CompanySettingsWorkflowContent from './CompanySettingsWorkflowContent'
 
 export const COMPANY_SETTINGS_CONTENT = Object.freeze({
   general: CompanySettingsGeneralContent,
@@ -16,4 +19,7 @@ export const COMPANY_SETTINGS_CONTENT = Object.freeze({
   documents: CompanySettingsDocumentsContent,
   tariffs: CompanySettingsTariffsContent,
   reports: CompanySettingsReportsContent,
+  roles: CompanySettingsRolesContent,
+  brief: CompanySettingsBriefContent,
+  workflow: CompanySettingsWorkflowContent,
 })

@@ -23,7 +23,7 @@ test('party order click opens a read-only order view modal', async () => {
   assert.match(viewModal, /order\?\.performerComment/)
   assert.match(viewModal, /Исполнители/)
   assert.match(viewModal, /Финансы/)
-  assert.match(viewModal, /Доп\. события/)
+  assert.match(viewModal, /<Section title="Задачи">/)
 })
 
 test('closed party order view keeps performers, fees and performer comment visible', async () => {
@@ -32,7 +32,8 @@ test('closed party order view keeps performers, fees and performer comment visib
   const orderRoute = await source('app/api/party/orders/[id]/route.js')
 
   assert.match(workspace, /\? \{ \.\.\.order, status: 'closed' \}/)
-  assert.match(orderRoute, /\$set: \{ status: nextStatus \}/)
+  assert.match(orderRoute, /\$set:\s*\{\s*status: nextStatus/)
+  assert.match(orderRoute, /snapshotPartyBriefForClose/)
   assert.match(
     viewModal,
     /const assignedStaff = Array\.isArray\(order\?\.assignedStaff\)/
@@ -44,53 +45,30 @@ test('closed party order view keeps performers, fees and performer comment visib
   assert.doesNotMatch(viewModal, /const assignedStaff = isClosed/)
 })
 
-test('party order view shows contact shortcuts and interactive additional events', async () => {
+test('party order view uses the unified contacts and task list', async () => {
   const workspace = await source('app/company/CompanyWorkspaceClient.js')
   const viewModal = await source('components/party/modals/OrderViewModal.js')
-  const additionalEventsModal = await source(
-    'components/party/modals/OrderAdditionalEventsModal.js'
-  )
-
-  assert.match(viewModal, /ContactsIconsButtons/)
-  assert.match(viewModal, /getOrderContacts/)
-  assert.match(viewModal, /order\?\.otherContacts/)
-  assert.match(viewModal, /Доп\. контакты/)
-  assert.match(viewModal, /showChat/)
-  assert.match(viewModal, /activeAdditionalEvent/)
-  assert.match(viewModal, /openAdditionalEvent/)
-  assert.match(viewModal, /toggleAdditionalEventDone/)
-  assert.match(additionalEventsModal, /faCircleCheck/)
-  assert.match(viewModal, /onUpdateOrder/)
+  assert.match(viewModal, /<PartyOrderContactRolesView/)
+  assert.match(viewModal, /clientsById=\{safeClientsById\}/)
+  assert.match(viewModal, /otherContacts=\{order\.otherContacts \|\| \[\]\}/)
+  assert.match(viewModal, /<PartyTasks companyId=\{activeCompanyId\}/)
   assert.match(workspace, /onUpdateOrder=\{\(nextOrder\) =>/)
   assert.match(workspace, /setOrderDraft\(normalizeOrderDraft\(updatedOrder\)\)/)
 })
 
-test('party order view can edit additional events from card pencil button', async () => {
+test('party order view delegates task actions to the canonical task component', async () => {
   const viewModal = await source('components/party/modals/OrderViewModal.js')
-  const additionalEventsModal = await source(
-    'components/party/modals/OrderAdditionalEventsModal.js'
-  )
-
-  assert.match(viewModal, /AdditionalEventCard/)
-  assert.match(viewModal, /editingAdditionalEvent/)
-  assert.match(viewModal, /openAdditionalEventEditor/)
-  assert.match(viewModal, /saveAdditionalEventEdit/)
-  assert.match(viewModal, /title="Редактировать доп\. событие"/)
-  assert.match(viewModal, /AdditionalEventEditModal/)
-  assert.match(additionalEventsModal, /type="datetime-local"/)
-  assert.match(viewModal, /editingAdditionalEventDraft\.title/)
-  assert.match(viewModal, /editingAdditionalEventDraft\.description/)
+  const block = viewModal.slice(viewModal.indexOf('<Section title="Задачи">'), viewModal.indexOf('</Section>', viewModal.indexOf('<Section title="Задачи">')))
+  assert.match(block, /<PartyTasks/)
+  assert.match(block, /orderId=\{String\(order\._id\)\}/)
+  assert.doesNotMatch(block, /AdditionalEventCard|AdditionalEventEditModal/)
 })
 
-test('party order view reuses additional events modal cards', async () => {
+test('party order view uses the same task source as the standalone task modal', async () => {
   const viewModal = await source('components/party/modals/OrderViewModal.js')
-
-  assert.match(
-    viewModal,
-    /import \{\s*AdditionalEventCard,\s*AdditionalEventEditModal/s
-  )
-  assert.doesNotMatch(viewModal, /getAdditionalEventStatusClassName/)
-  assert.doesNotMatch(viewModal, /faPencilAlt/)
+  const tasksModal = await source('components/party/modals/OrderAdditionalEventsModal.js')
+  assert.match(viewModal, /import PartyTasks from '@components\/party\/tasks\/PartyTasks'/)
+  assert.match(tasksModal, /import PartyTasks from '@components\/party\/tasks\/PartyTasks'/)
 })
 
 test('closed party orders hide edit and transaction controls in UI', async () => {

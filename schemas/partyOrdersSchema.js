@@ -211,6 +211,9 @@ const partyOrderPreparationSchema = new Schema({
 
 const partyOrderEventBriefSchema = new Schema(
   {
+    customAnswers: { type: Schema.Types.Mixed, default: {} },
+    archivedAnswers: { type: [Schema.Types.Mixed], default: [] },
+    templateSnapshot: { type: Schema.Types.Mixed, default: null },
     occasion: { type: String, trim: true, default: '', maxlength: 180 },
     celebrantName: { type: String, trim: true, default: '', maxlength: 160 },
     celebrantAge: { type: Number, default: null, min: 0, max: 120 },
@@ -231,7 +234,7 @@ const partyOrderEventBriefSchema = new Schema(
     wishes: { type: String, trim: true, default: '', maxlength: 4000 },
     restrictions: { type: String, trim: true, default: '', maxlength: 4000 },
   },
-  { _id: false }
+  { _id: false, strict: false }
 )
 
 const partyOrderItemSchema = new Schema(
@@ -297,6 +300,8 @@ const partyOrdersSchema = {
     default: 'draft',
     index: true,
   },
+  workflowStageId: { type: String, default: '', maxlength: 64, index: true },
+  taskScheduleRevision: { type: Number, default: 0, min: 0 },
   clientId: {
     type: Schema.Types.ObjectId,
     ref: 'Client',
@@ -309,6 +314,20 @@ const partyOrdersSchema = {
     onsiteClientId: { type: Schema.Types.ObjectId, ref: 'Client', default: null },
     representAs: { type: String, trim: true, default: '', maxlength: 240 },
     communicationNotes: { type: String, trim: true, default: '', maxlength: 2000 },
+    contactSettings: {
+      type: [{
+        _id: false,
+        clientId: { type: Schema.Types.ObjectId, ref: 'Client', required: true },
+        performerCanContact: { type: Boolean, required: true },
+        allowedContactMethods: {
+          type: [{ type: String, enum: ['phone', 'telegram', 'whatsapp', 'sms', 'email'] }],
+          default: [],
+          validate: (items) => items.length <= 5 && new Set(items).size === items.length,
+        },
+      }],
+      default: undefined,
+      validate: (items) => !items || items.length <= 100,
+    },
     allowedContactMethods: {
       type: [{ type: String, enum: ['phone', 'telegram', 'whatsapp', 'sms', 'email'] }],
       default: [],

@@ -1,4 +1,6 @@
 import crypto from 'node:crypto'
+import { assertPartyReportGate } from './partyReportGates'
+import { canPartyAccess } from '../helpers/partyRolePermissions.js'
 import { getPartyOrderModel, getPartyStaffModel } from './partyModels'
 import {
   getPartyFinancialLockModel,
@@ -229,6 +231,33 @@ export const performPartyFinancialOperation = async ({
         'Выплата разрешена только после утверждения сверки',
         409
       )
+    if (normalized.type === 'payment') {
+      const Orders = await getPartyOrderModel()
+      const order = await Orders.findOneAndUpdate(
+        { _id: settlement.orderId, tenantId: context.tenantId },
+        { $inc: { sharedLocationRevision: 1 } },
+        { new: true, session }
+      ).lean()
+      if (!order) throw financialError('Заказ не найден', 404)
+      if (
+        !canPartyAccess(context, {
+          resource: 'finance.payouts',
+          action: 'edit',
+          order,
+        })
+      )
+        throw financialError(
+          'Нет права выплачивать деньги по этому заказу',
+          403
+        )
+      await assertPartyReportGate({
+        tenantId: context.tenantId,
+        order,
+        action: 'payout',
+        staffId: settlement.staffId,
+        session,
+      })
+    }
     if (
       normalized.type === 'received_on_site' &&
       !['draft', 'revision'].includes(settlement.status)

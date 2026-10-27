@@ -20,7 +20,13 @@ test('company owner can create location service client unlinked staff and order'
     staffRoute,
     ordersRoute,
   ]) {
-    assert.match(route, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
+    assert.match(route, /getPartyRequestContext\(\{\s*req/)
+    if (route === ordersRoute) {
+      assert.match(route, /canPartyAccess\(context,\s*\{\s*resource:\s*'orders',\s*action:\s*'create'/)
+      assert.match(route, /guardPartyOrderPatch\(context/)
+    } else {
+      assert.match(route, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
+    }
     assert.match(route, /tenantId:\s*context\.tenantId/)
     assert.match(route, /status:\s*201/)
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { normalizeMaxContactInput, isValidMaxContact } from '@helpers/maxContact'
 import { getPartyClientModel, getPartyOrderModel } from '@server/partyModels'
 import {
   getPartyClientDeleteRelations,
@@ -43,6 +44,7 @@ const pickClientPatch = (body) => {
   if (body.whatsapp !== undefined) patch.whatsapp = normalizePhone(body.whatsapp)
   if (body.viber !== undefined) patch.viber = normalizePhone(body.viber)
   if (typeof body.telegram === 'string') patch.telegram = normalizeString(body.telegram)
+  if (typeof body.max === 'string') patch.max = normalizeMaxContactInput(body.max)
   if (typeof body.instagram === 'string') patch.instagram = normalizeString(body.instagram)
   if (typeof body.vk === 'string') patch.vk = normalizeString(body.vk)
   if (typeof body.preferredContactChannel === 'string') {
@@ -143,6 +145,7 @@ export async function PATCH(req, { params }) {
   }
 
   const body = await parseJsonBody(req)
+  if (body.max !== undefined && !isValidMaxContact(body.max)) return partyError(400, 'invalid_max', 'Укажите телефон или ссылку max.ru для MAX', 'validation')
   const patch = pickClientPatch(body)
 
   if (patch.firstName === '') {

@@ -1,127 +1,375 @@
 import sanitizeHtml from 'sanitize-html'
+import { canPartyAccess } from '../helpers/partyRolePermissions.js'
 
-export const reportFailure = (message, status = 400, code = 'partycrm_invalid_report') => {
+export const reportFailure = (
+  message,
+  status = 400,
+  code = 'partycrm_invalid_report'
+) => {
   const error = new Error(message)
   error.status = status
   error.code = code
   throw error
 }
 
-export const isReportManager = (context) => ['owner', 'admin'].includes(context?.role)
-export const isReportAuthor = (context, report) => String(context?.staff?._id) === String(report?.staffId)
+export const hasPartyReportPermission = (
+  context,
+  resource = 'reports',
+  action = 'read',
+  order
+) => canPartyAccess(context, { resource, action, order })
+
+export const isReportManager = (context) =>
+  ['owner', 'admin'].includes(context?.role) &&
+  hasPartyReportPermission(context)
+export const isReportAuthor = (context, report) =>
+  String(context?.staff?._id) === String(report?.staffId)
 export const reportAudience = (template) => template?.audience || 'individual'
-export const isTeamReport = (report) => report?.scope === 'team' || report?.templateSnapshot?.audience === 'team'
-export const reportTeamStaffIds = (order) => [...new Set((order.assignedStaff || []).filter((item) => item.confirmationStatus !== 'declined').map((item) => String(item.staffId)))]
-export const isAssignedReportStaff = (context, order) => reportTeamStaffIds(order).includes(String(context?.staff?._id))
-export const isReportCoordinator = (context, order) => isAssignedReportStaff(context, order) && String(order.reportCoordinatorStaffId || '') === String(context?.staff?._id)
-export const canEditPartyReport = (context, report, order) => isReportAuthor(context, report) && isAssignedReportStaff(context, order) && order.status !== 'canceled' && (!isTeamReport(report) || isReportCoordinator(context, order))
+export const isTeamReport = (report) =>
+  report?.scope === 'team' || report?.templateSnapshot?.audience === 'team'
+export const reportTeamStaffIds = (order) => [
+  ...new Set(
+    (order.assignedStaff || [])
+      .filter((item) => item.confirmationStatus !== 'declined')
+      .map((item) => String(item.staffId))
+  ),
+]
+export const isAssignedReportStaff = (context, order) =>
+  reportTeamStaffIds(order).includes(String(context?.staff?._id))
+export const isReportCoordinator = (context, order) =>
+  isAssignedReportStaff(context, order) &&
+  String(order.reportCoordinatorStaffId || '') === String(context?.staff?._id)
+export const canEditPartyReport = (context, report, order) =>
+  hasPartyReportPermission(context, 'reports', 'read', order) &&
+  isReportAuthor(context, report) &&
+  isAssignedReportStaff(context, order) &&
+  order.status !== 'canceled' &&
+  (!isTeamReport(report) || isReportCoordinator(context, order))
 export const validateReportAudience = (value, previous) => {
   const audience = value ?? reportAudience(previous)
-  if (!['individual', 'team'].includes(audience)) reportFailure('Некорректный тип формы')
-  if (previous && audience !== reportAudience(previous)) reportFailure('Тип опубликованной формы изменить нельзя; создайте новую форму')
+  if (!['individual', 'team'].includes(audience))
+    reportFailure('Некорректный тип формы')
+  if (previous && audience !== reportAudience(previous))
+    reportFailure(
+      'Тип опубликованной формы изменить нельзя; создайте новую форму'
+    )
   return audience
 }
-export const canReviewReportField = (context, field) =>
-  isReportManager(context) || String(field?.reviewerStaffId || '') === String(context?.staff?._id)
+export const canReadPartyReportSection = (
+  context,
+  field,
+  order,
+  action = 'read'
+) =>
+  hasPartyReportPermission(
+    context,
+    `reports.${field?.section || 'general'}`,
+    action,
+    order
+  )
 
-export const canReadReportField = (context, report, field, isAssigned = false) =>
-  context?.role !== 'location_owner' && (
-  isReportManager(context) || ((isAssigned || isTeamReport(report)) && isReportAuthor(context, report)) ||
-  canReviewReportField(context, field) ||
-  (context?.role === 'performer' && field.section === 'creative' && field.shareCreative === true &&
-    report.answers.some((answer) => answer.fieldId === field.id && answer.status === 'accepted')))
+export const effectivePartyReportFields = (
+  context,
+  report,
+  order,
+  action = 'read'
+) =>
+  hasPartyReportPermission(context, 'reports', 'read', order)
+    ? (report.templateSnapshot?.fields || report.fields || []).filter((field) =>
+        canReadPartyReportSection(context, field, order, action)
+      )
+    : []
 
-export const getSharedCreativeAnswers = (report) => (report.templateSnapshot?.fields || []).flatMap((field) => {
-  if (field.section !== 'creative' || field.shareCreative !== true) return []
-  const answer = (report.answers || []).find((item) => item.fieldId === field.id && item.status === 'accepted')
-  return answer ? [{ field, answer }] : []
-})
+export const effectivePartyReportStatus = (report, authorContext, order) => {
+  const fields = effectivePartyReportFields(
+    authorContext,
+    report,
+    order,
+    'edit'
+  )
+  if (!fields.length) return 'not_required'
+  const answers = fields.map(
+    (field) =>
+      report.answers?.find((answer) => answer.fieldId === field.id) || {
+        status: 'draft',
+      }
+  )
+  return reportStatusFromAnswers(answers)
+}
 
-export const serializeReportLibraryItems = (report, { orderTitle = 'Мероприятие', eventDate = null, staffName = 'Исполнитель' } = {}) =>
+export const canReviewReportField = (context, field, order) =>
+  hasPartyReportPermission(context, 'reports', 'read', order) &&
+  hasPartyReportPermission(context, 'reports.review', 'edit', order) &&
+  canReadPartyReportSection(context, field, order) &&
+  (isReportManager(context) ||
+    String(field?.reviewerStaffId || '') === String(context?.staff?._id) ||
+    Boolean(
+      field?.reviewerPositionId &&
+      context?.position?.active !== false &&
+      String(field.reviewerPositionId) ===
+        String(context?.position?._id || context?.staff?.positionId || '')
+    ))
+
+export const canReadReportField = (
+  context,
+  report,
+  field,
+  isAssigned = false,
+  order
+) =>
+  hasPartyReportPermission(context, 'reports', 'read', order) &&
+  (((isAssigned || isTeamReport(report)) &&
+    isReportAuthor(context, report) &&
+    canReadPartyReportSection(context, field, order)) ||
+    (isReportManager(context) &&
+      canReadPartyReportSection(context, field, order)) ||
+    canReviewReportField(context, field, order) ||
+    (context?.role === 'performer' &&
+      canReadPartyReportSection(context, field, order) &&
+      field.section === 'creative' &&
+      field.shareCreative === true &&
+      report.answers.some(
+        (answer) => answer.fieldId === field.id && answer.status === 'accepted'
+      )))
+
+export const getSharedCreativeAnswers = (report) =>
+  (report.templateSnapshot?.fields || []).flatMap((field) => {
+    if (field.section !== 'creative' || field.shareCreative !== true) return []
+    const answer = (report.answers || []).find(
+      (item) => item.fieldId === field.id && item.status === 'accepted'
+    )
+    return answer ? [{ field, answer }] : []
+  })
+
+export const serializeReportLibraryItems = (
+  report,
+  {
+    orderTitle = 'Мероприятие',
+    eventDate = null,
+    staffName = 'Исполнитель',
+  } = {}
+) =>
   getSharedCreativeAnswers(report).map(({ field, answer }) => ({
     id: `${report._id}:${field.id}`,
     label: field.label,
     html: answer.html || '',
     notApplicable: Boolean(answer.notApplicable),
     notApplicableReason: answer.notApplicableReason || '',
-    orderTitle, eventDate, staffName,
+    orderTitle,
+    eventDate,
+    staffName,
   }))
 
 export const sanitizeReportHtml = (html) => {
-  if (typeof html !== 'string' || html.length > 100000) reportFailure('Ответ слишком длинный')
+  if (typeof html !== 'string' || html.length > 100000)
+    reportFailure('Ответ слишком длинный')
   return sanitizeHtml(html, {
-    allowedTags: ['p', 'br', 'strong', 'b', 'em', 'i', 's', 'u', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'a', 'img', 'code', 'pre'],
-    allowedAttributes: { a: ['href', 'target', 'rel'], img: ['src', 'alt', 'title'] },
+    allowedTags: [
+      'p',
+      'br',
+      'strong',
+      'b',
+      'em',
+      'i',
+      's',
+      'u',
+      'h2',
+      'h3',
+      'ul',
+      'ol',
+      'li',
+      'blockquote',
+      'a',
+      'img',
+      'code',
+      'pre',
+    ],
+    allowedAttributes: {
+      a: ['href', 'target', 'rel'],
+      img: ['src', 'alt', 'title'],
+    },
     allowedSchemes: ['https', 'http', 'mailto', 'tel'],
     allowProtocolRelative: false,
     transformTags: {
-      a: sanitizeHtml.simpleTransform('a', { target: '_blank', rel: 'noopener noreferrer' }),
+      a: sanitizeHtml.simpleTransform('a', {
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      }),
     },
-    exclusiveFilter: (frame) => frame.tag === 'img' && !/^\/api\/party\/report-media\/[a-f\d]{24}$/i.test(frame.attribs.src || ''),
+    exclusiveFilter: (frame) =>
+      frame.tag === 'img' &&
+      !/^\/api\/party\/report-media\/[a-f\d]{24}$/i.test(
+        frame.attribs.src || ''
+      ),
   })
 }
 
 export const reportHasContent = (html = '') =>
-  /<img\s/i.test(html) || Boolean(sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} }).replace(/&nbsp;|&#160;|\s/g, '').trim())
+  /<img\s/i.test(html) ||
+  Boolean(
+    sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} })
+      .replace(/&nbsp;|&#160;|\s/g, '')
+      .trim()
+  )
 
-export const reportMediaIds = (html = '') => [...html.matchAll(/src="\/api\/party\/report-media\/([a-f\d]{24})"/gi)].map((match) => match[1])
+export const reportMediaIds = (html = '') =>
+  [...html.matchAll(/src="\/api\/party\/report-media\/([a-f\d]{24})"/gi)].map(
+    (match) => match[1]
+  )
 
 export const reportStatusFromAnswers = (answers) => {
   if (answers.every((answer) => answer.status === 'accepted')) return 'accepted'
-  if (answers.some((answer) => answer.status === 'revision_requested')) return 'revision_requested'
+  if (answers.some((answer) => answer.status === 'revision_requested'))
+    return 'revision_requested'
   if (answers.some((answer) => answer.status === 'draft')) return 'draft'
   return 'submitted'
 }
 
 // Pure transition guard shared by the route and focused regression tests.
-export const updateReportAnswers = ({ report, context, action, answers = {}, fieldId, decision, comment = '', eventDate, now = new Date() }) => {
+export const updateReportAnswers = ({
+  report,
+  context,
+  action,
+  answers = {},
+  fieldId,
+  decision,
+  comment = '',
+  eventDate,
+  order,
+  now = new Date(),
+}) => {
   const fields = report.templateSnapshot.fields
   let next = report.answers.map((answer) => ({ ...answer }))
   if (action === 'save' || action === 'submit') {
-    if (!isReportAuthor(context, report)) reportFailure('Изменять ответы может только автор', 403)
-    if (!answers || typeof answers !== 'object' || Array.isArray(answers)) reportFailure('Некорректные ответы')
+    if (!isReportAuthor(context, report))
+      reportFailure('Изменять ответы может только автор', 403)
+    if (!hasPartyReportPermission(context, 'reports', 'read', order))
+      reportFailure('Нет доступа к отчёту', 403)
+    if (!answers || typeof answers !== 'object' || Array.isArray(answers))
+      reportFailure('Некорректные ответы')
     for (const [key, value] of Object.entries(answers)) {
       const answer = next.find((item) => item.fieldId === key)
       const field = fields.find((item) => item.id === key)
       if (!answer) reportFailure('Поле не найдено')
+      if (!canReadPartyReportSection(context, field, order))
+        reportFailure('Нет доступа к этому вопросу отчёта', 403)
       const payload = typeof value === 'string' ? { html: value } : value
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) reportFailure('Некорректный ответ поля')
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+        reportFailure('Некорректный ответ поля')
       const sanitized = sanitizeReportHtml(payload.html ?? answer.html ?? '')
-      if (payload.notApplicable !== undefined && typeof payload.notApplicable !== 'boolean') reportFailure('Некорректная отметка «не применимо»')
-      const notApplicable = payload.notApplicable ?? Boolean(answer.notApplicable)
-      const reason = payload.notApplicableReason ?? answer.notApplicableReason ?? ''
-      if (typeof reason !== 'string' || reason.length > 2000) reportFailure('Причина должна содержать не более 2000 символов')
+      if (
+        payload.notApplicable !== undefined &&
+        typeof payload.notApplicable !== 'boolean'
+      )
+        reportFailure('Некорректная отметка «не применимо»')
+      const notApplicable =
+        payload.notApplicable ?? Boolean(answer.notApplicable)
+      const reason =
+        payload.notApplicableReason ?? answer.notApplicableReason ?? ''
+      if (typeof reason !== 'string' || reason.length > 2000)
+        reportFailure('Причина должна содержать не более 2000 символов')
       const notApplicableReason = notApplicable ? reason.trim() : ''
-      if (notApplicable && field?.allowNotApplicable !== true) reportFailure(`Для поля «${field?.label || key}» нельзя выбрать «не применимо»`)
+      if (!canReadPartyReportSection(context, field, order, 'edit')) {
+        if (
+          sanitized === answer.html &&
+          notApplicable === Boolean(answer.notApplicable) &&
+          notApplicableReason === (answer.notApplicableReason || '')
+        )
+          continue
+        reportFailure('Нет права изменять этот вопрос отчёта', 403)
+      }
+      if (notApplicable && field?.allowNotApplicable !== true)
+        reportFailure(
+          `Для поля «${field?.label || key}» нельзя выбрать «не применимо»`
+        )
       if (['accepted', 'submitted'].includes(answer.status)) {
-        if (sanitized !== answer.html || notApplicable !== Boolean(answer.notApplicable) || notApplicableReason !== (answer.notApplicableReason || '')) reportFailure('Отправленное или принятое поле можно менять только после возврата на доработку', 409)
+        if (
+          sanitized !== answer.html ||
+          notApplicable !== Boolean(answer.notApplicable) ||
+          notApplicableReason !== (answer.notApplicableReason || '')
+        )
+          reportFailure(
+            'Отправленное или принятое поле можно менять только после возврата на доработку',
+            409
+          )
         continue
       }
-      Object.assign(answer, { html: sanitized, notApplicable, notApplicableReason })
+      Object.assign(answer, {
+        html: sanitized,
+        notApplicable,
+        notApplicableReason,
+      })
     }
     if (action === 'submit') {
-      if (report.stage === 'after' && (!eventDate || !Number.isFinite(new Date(eventDate).getTime()) || new Date(eventDate) > now)) reportFailure('Итоговый отчёт можно отправить после начала мероприятия')
-      for (const field of fields) {
+      if (
+        report.stage === 'after' &&
+        (!eventDate ||
+          !Number.isFinite(new Date(eventDate).getTime()) ||
+          new Date(eventDate) > now)
+      )
+        reportFailure('Итоговый отчёт можно отправить после начала мероприятия')
+      const effectiveFields = effectivePartyReportFields(
+        context,
+        report,
+        order,
+        'edit'
+      )
+      for (const field of effectiveFields) {
         const answer = next.find((item) => item.fieldId === field.id)
         if (answer?.notApplicable) {
-          if (field.allowNotApplicable !== true) reportFailure(`Для поля «${field.label}» нельзя выбрать «не применимо»`)
-          if (!answer.notApplicableReason?.trim()) reportFailure(`Укажите причину «не применимо» для поля «${field.label}»`)
+          if (field.allowNotApplicable !== true)
+            reportFailure(
+              `Для поля «${field.label}» нельзя выбрать «не применимо»`
+            )
+          if (!answer.notApplicableReason?.trim())
+            reportFailure(
+              `Укажите причину «не применимо» для поля «${field.label}»`
+            )
           continue
         }
-        if (field.required && !reportHasContent(answer?.html)) reportFailure(`Заполните поле «${field.label}»`)
-        if (field.requiredMedia === true && !reportMediaIds(answer?.html).length) reportFailure(`Добавьте фотографию в поле «${field.label}»`)
+        if (field.required && !reportHasContent(answer?.html))
+          reportFailure(`Заполните поле «${field.label}»`)
+        if (
+          field.requiredMedia === true &&
+          !reportMediaIds(answer?.html).length
+        )
+          reportFailure(`Добавьте фотографию в поле «${field.label}»`)
       }
-      next = next.map((answer) => answer.status === 'accepted' ? answer : { ...answer, status: 'submitted', reviewComment: '', reviewedByStaffId: '', reviewedAt: null })
+      const effectiveIds = new Set(effectiveFields.map((field) => field.id))
+      next = next.map((answer) =>
+        answer.status === 'accepted' || !effectiveIds.has(answer.fieldId)
+          ? answer
+          : {
+              ...answer,
+              status: 'submitted',
+              reviewComment: '',
+              reviewedByStaffId: '',
+              reviewedAt: null,
+            }
+      )
     }
   } else if (action === 'review') {
     const field = fields.find((item) => item.id === fieldId)
     const answer = next.find((item) => item.fieldId === fieldId)
-    if (!field || !answer || !canReviewReportField(context, field)) reportFailure('Нет доступа к проверке поля', 403)
-    if (!['accepted', 'revision_requested'].includes(decision)) reportFailure('Некорректное решение')
-    if (!['submitted', 'accepted'].includes(answer.status) || (answer.status === 'accepted' && decision !== 'revision_requested')) reportFailure('Поле ещё не отправлено или уже проверено', 409)
-    if (typeof comment !== 'string' || comment.length > 2000) reportFailure('Комментарий слишком длинный')
-    if (decision === 'revision_requested' && !comment.trim()) reportFailure('Укажите причину возврата на доработку')
-    Object.assign(answer, { status: decision, reviewComment: comment.trim(), reviewedAt: now, reviewedByStaffId: String(context.staff._id) })
+    if (!field || !answer || !canReviewReportField(context, field, order))
+      reportFailure('Нет доступа к проверке поля', 403)
+    if (!['accepted', 'revision_requested'].includes(decision))
+      reportFailure('Некорректное решение')
+    if (
+      !['submitted', 'accepted'].includes(answer.status) ||
+      (answer.status === 'accepted' && decision !== 'revision_requested')
+    )
+      reportFailure('Поле ещё не отправлено или уже проверено', 409)
+    if (typeof comment !== 'string' || comment.length > 2000)
+      reportFailure('Комментарий слишком длинный')
+    if (decision === 'revision_requested' && !comment.trim())
+      reportFailure('Укажите причину возврата на доработку')
+    Object.assign(answer, {
+      status: decision,
+      reviewComment: comment.trim(),
+      reviewedAt: now,
+      reviewedByStaffId: String(context.staff._id),
+    })
   } else reportFailure('Неизвестное действие')
   return next
 }

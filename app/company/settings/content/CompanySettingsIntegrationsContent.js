@@ -1,4 +1,5 @@
 'use client'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
@@ -15,14 +16,19 @@ import useCompanySettings from '../useCompanySettings'
 import { getCompanyIntegrationIndicatorState } from './companyIntegrationState'
 
 const createSecret = (prefix) => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
     return `${prefix}_${crypto.randomUUID().replace(/-/g, '')}`
   }
   return `${prefix}_${Math.random().toString(36).slice(2)}`
 }
 
 const buildOrigin = () =>
-  typeof window === 'undefined' ? '' : window.location.origin.replace(/\/+$/, '')
+  typeof window === 'undefined'
+    ? ''
+    : window.location.origin.replace(/\/+$/, '')
 
 const INTEGRATION_INDICATOR_VIEW = {
   connected: {
@@ -208,7 +214,7 @@ const Field = ({
   onChange,
 }) => (
   <label className="grid gap-1.5">
-    <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
       {label}
     </span>
     <input
@@ -291,7 +297,9 @@ const IntegrationDiagnostics = ({ state }) => (
   </div>
 )
 
-export default function CompanySettingsIntegrationsContent({ activeCompanyId }) {
+export default function CompanySettingsIntegrationsContent({
+  activeCompanyId,
+}) {
   const { settings, access, loading, saving, error, reload, savePatch } =
     useCompanySettings(activeCompanyId)
   const [status, setStatus] = useState(null)
@@ -300,6 +308,11 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   const [actionLoading, setActionLoading] = useState('')
   const [actionError, setActionError] = useState('')
   const [telegramBotToken, setTelegramBotToken] = useState('')
+  usePartyUnsavedChanges(Boolean(telegramBotToken.trim()), {
+    label: 'подключение Telegram',
+    scope: activeCompanyId,
+    pending: Boolean(actionLoading),
+  })
   const [googleCalendarStatus, setGoogleCalendarStatus] = useState(null)
   const [googleCalendarLoading, setGoogleCalendarLoading] = useState(true)
   const [googleCalendarError, setGoogleCalendarError] = useState('')
@@ -335,48 +348,52 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
     reloadStatus()
   }, [activeCompanyId, reloadStatus, settings?.integrations])
 
-  const reloadGoogleCalendarStatus = useCallback(({ syncDraft = false } = {}) => {
-    if (!activeCompanyId) return Promise.resolve()
-    const requestedCompanyId = activeCompanyId
-    const requestId = googleCalendarRequestIdRef.current + 1
-    googleCalendarRequestIdRef.current = requestId
-    setGoogleCalendarLoading(true)
-    return apiJson('/api/party/google-calendar/status', {
-      cache: 'no-store',
-      headers: { 'x-partycrm-company-id': activeCompanyId },
+  const reloadGoogleCalendarStatus = useCallback(
+    ({ syncDraft = false } = {}) => {
+      if (!activeCompanyId) return Promise.resolve()
+      const requestedCompanyId = activeCompanyId
+      const requestId = googleCalendarRequestIdRef.current + 1
+      googleCalendarRequestIdRef.current = requestId
+      setGoogleCalendarLoading(true)
+      return apiJson('/api/party/google-calendar/status', {
+        cache: 'no-store',
+        headers: { 'x-partycrm-company-id': activeCompanyId },
       })
-      .then((response) => {
-        if (
-          activeCompanyIdRef.current !== requestedCompanyId ||
-          googleCalendarRequestIdRef.current !== requestId
-        ) {
-          return
-        }
-        setGoogleCalendarStatus(response.data ?? null)
-        setGoogleCalendarError('')
-        if (syncDraft) setGoogleCalendarDraftSyncVersion((value) => value + 1)
-      })
-      .catch((loadError) => {
-        if (
-          activeCompanyIdRef.current !== requestedCompanyId ||
-          googleCalendarRequestIdRef.current !== requestId
-        ) {
-          return
-        }
-        setGoogleCalendarStatus(null)
-        setGoogleCalendarError(
-          loadError.message || 'Не удалось загрузить состояние Google Calendar'
-        )
-      })
-      .finally(() => {
-        if (
-          activeCompanyIdRef.current === requestedCompanyId &&
-          googleCalendarRequestIdRef.current === requestId
-        ) {
-          setGoogleCalendarLoading(false)
-        }
-      })
-  }, [activeCompanyId])
+        .then((response) => {
+          if (
+            activeCompanyIdRef.current !== requestedCompanyId ||
+            googleCalendarRequestIdRef.current !== requestId
+          ) {
+            return
+          }
+          setGoogleCalendarStatus(response.data ?? null)
+          setGoogleCalendarError('')
+          if (syncDraft) setGoogleCalendarDraftSyncVersion((value) => value + 1)
+        })
+        .catch((loadError) => {
+          if (
+            activeCompanyIdRef.current !== requestedCompanyId ||
+            googleCalendarRequestIdRef.current !== requestId
+          ) {
+            return
+          }
+          setGoogleCalendarStatus(null)
+          setGoogleCalendarError(
+            loadError.message ||
+              'Не удалось загрузить состояние Google Calendar'
+          )
+        })
+        .finally(() => {
+          if (
+            activeCompanyIdRef.current === requestedCompanyId &&
+            googleCalendarRequestIdRef.current === requestId
+          ) {
+            setGoogleCalendarLoading(false)
+          }
+        })
+    },
+    [activeCompanyId]
+  )
 
   useEffect(() => {
     setGoogleCalendarStatus(null)
@@ -459,8 +476,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   })
   const novofonIndicatorState = getCompanyIntegrationIndicatorState({
     type: 'novofon',
-    enabled:
-      status?.novofon?.enabled ?? integrations.novofonEnabled === true,
+    enabled: status?.novofon?.enabled ?? integrations.novofonEnabled === true,
     apiKey: status?.novofon?.apiKey ?? integrations.novofonApiKey,
     locked: telephonyLocked,
     loading: statusLoading,
@@ -493,7 +509,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
         ...(patch.vkGroups ? stripVkLegacyKeys(integrations) : integrations),
         ...patch,
       },
-    })
+    }).catch(() => null)
 
   const patchVkGroups = (groups) => {
     patchIntegrations({
@@ -528,12 +544,13 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   const deleteVkGroup = (groupKey) => {
     patchVkGroups(
       vkGroups.filter(
-        (group) => (group.id || group.webhookToken || group.groupId) !== groupKey
+        (group) =>
+          (group.id || group.webhookToken || group.groupId) !== groupKey
       )
     )
   }
 
-  const patchSettings = (patch) => savePatch(patch)
+  const patchSettings = (patch) => savePatch(patch).catch(() => null)
 
   const createPublicLeadApiKey = () => {
     const name = window.prompt('Название ключа', 'Tilda')
@@ -582,10 +599,12 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
       })
       await reload()
       await reloadStatus()
+      return true
     } catch (actionLoadError) {
       setActionError(
         actionLoadError.message || 'Не удалось выполнить действие интеграции'
       )
+      return false
     } finally {
       setActionLoading('')
     }
@@ -602,7 +621,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
   return (
     <div className="grid gap-4">
       {error ? (
-        <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+        <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-3 text-sm">
           {error}
         </div>
       ) : null}
@@ -612,7 +631,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
         </div>
       ) : null}
       {actionError ? (
-        <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+        <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-3 text-sm">
           {actionError}
         </div>
       ) : null}
@@ -849,8 +868,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
                     onChange={(event) =>
                       updateVkGroup(groupKey, {
                         enabled: event.target.checked,
-                        webhookToken:
-                          group.webhookToken || createSecret('vk'),
+                        webhookToken: group.webhookToken || createSecret('vk'),
                         webhookSecret:
                           group.webhookSecret || createSecret('vksec'),
                       })
@@ -968,7 +986,9 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
           label="Токен бота из BotFather"
           type="password"
           value={telegramBotToken}
-          placeholder={status?.telegram?.hasBotToken ? 'Токен сохранён на сервере' : ''}
+          placeholder={
+            status?.telegram?.hasBotToken ? 'Токен сохранён на сервере' : ''
+          }
           onChange={setTelegramBotToken}
         />
         <label className="flex items-start gap-2 text-sm font-semibold text-slate-700">
@@ -991,7 +1011,10 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
             <li>В BotFather создайте бота командой /newbot.</li>
             <li>В Bot Settings включите Secretary Mode / «Режим секретаря».</li>
             <li>Вставьте токен выше и нажмите «Подключить».</li>
-            <li>В Telegram откройте Настройки → Telegram Business → Чат-боты, добавьте бота и разрешите чтение сообщений и ответы.</li>
+            <li>
+              В Telegram откройте Настройки → Telegram Business → Чат-боты,
+              добавьте бота и разрешите чтение сообщений и ответы.
+            </li>
           </ol>
         </div>
         {status?.telegram?.botUsername ? (
@@ -1001,19 +1024,27 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
         ) : null}
         <IntegrationDiagnostics state={status?.telegram} />
         <div className="text-xs text-slate-500">
-          Исходящие запросы: {status?.telegram?.proxyEnabled ? `через ${String(status.telegram.proxyType || '').toUpperCase()}-прокси` : 'напрямую'}
+          Исходящие запросы:{' '}
+          {status?.telegram?.proxyEnabled
+            ? `через ${String(status.telegram.proxyType || '').toUpperCase()}-прокси`
+            : 'напрямую'}
         </div>
         <IntegrationActions
           provider="Telegram"
           disabled={telegramLocked}
           loading={actionLoading.startsWith('telegram:')}
-          onConnect={() =>
-            runIntegrationAction({
+          onConnect={async () => {
+            const submittedToken = telegramBotToken
+            const saved = await runIntegrationAction({
               provider: 'telegram',
               action: 'connect',
-              body: { botToken: telegramBotToken },
-            }).then(() => setTelegramBotToken(''))
-          }
+              body: { botToken: submittedToken },
+            })
+            if (saved)
+              setTelegramBotToken((current) =>
+                current === submittedToken ? '' : current
+              )
+          }}
           onCheck={() =>
             runIntegrationAction({
               provider: 'telegram',
@@ -1040,8 +1071,7 @@ export default function CompanySettingsIntegrationsContent({ activeCompanyId }) 
               patchIntegrations({
                 novofonEnabled: event.target.checked,
                 novofonWebhookSecret:
-                  integrations.novofonWebhookSecret ||
-                  createSecret('novofon'),
+                  integrations.novofonWebhookSecret || createSecret('novofon'),
               })
             }
           />

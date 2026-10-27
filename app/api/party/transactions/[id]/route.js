@@ -1,5 +1,10 @@
+import { assertPartyReportGate } from '@server/partyReportGates'
+import { canAccessPartyTransaction } from '@server/partyTransactionAccess'
 import { NextResponse } from 'next/server'
-import { getPartyOrderModel, getPartyTransactionModel } from '@server/partyModels'
+import {
+  getPartyOrderModel,
+  getPartyTransactionModel,
+} from '@server/partyModels'
 import { withPartyFinancialTransaction } from '@server/partyFinancialSettlements'
 import {
   getPartyRequestContext,
@@ -24,7 +29,8 @@ const getId = async (params) => {
 export async function PATCH(req, { params }) {
   const { context, error } = await getPartyRequestContext({
     req,
-    managementOnly: true,
+    allowLocationOwner: true,
+    allowLocationOwner: true,
   })
   if (error) return error
 
@@ -51,6 +57,20 @@ export async function PATCH(req, { params }) {
     )
   }
 
+  const { order: existingOrder, error: existingOrderError } =
+    await validatePartyTransactionOrder({
+      tenantId: context.tenantId,
+      orderId: existing.orderId,
+    })
+  if (existingOrderError) return existingOrderError
+  if (!canAccessPartyTransaction(context, existing, existingOrder, 'edit'))
+    return partyError(
+      403,
+      'partycrm_finance_forbidden',
+      'Нет права изменять эту финансовую операцию',
+      'permission'
+    )
+
   if (existing.groupPaymentId) {
     return partyError(
       409,
@@ -59,13 +79,6 @@ export async function PATCH(req, { params }) {
       'validation'
     )
   }
-
-  const { order: existingOrder, error: existingOrderError } =
-    await validatePartyTransactionOrder({
-      tenantId: context.tenantId,
-      orderId: existing.orderId,
-    })
-  if (existingOrderError) return existingOrderError
   if (existingOrder.status === 'closed') {
     return partyError(
       409,
@@ -96,6 +109,13 @@ export async function PATCH(req, { params }) {
     orderId: payload.orderId,
   })
   if (orderError) return orderError
+  if (!canAccessPartyTransaction(context, payload, order, 'edit'))
+    return partyError(
+      403,
+      'partycrm_finance_forbidden',
+      'Нет права изменять эти финансовые операции',
+      'permission'
+    )
   if (order.status === 'closed') {
     return partyError(
       409,
@@ -112,47 +132,143 @@ export async function PATCH(req, { params }) {
 
   const relocating = String(existing.orderId) !== String(payload.orderId)
   let transaction
-  if (relocating) {
+  {
     let result
     try {
-      result = await withPartyFinancialTransaction(context.tenantId, async (session) => {
-        const current = await PartyTransactions.findOne({ _id: id, tenantId: context.tenantId }).session(session).lean()
-        if (!current || current.groupPaymentId || String(current.orderId) !== String(existing.orderId) || Number(new Date(current.updatedAt || 0)) !== Number(new Date(existing.updatedAt || 0))) {
-          return { error: partyError(409, 'partycrm_transaction_changed', 'Транзакция уже изменилась. Обновите журнал.', 'conflict') }
+      result = await withPartyFinancialTransaction(
+        context.tenantId,
+        async (session) => {
+          const current = await PartyTransactions.findOne({
+            _id: id,
+            tenantId: context.tenantId,
+          })
+            .session(session)
+            .lean()
+          if (
+            !current ||
+            current.groupPaymentId ||
+            String(current.orderId) !== String(existing.orderId) ||
+            Number(new Date(current.updatedAt || 0)) !==
+              Number(new Date(existing.updatedAt || 0))
+          ) {
+            return {
+              error: partyError(
+                409,
+                'partycrm_transaction_changed',
+                'Транзакция уже изменилась. Обновите журнал.',
+                'conflict'
+              ),
+            }
+          }
+          const PartyOrders = await getPartyOrderModel()
+          const target = await PartyOrders.findOne({
+            _id: payload.orderId,
+            tenantId: context.tenantId,
+          })
+            .session(session)
+            .lean()
+          const source = await PartyOrders.findOne({
+            _id: current.orderId,
+            tenantId: context.tenantId,
+          })
+            .session(session)
+            .lean()
+          if (!target || !source)
+            return {
+              error: partyError(
+                404,
+                'partycrm_order_not_found',
+                'Заказ не найден',
+                'validation'
+              ),
+            }
+          if (
+            !canAccessPartyTransaction(context, current, source, 'edit') ||
+            !canAccessPartyTransaction(context, payload, target, 'edit')
+          )
+            return {
+              error: partyError(
+                403,
+                'partycrm_finance_forbidden',
+                'Нет права изменять эти финансовые операции',
+                'permission'
+              ),
+            }
+          if (target.status === 'closed' || source.status === 'closed')
+            return {
+              error: partyError(
+                409,
+                'partycrm_closed_order_transaction_readonly',
+                'Нельзя переносить транзакции закрытого заказа',
+                'validation'
+              ),
+            }
+          const { error: payoutError } = validatePartyPayoutTransactionStaff({
+            order: target,
+            payload,
+          })
+          if (payoutError) return { error: payoutError }
+          if (payload.type === 'expense' && payload.category === 'payout')
+            await assertPartyReportGate({
+              tenantId: context.tenantId,
+              order: target,
+              action: 'payout',
+              staffId: payload.staffId,
+              session,
+            })
+          const persisted = await PartyTransactions.findOne({
+            tenantId: context.tenantId,
+            orderId: payload.orderId,
+          })
+            .session(session)
+            .lean()
+          if (target.transactions?.length && !persisted)
+            return {
+              error: partyError(
+                409,
+                'partycrm_legacy_ledger_migration_required',
+                'Сначала перенесите старый журнал платежей целевого заказа',
+                'conflict'
+              ),
+            }
+          await PartyOrders.updateMany(
+            {
+              _id: { $in: [current.orderId, payload.orderId] },
+              tenantId: context.tenantId,
+            },
+            { $inc: { sharedLocationRevision: 1 } },
+            { session }
+          )
+          const saved = await PartyTransactions.findOneAndUpdate(
+            { _id: id, tenantId: context.tenantId },
+            {
+              $set: {
+                ...payload,
+                clientId: payload.clientId || target.clientId || null,
+              },
+            },
+            { session, returnDocument: 'after' }
+          )
+          return { transaction: saved }
         }
-        const PartyOrders = await getPartyOrderModel()
-        const target = await PartyOrders.findOne({ _id: payload.orderId, tenantId: context.tenantId }).session(session).lean()
-        const source = await PartyOrders.findOne({ _id: current.orderId, tenantId: context.tenantId }).session(session).lean()
-        if (!target || !source) return { error: partyError(404, 'partycrm_order_not_found', 'Заказ не найден', 'validation') }
-        if (target.status === 'closed' || source.status === 'closed') return { error: partyError(409, 'partycrm_closed_order_transaction_readonly', 'Нельзя переносить транзакции закрытого заказа', 'validation') }
-        const { error: payoutError } = validatePartyPayoutTransactionStaff({ order: target, payload })
-        if (payoutError) return { error: payoutError }
-        const persisted = await PartyTransactions.findOne({ tenantId: context.tenantId, orderId: payload.orderId }).session(session).lean()
-        if (target.transactions?.length && !persisted) return { error: partyError(409, 'partycrm_legacy_ledger_migration_required', 'Сначала перенесите старый журнал платежей целевого заказа', 'conflict') }
-        await PartyOrders.updateMany({ _id: { $in: [current.orderId, payload.orderId] }, tenantId: context.tenantId }, { $inc: { sharedLocationRevision: 1 } }, { session })
-        const saved = await PartyTransactions.findOneAndUpdate(
-          { _id: id, tenantId: context.tenantId },
-          { $set: { ...payload, clientId: payload.clientId || target.clientId || null } },
-          { session, returnDocument: 'after' }
+      )
+    } catch (error) {
+      if (error.status)
+        return partyError(
+          error.status,
+          error.code || 'partycrm_transaction_forbidden',
+          error.message,
+          'validation'
         )
-        return { transaction: saved }
-      })
-    } catch {
-      return partyError(500, 'partycrm_transaction_update_failed', 'Не удалось перенести транзакцию', 'server')
+      return partyError(
+        500,
+        'partycrm_transaction_update_failed',
+        'Не удалось перенести транзакцию',
+        'server'
+      )
     }
     if (result.error) return result.error
     transaction = result.transaction
-  } else {
-    transaction = await PartyTransactions.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId },
-    {
-      $set: {
-        ...payload,
-        clientId: payload.clientId || order.clientId || null,
-      },
-    },
-    { returnDocument: 'after' }
-  )
   }
 
   await recordPartyOrderAudit({
@@ -170,7 +286,10 @@ export async function PATCH(req, { params }) {
     orderId: String(transaction.orderId),
   })
   if (relocating) {
-    await syncPartyOrderCalendarAfterCrud({ tenantId: context.tenantId, orderId: String(existing.orderId) })
+    await syncPartyOrderCalendarAfterCrud({
+      tenantId: context.tenantId,
+      orderId: String(existing.orderId),
+    })
   }
 
   return NextResponse.json({
@@ -182,7 +301,8 @@ export async function PATCH(req, { params }) {
 export async function DELETE(req, { params }) {
   const { context, error } = await getPartyRequestContext({
     req,
-    managementOnly: true,
+    allowLocationOwner: true,
+    allowLocationOwner: true,
   })
   if (error) return error
 
@@ -209,6 +329,19 @@ export async function DELETE(req, { params }) {
     )
   }
 
+  const { order, error: orderError } = await validatePartyTransactionOrder({
+    tenantId: context.tenantId,
+    orderId: existing.orderId,
+  })
+  if (orderError) return orderError
+  if (!canAccessPartyTransaction(context, existing, order, 'edit'))
+    return partyError(
+      403,
+      'partycrm_finance_forbidden',
+      'Нет права удалять эту финансовую операцию',
+      'permission'
+    )
+
   if (existing.groupPaymentId) {
     return partyError(
       409,
@@ -217,12 +350,6 @@ export async function DELETE(req, { params }) {
       'validation'
     )
   }
-
-  const { order, error: orderError } = await validatePartyTransactionOrder({
-    tenantId: context.tenantId,
-    orderId: existing.orderId,
-  })
-  if (orderError) return orderError
   if (order.status === 'closed') {
     return partyError(
       409,

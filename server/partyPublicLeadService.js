@@ -5,7 +5,7 @@ import {
   getPartyOrderModel,
   getPartyServiceModel,
 } from '@server/partyModels'
-import { sendPushToTenant } from '@server/pushNotifications'
+import { sendPartyOrderScopedPush } from './partyOrderPermissionPush'
 import { syncPartyOrderInventory } from './partyInventory'
 import {
   buildPartyPublicLeadOrderPayload,
@@ -153,6 +153,7 @@ export const createPartyPublicLeadOrder = async ({
   })
   const order = await PartyOrders.create({
     ...orderPayload,
+    workflowStageId: company?.settings?.workflow?.initialStageId || 'new',
     tenantId,
   })
 
@@ -162,10 +163,10 @@ export const createPartyPublicLeadOrder = async ({
 
   const pushEnabled = company?.settings?.notifications?.pushEnabled === true
   if (pushEnabled) {
-    await sendPushToTenant({
+    await sendPartyOrderScopedPush({
       tenantId,
-      product: 'partycrm',
-      companyId: tenantId,
+      company,
+      order,
       source: 'party-public-lead',
       payload: buildPublicLeadPushPayload({
         companyId: tenantId,

@@ -32,6 +32,17 @@ import {
 import { sendPartyPerformerAssignmentPushes } from '@server/partyPerformerPush'
 import { preservePartyAssignmentConfirmationStatuses } from '@helpers/partyOrderAssignments'
 import { recordPartyOrderAudit } from '@server/partyAuditLog'
+import { canPartyAccess, filterPartyOrderForAccess, guardPartyOrderPatch } from '@helpers/partyRolePermissions'
+import { preservePartyOrderContactSettings } from '@server/partyOrderContactRoles'
+import { getPartyReportGateBlockers } from '@server/partyReportGates'
+import { snapshotPartyBriefForClose } from '@server/partyBriefTemplates'
+import { getPartyTaskOrderReadiness } from '@server/partyTaskReadiness'
+import { cancelPartyOrderTasks } from '@server/partyTasks'
+import { maskPartyOrderBlockers, maskPartyOrderConflicts } from '@helpers/partyOrderAccess'
+import { filterPartyInventoryResult } from '@server/partyInventoryApi'
+import { withPartyOrderReportSummaries } from '@server/partyOrderReportSummaries'
+import { withPartyOrderTaskSummaries } from '@server/partyOrderTaskSummaries'
+import { serializePartyTransaction } from '@server/partyTransactionsCore'
 
 const getId = async (params) => {
   const resolved = await params
@@ -65,7 +76,7 @@ const buildOrderClientSnapshot = async ({ tenantId, payload }) => {
 export async function GET(req, { params }) {
   const { context, error } = await getPartyRequestContext({
     req,
-    managementOnly: true,
+    allowLocationOwner: true,
   })
   if (error) return error
 
@@ -80,7 +91,7 @@ export async function GET(req, { params }) {
     tenantId: context.tenantId,
   }).lean()
 
-  if (!order) {
+  if (!order || !canPartyAccess(context, { resource: 'orders', order })) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
 
@@ -88,14 +99,17 @@ export async function GET(req, { params }) {
     tenantId: context.tenantId,
     payload: order,
   })
-
-  return NextResponse.json({ success: true, data: orderWithAssignmentDefaults })
+  const Transactions = await getPartyTransactionModel()
+  const transactions = await Transactions.find({ tenantId: context.tenantId, orderId: id }).sort({ date: -1, createdAt: -1 }).lean()
+  const withReports = await withPartyOrderReportSummaries({ context, orders: [{ ...orderWithAssignmentDefaults, transactions: transactions.length ? transactions.map(serializePartyTransaction) : order.transactions }] })
+  const [hydrated] = await withPartyOrderTaskSummaries({ context, orders: withReports })
+  return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, hydrated) })
 }
 
 export async function PATCH(req, { params }) {
   const { context, error } = await getPartyRequestContext({
     req,
-    managementOnly: true,
+    allowLocationOwner: true,
   })
   if (error) return error
 
@@ -111,9 +125,14 @@ export async function PATCH(req, { params }) {
     tenantId: context.tenantId,
   }).lean()
 
-  if (!currentOrder) {
+  if (!currentOrder || !canPartyAccess(context, { resource: 'orders', order: currentOrder })) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
+
+  if (Object.hasOwn(body, 'workflowStageId') && body.workflowStageId !== (currentOrder.workflowStageId || '')) return partyError(400, 'partycrm_use_stage_transition', 'Для смены этапа используйте действие передачи заказа')
+  const changedPatch = Object.fromEntries(Object.entries(body).filter(([key, value]) => !['_id', 'tenantId', 'commercialRevision', 'expectedUpdatedAt', 'expectedRevision', 'transactions'].includes(key) && JSON.stringify(value) !== JSON.stringify(currentOrder[key])))
+  const fieldGuard = guardPartyOrderPatch(context, changedPatch, currentOrder)
+  if (!fieldGuard.ok) return partyError(403, 'partycrm_forbidden_order_fields', 'Нет права изменять некоторые поля заказа', 'permission', { fields: fieldGuard.forbiddenFields })
 
   const isStatusOnlyPatch =
     Object.keys(body || {}).length === 1 && typeof body.status === 'string'
@@ -138,18 +157,20 @@ export async function PATCH(req, { params }) {
       tenantId: context.tenantId,
       orderId: id,
     }).lean()
+    const taskReadiness = await getPartyTaskOrderReadiness({ tenantId: context.tenantId, order: currentOrder })
+    const reportBlockers = await getPartyReportGateBlockers({ tenantId: context.tenantId, order: currentOrder, action: 'close' })
     const readiness = getPartyOrderCloseReadiness({
-      order: currentOrder,
+      order: taskReadiness.order,
       transactions:
         transactions.length > 0 ? transactions : currentOrder.transactions,
     })
-    if (!readiness.ok) {
+    if (!readiness.ok || taskReadiness.blockers.length || reportBlockers.length) {
       return partyError(
         409,
         'partycrm_order_close_blocked',
         'Заказ нельзя закрыть: есть незавершенные финансовые или рабочие пункты',
         'validation',
-        { blockers: readiness.blockers }
+        { blockers: maskPartyOrderBlockers(context, currentOrder, [...readiness.blockers, ...taskReadiness.blockers, ...reportBlockers.map(() => ({ code: 'report_not_accepted', message: 'Не принят обязательный отчёт' }))]) }
       )
     }
   }
@@ -163,11 +184,11 @@ export async function PATCH(req, { params }) {
         excludeOrderId: id,
         sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }),
       })
-      if (hasPartyOrderConflicts(conflicts)) return partyError(409, 'partycrm_order_conflict', 'Найдены пересечения по точке или исполнителю', 'validation', { conflicts })
+      if (hasPartyOrderConflicts(conflicts)) return partyError(409, 'partycrm_order_conflict', 'Найдены пересечения по точке или исполнителю', 'validation', { conflicts: maskPartyOrderConflicts(context, conflicts) })
     }
     const order = await PartyOrders.findOneAndUpdate(
       { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
-      { $set: { status: nextStatus }, $inc: { commercialRevision: 1 } },
+      { $set: { status: nextStatus, ...(nextStatus === 'closed' ? { eventBrief: await snapshotPartyBriefForClose({ tenantId: context.tenantId, order: currentOrder }) } : {}) }, $inc: { commercialRevision: 1 } },
       { returnDocument: 'after' }
     ).lean()
 
@@ -193,7 +214,8 @@ export async function PATCH(req, { params }) {
       previousOrder: currentOrder,
     })
 
-    return NextResponse.json({ success: true, data: order, inventory })
+    if (nextStatus === 'canceled') await cancelPartyOrderTasks({ tenantId: context.tenantId, orderId: id, staffId: context.staff?._id })
+    return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, order), ...(canPartyAccess(context, { resource: 'inventory', order }) ? { inventory: await filterPartyInventoryResult(context, inventory, 'inventory.reservations') } : {}) })
   }
 
   const bodyWithPreservedAssignmentStatuses = Array.isArray(body?.assignedStaff)
@@ -203,6 +225,7 @@ export async function PATCH(req, { params }) {
           assignedStaff: body.assignedStaff.map(item => ({
             ...(currentOrder.assignedStaff || []).find(previous => String(previous.staffId) === String(item.staffId)),
             ...item,
+            payoutStatus: (currentOrder.assignedStaff || []).find(previous => String(previous.staffId) === String(item.staffId))?.payoutStatus || 'planned',
           })),
           previousAssignedStaff: currentOrder.assignedStaff,
         }),
@@ -210,20 +233,26 @@ export async function PATCH(req, { params }) {
     : body
   const bodyWithBackwardCompatibleBrief = {
     // Contact-role updates must not reset unrelated order or financial fields.
-    ...(['contactRoles', 'assignedStaff'].some((field) => Object.prototype.hasOwnProperty.call(body || {}, field)) ? currentOrder : {}),
+    ...currentOrder,
     ...bodyWithPreservedAssignmentStatuses,
-    contactRoles: Object.prototype.hasOwnProperty.call(body || {}, 'contactRoles')
-      ? body.contactRoles
-      : currentOrder.contactRoles,
-    eventBrief: Object.prototype.hasOwnProperty.call(body || {}, 'eventBrief')
-      ? body?.eventBrief
-      : currentOrder.eventBrief,
+    contactRoles: preservePartyOrderContactSettings({ input: body.contactRoles, previous: currentOrder.contactRoles,
+      clientId: Object.hasOwn(body, 'clientId') ? body.clientId : currentOrder.clientId,
+      otherContacts: Object.hasOwn(body, 'otherContacts') ? body.otherContacts : currentOrder.otherContacts }),
+    eventBrief: { ...currentOrder.eventBrief, ...(body.eventBrief || {}),
+      customAnswers: { ...(currentOrder.eventBrief?.customAnswers || {}), ...(body.eventBrief?.customAnswers || {}) },
+      templateSnapshot: currentOrder.eventBrief?.templateSnapshot || null },
     orderItems: Object.prototype.hasOwnProperty.call(body || {}, 'orderItems')
       ? body?.orderItems
       : currentOrder.orderItems,
     // These fields are server-owned and can only change through apply-to-order.
     agreedProposal: currentOrder.agreedProposal,
     commercialRevision: currentOrder.commercialRevision,
+    // Monetary operations use the transaction API; a form cannot inject payouts.
+    transactions: currentOrder.transactions || [],
+  }
+  // An explicit end-time edit must not be ignored in favour of the old duration.
+  if (Object.hasOwn(body, 'dateEnd') && !Object.hasOwn(body, 'durationMinutes')) {
+    bodyWithBackwardCompatibleBrief.durationMinutes = undefined
   }
   const payload = normalizeOrderPayload(bodyWithBackwardCompatibleBrief)
   // Assignment forms cannot overwrite server-owned reports/calendar linkage.
@@ -314,11 +343,15 @@ export async function PATCH(req, { params }) {
   if (nextStatus === 'closed') {
     const PartyTransactions = await getPartyTransactionModel()
     const transactions = await PartyTransactions.find({ tenantId: context.tenantId, orderId: id }).lean()
+    const closingOrder = { ...currentOrder, ...payload }
+    const taskReadiness = await getPartyTaskOrderReadiness({ tenantId: context.tenantId, order: closingOrder })
+    const reportBlockers = await getPartyReportGateBlockers({ tenantId: context.tenantId, order: closingOrder, action: 'close' })
     const readiness = getPartyOrderCloseReadiness({
-      order: { ...currentOrder, ...payload },
+      order: taskReadiness.order,
       transactions: transactions.length ? transactions : payload.transactions,
     })
-    if (!readiness.ok) return partyError(409, 'partycrm_order_close_blocked', 'Заказ нельзя закрыть: есть незавершенные финансовые или рабочие пункты', 'validation', { blockers: readiness.blockers })
+    if (!readiness.ok || taskReadiness.blockers.length || reportBlockers.length) return partyError(409, 'partycrm_order_close_blocked', 'Заказ нельзя закрыть: есть незавершенные финансовые или рабочие пункты', 'validation', { blockers: maskPartyOrderBlockers(context, closingOrder, [...readiness.blockers, ...taskReadiness.blockers, ...reportBlockers.map(() => ({ code: 'report_not_accepted', message: 'Не принят обязательный отчёт' }))]) })
+    payload.eventBrief = await snapshotPartyBriefForClose({ tenantId: context.tenantId, order: closingOrder })
   }
   if (payload.status !== currentOrder.status) {
     payload.commercialRevision = currentCommercialRevision + 1
@@ -350,7 +383,7 @@ export async function PATCH(req, { params }) {
       'partycrm_order_conflict',
       'Найдены пересечения по точке или исполнителю',
       'validation',
-      { conflicts }
+      { conflicts: maskPartyOrderConflicts(context, conflicts) }
     )
   }
 
@@ -393,13 +426,14 @@ export async function PATCH(req, { params }) {
   })
 
   const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, staffId: context.staff?._id })
-  return NextResponse.json({ success: true, data: order, inventory })
+  if (nextStatus === 'canceled') await cancelPartyOrderTasks({ tenantId: context.tenantId, orderId: id, staffId: context.staff?._id })
+  return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, order), ...(canPartyAccess(context, { resource: 'inventory', order }) ? { inventory: await filterPartyInventoryResult(context, inventory, 'inventory.reservations') } : {}) })
 }
 
 export async function DELETE(req, { params }) {
   const { context, error } = await getPartyRequestContext({
     req,
-    managementOnly: true,
+    allowLocationOwner: true,
   })
   if (error) return error
 
@@ -417,9 +451,10 @@ export async function DELETE(req, { params }) {
     tenantId: context.tenantId,
   }).lean()
 
-  if (!currentOrder) {
+  if (!currentOrder || !canPartyAccess(context, { resource: 'orders', action: 'read', order: currentOrder })) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
+  if (!canPartyAccess(context, { resource: 'orders', action: 'delete', order: currentOrder })) return partyError(403, 'partycrm_forbidden', 'Нет права отменять или удалять заказ')
 
   if (currentOrder.status === 'closed') {
     return partyError(
@@ -471,12 +506,13 @@ export async function DELETE(req, { params }) {
     })
 
     const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, deleted: true })
-    return NextResponse.json({ success: true, data: order, inventory })
+    await cancelPartyOrderTasks({ tenantId: context.tenantId, orderId: id, staffId: context.staff?._id })
+    return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, order), ...(canPartyAccess(context, { resource: 'inventory', order }) ? { inventory: await filterPartyInventoryResult(context, inventory, 'inventory.reservations') } : {}) })
   }
 
   // По умолчанию — отмена заказа (мягкое удаление)
   const order = await PartyOrders.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId },
+    { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
     { $set: { status: 'canceled' } },
     { returnDocument: 'after' }
   ).lean()
@@ -508,5 +544,6 @@ export async function DELETE(req, { params }) {
   })
 
   const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, staffId: context.staff?._id })
-  return NextResponse.json({ success: true, data: order, inventory })
+  await cancelPartyOrderTasks({ tenantId: context.tenantId, orderId: id, staffId: context.staff?._id })
+  return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, order), ...(canPartyAccess(context, { resource: 'inventory', order }) ? { inventory: await filterPartyInventoryResult(context, inventory, 'inventory.reservations') } : {}) })
 }

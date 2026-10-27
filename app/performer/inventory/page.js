@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
-import { canPartyOperationalPermission } from '@helpers/partyOperationalPermissions'
+import { canPartyInventoryAccess } from '@helpers/partyInventoryAccess'
 import PartyInventoryOperatorWorkspace from '@components/party/inventory/PartyInventoryOperatorWorkspace'
 
 export const dynamic = 'force-dynamic'
@@ -12,7 +12,7 @@ export default async function PerformerInventoryPage() {
     redirect('/party/login?callbackUrl=/performer/inventory')
   const permittedMemberships = memberships
     .filter((membership) =>
-      canPartyOperationalPermission(membership, 'inventory.movements')
+      canPartyInventoryAccess(membership, { resource: 'inventory.movements' })
     )
   const companies = Array.from(
     new Map(

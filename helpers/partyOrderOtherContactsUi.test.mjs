@@ -18,20 +18,25 @@ test('party orders persist and edit additional contacts', async () => {
   assert.match(route, /normalizeOtherContacts/)
   assert.match(route, /otherContacts:\s*normalizeOtherContacts\(body\.otherContacts\)/)
   assert.match(workspace, /otherContacts:\s*Array\.isArray\(order\.otherContacts\)/)
-  assert.match(modal, /OtherContactsPicker/)
+  assert.match(modal, /PartyOrderContactRolesEditor/)
+  assert.match(modal, /primaryClientId=\{orderDraft\.clientId(?:\s*\|\|\s*null)?\}/)
+  assert.match(modal, /otherContacts=\{orderDraft\.otherContacts/)
   assert.match(modal, /handleOtherContactAdd/)
   assert.match(modal, /handleOtherContactSelect/)
 })
 
-test('party order modal uses PartyCRM styled additional contacts picker', async () => {
+test('party order modal uses one styled contact editor with explicit performer visibility', async () => {
   const modal = await source('components/party/modals/OrderModal.js')
-  const picker = await source('components/OtherContactsPicker.js')
+  const picker = await source('components/party/orders/PartyOrderContactRoles.js')
 
-  assert.match(modal, /<OtherContactsPicker[\s\S]*tone="party"/)
-  assert.match(picker, /tone = 'default'/)
-  assert.match(picker, /isPartyTone/)
-  assert.match(picker, /border-sky-100 bg-sky-50/)
-  assert.match(picker, /Дополнительные контакты еще не добавлены/)
+  assert.match(modal, /<PartyOrderContactRolesEditor/)
+  assert.doesNotMatch(modal, /<OtherContactsPicker/)
+  assert.match(modal, /renderPrimaryClient=/)
+  assert.match(picker, /buildPartyOrderContacts/)
+  assert.match(picker, /Кем является/)
+  assert.match(picker, /performerCanContact/)
+  assert.match(picker, /Памятка способов связи/)
+  assert.match(picker, /border-sky-100/)
 })
 
 test('party order cards show client and additional contacts with contact buttons', async () => {

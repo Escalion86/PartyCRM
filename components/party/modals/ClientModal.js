@@ -606,6 +606,12 @@ export function ClientFormModal({
             {...compactFieldProps}
           />
           <Input
+            label="MAX — телефон или ссылка max.ru"
+            value={clientDraft.max || ''}
+            onChange={handleChange('max')}
+            {...compactFieldProps}
+          />
+          <Input
             label="Instagram"
             value={clientDraft.instagram}
             onChange={handleChange('instagram')}

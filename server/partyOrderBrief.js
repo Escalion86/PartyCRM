@@ -1,4 +1,5 @@
 import { normalizePartyProposalDuration } from '../helpers/partyProposalCore.js'
+import { copyPartyBriefValues } from '../helpers/partyBriefTemplates.js'
 const trimText = (value, maxLength) =>
   typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
 
@@ -35,6 +36,9 @@ export const normalizePartyOrderEventBrief = (value) => {
     value && typeof value === 'object' && !Array.isArray(value) ? value : {}
 
   return {
+    ...copyPartyBriefValues(source),
+    customAnswers: copyPartyBriefValues(source.customAnswers || {}),
+    archivedAnswers: copyPartyBriefValues(Array.isArray(source.archivedAnswers) ? source.archivedAnswers : []),
     occasion: trimText(source.occasion, 180),
     celebrantName: trimText(source.celebrantName, 160),
     celebrantAge: normalizeInteger(source.celebrantAge, { min: 0, max: 120 }),

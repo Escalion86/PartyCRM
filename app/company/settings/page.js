@@ -4,6 +4,7 @@ import CompanySettingsPageContent from './CompanySettingsPageContent'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { getPartyEntryState } from '@server/partyEntry'
 import { canAccessCompanySettingsTab } from './companySettingsTabs'
+import { isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
 
 export const metadata = {
   title: 'PartyCRM - настройки компании',
@@ -50,6 +51,6 @@ export default async function CompanySettingsPage() {
     redirect('/company')
   }
 
-  const companies = uniquePartyCompanyMemberships(managementMemberships).map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания' }))
+  const companies = uniquePartyCompanyMemberships(managementMemberships).map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания', restricted: isPartyRestrictedManagementContext(membership) }))
   return <CompanySettingsPageContent activeTab="general" companies={companies} />
 }

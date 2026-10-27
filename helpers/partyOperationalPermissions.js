@@ -1,3 +1,5 @@
+import { canPartyAccess } from './partyRolePermissions.js'
+
 export const PARTY_OPERATIONAL_PERMISSIONS = Object.freeze([
   'inventory.movements',
   'orders.pricing',
@@ -27,6 +29,10 @@ export const canPartyOperationalPermission = (context, permission) => {
     context.role !== staff.role
   )
     return false
+  if (staff.positionId || Number(context.position?.revision || 0) > 0) {
+    const resource = { 'inventory.movements': 'inventory.movements', 'orders.pricing': 'finance.clientAmount', 'orders.assignments': 'orders.assignedStaff' }[permission]
+    return canPartyAccess(context, { resource, action: 'edit' }) && canPartyAccess(context, { resource: permission === 'inventory.movements' ? 'inventory' : 'orders' })
+  }
   if (['owner', 'admin'].includes(staff.role)) return true
   return (
     staff.role === 'performer' &&

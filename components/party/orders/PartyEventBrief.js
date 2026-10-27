@@ -1,222 +1,73 @@
 'use client'
 
-import Input from '@components/Input'
-import Textarea from '@components/Textarea'
+import { useEffect, useState } from 'react'
+import { apiJson } from '@helpers/apiClient'
+import { getPartyArchivedBriefAnswers, getPartyBriefAnswer, getPartyDefaultBriefTemplate, hasPartyBriefAnswer, resolvePartyBriefTemplate } from '@helpers/partyBriefTemplates'
 
-const textFields = [
-  ['occasion', 'Повод'],
-  ['celebrantName', 'Имя именинника'],
-  ['guestAgeRange', 'Возраст гостей'],
-  ['interests', 'Интересы'],
-  ['previousPrograms', 'Предыдущие программы'],
-  ['characters', 'Герои'],
-  ['costumeOptions', 'Варианты костюмов'],
-  ['eventFormat', 'Формат праздника'],
-  ['venueConditions', 'Условия площадки'],
-  ['cakeAndGifts', 'Торт и подарки'],
-  ['wishes', 'Пожелания'],
-  ['restrictions', 'Ограничения'],
-]
+const control = 'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:bg-slate-50'
+const display = (value) => typeof value === 'boolean' ? value ? 'Да' : 'Нет' : typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) : String(value ?? '')
 
-const hasValue = (value) =>
-  value !== null && value !== undefined && String(value).trim() !== ''
+export const hasPartyEventBrief = (brief) => Boolean(brief && Object.entries(brief).some(([key, value]) => !['templateSnapshot', 'customAnswers', 'archivedAnswers'].includes(key) && hasPartyBriefAnswer(value)) || Object.values(brief?.customAnswers || {}).some(hasPartyBriefAnswer) || brief?.archivedAnswers?.some((answer) => hasPartyBriefAnswer(answer.value)))
 
-export const hasPartyEventBrief = (brief) =>
-  Boolean(
-    brief &&
-      [...textFields.map(([field]) => field), 'celebrantAge', 'guestCount'].some(
-        (field) => hasValue(brief[field])
-      )
-  )
-
-const BriefGroup = ({ title, description, children }) => (
-  <section className="rounded-xl border border-sky-100 bg-white p-3 sm:p-4">
-    <h3 className="font-semibold text-slate-900">{title}</h3>
-    {description ? (
-      <p className="mt-1 text-sm text-slate-500">{description}</p>
-    ) : null}
-    <div className="mt-3 grid gap-3 sm:grid-cols-2">{children}</div>
-  </section>
-)
-
-export function PartyEventBriefEditor({ value = {}, onChange }) {
-  const change = (field, nextValue) =>
-    onChange({ ...value, [field]: nextValue })
-
-  return (
-    <div className="grid gap-3">
-      <p className="text-sm text-slate-600">
-        Заполните известные детали. Бриф можно дополнять по мере общения с
-        клиентом.
-      </p>
-      <BriefGroup
-        title="Гости и повод"
-        description="Кто празднует и для какой компании готовим программу."
-      >
-        <Input
-          label="Повод"
-          value={value.occasion || ''}
-          onChange={(next) => change('occasion', next)}
-          placeholder="Например: день рождения"
-          fullWidth
-          tone="party"
-        />
-        <Input
-          label="Имя именинника"
-          value={value.celebrantName || ''}
-          onChange={(next) => change('celebrantName', next)}
-          fullWidth
-          tone="party"
-        />
-        <Input
-          label="Возраст именинника"
-          type="number"
-          min={0}
-          max={120}
-          value={value.celebrantAge ?? ''}
-          onChange={(next) => change('celebrantAge', next)}
-          fullWidth
-          tone="party"
-        />
-        <Input
-          label="Количество гостей"
-          type="number"
-          min={0}
-          max={10000}
-          value={value.guestCount ?? ''}
-          onChange={(next) => change('guestCount', next)}
-          fullWidth
-          tone="party"
-        />
-        <div className="sm:col-span-2">
-          <Input
-            label="Возраст гостей"
-            value={value.guestAgeRange || ''}
-            onChange={(next) => change('guestAgeRange', next)}
-            placeholder="Например: в основном 5–7 лет"
-            fullWidth
-            tone="party"
-          />
-        </div>
-      </BriefGroup>
-
-      <BriefGroup
-        title="Программа и образы"
-        description="Что нравится гостям и какие варианты уже обсуждали."
-      >
-        <Textarea
-          label="Интересы"
-          value={value.interests || ''}
-          onChange={(next) => change('interests', next)}
-          rows={3}
-          fullWidth
-          tone="party"
-        />
-        <Textarea
-          label="Предыдущие программы"
-          value={value.previousPrograms || ''}
-          onChange={(next) => change('previousPrograms', next)}
-          rows={3}
-          fullWidth
-          tone="party"
-        />
-        <Textarea
-          label="Герои"
-          value={value.characters || ''}
-          onChange={(next) => change('characters', next)}
-          rows={3}
-          fullWidth
-          tone="party"
-        />
-        <Textarea
-          label="Варианты костюмов"
-          value={value.costumeOptions || ''}
-          onChange={(next) => change('costumeOptions', next)}
-          rows={3}
-          fullWidth
-          tone="party"
-        />
-      </BriefGroup>
-
-      <BriefGroup
-        title="Формат и важные условия"
-        description="Организационные детали, которые должна учесть команда."
-      >
-        <Textarea
-          label="Формат праздника"
-          value={value.eventFormat || ''}
-          onChange={(next) => change('eventFormat', next)}
-          rows={3}
-          fullWidth
-          tone="party"
-        />
-        <Textarea
-          label="Условия площадки"
-          value={value.venueConditions || ''}
-          onChange={(next) => change('venueConditions', next)}
-          rows={3}
-          fullWidth
-          tone="party"
-        />
-        <Textarea
-          label="Торт и подарки"
-          value={value.cakeAndGifts || ''}
-          onChange={(next) => change('cakeAndGifts', next)}
-          rows={3}
-          fullWidth
-          tone="party"
-        />
-        <Textarea
-          label="Пожелания"
-          value={value.wishes || ''}
-          onChange={(next) => change('wishes', next)}
-          rows={3}
-          fullWidth
-          tone="party"
-        />
-        <div className="sm:col-span-2">
-          <Textarea
-            label="Ограничения"
-            value={value.restrictions || ''}
-            onChange={(next) => change('restrictions', next)}
-            placeholder="Аллергии, особенности здоровья, запреты площадки и другие ограничения"
-            rows={3}
-            fullWidth
-            tone="party"
-          />
-        </div>
-      </BriefGroup>
-    </div>
-  )
+const useBriefTemplate = ({ template, companyId, orderId, value, orderStatus }) => {
+  const [remote, setRemote] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(Boolean(companyId && !template && orderStatus !== 'closed'))
+  useEffect(() => {
+    if (template || !companyId || orderStatus === 'closed') return
+    let alive = true
+    apiJson(`/api/party/brief-template${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ''}`, { cache: 'no-store', headers: { 'x-partycrm-company-id': companyId } })
+      .then((result) => { if (alive) { setRemote(result.data); setError('') } })
+      .catch((failure) => { if (alive) setError(failure.message || 'Не удалось загрузить форму брифа') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [template, companyId, orderId, orderStatus])
+  return { template: resolvePartyBriefTemplate(value, template || remote || getPartyDefaultBriefTemplate(), orderStatus), error, loading }
 }
 
-export function PartyEventBriefView({ value = {} }) {
-  const items = [
-    ...textFields.slice(0, 2).map(([field, label]) => [label, value[field]]),
-    ['Возраст именинника', value.celebrantAge],
-    ['Количество гостей', value.guestCount],
-    ...textFields.slice(2).map(([field, label]) => [label, value[field]]),
-  ].filter(([, content]) => hasValue(content))
+function ArchivedAnswers({ value, template }) {
+  const answers = getPartyArchivedBriefAnswers(value, template)
+  if (!answers.length) return null
+  return <details className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+    <summary className="min-h-10 cursor-pointer text-sm font-medium text-slate-600">Сохранённые ответы прежней формы · {answers.length}</summary>
+    <p className="mb-3 text-xs text-slate-500">Вопросы убраны из текущей формы. Их ответы сохранены и доступны для просмотра.</p>
+    <dl className="grid gap-3 sm:grid-cols-2">{answers.map(({ field, value }, index) => <div key={`${field.id}_${index}`} className="min-w-0"><dt className="text-xs font-semibold text-slate-500">{field.label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{display(value)}</dd></div>)}</dl>
+  </details>
+}
 
-  if (!items.length) {
-    return <p className="text-sm text-slate-500">Бриф пока не заполнен.</p>
-  }
+export function PartyEventBriefEditor({ value = {}, onChange, template: suppliedTemplate, companyId = '', orderId = '', orderStatus = 'draft', disabled = false }) {
+  const { template, error, loading } = useBriefTemplate({ template: suppliedTemplate, companyId, orderId, value, orderStatus })
+  const change = (field, next) => onChange?.({ ...value, ...(field.legacyKey ? { [field.legacyKey]: next } : {}), customAnswers: { ...(value.customAnswers || {}), [field.id]: next } })
+  return <div className="space-y-4">
+    <p className="text-sm text-slate-600">Ответьте на вопросы о мероприятии. Можно сохранить незаполненный заказ; все вопросы формы нужно заполнить перед переводом на следующий этап.</p>
+    {loading && <p role="status" className="text-sm text-slate-500">Загрузка формы брифа…</p>}
+    {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+    <fieldset disabled={disabled || loading || Boolean(error)} className="grid min-w-0 gap-4 rounded-xl border border-sky-100 bg-white p-3 sm:grid-cols-2 sm:p-4">
+      <legend className="px-1 font-semibold text-slate-900">{template.title || 'Бриф заказа'}</legend>
+      {(template.fields || []).map((field) => {
+        const answer = getPartyBriefAnswer(value, field)
+        return <label key={field.id} className={`min-w-0 text-sm font-medium text-slate-700 ${field.type === 'textarea' ? 'sm:col-span-2' : ''}`}>
+          {field.label} <span aria-label="Обязательно при переходе" className="text-red-600">*</span>
+          {field.type === 'textarea' ? <textarea className={control} rows={3} maxLength={20000} value={answer ?? ''} onChange={(event) => change(field, event.target.value)} />
+            : field.type === 'select' ? <select className={`${control} cursor-pointer`} value={answer ?? ''} onChange={(event) => change(field, event.target.value)}><option value="">Выберите вариант</option>{hasPartyBriefAnswer(answer) && !field.options?.includes(String(answer)) && <option value={String(answer)}>{String(answer)} · прежний ответ</option>}{(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}</select>
+              : field.type === 'checkbox' ? <select className={`${control} cursor-pointer`} value={typeof answer === 'boolean' ? String(answer) : ''} onChange={(event) => change(field, event.target.value === '' ? null : event.target.value === 'true')}><option value="">Выберите ответ</option><option value="true">Да</option><option value="false">Нет</option></select>
+                : <input className={control} type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} step={field.type === 'number' ? 'any' : undefined} maxLength={field.type === 'text' ? 20000 : undefined} value={answer ?? ''} onChange={(event) => change(field, field.type === 'number' && event.target.value !== '' ? Number(event.target.value) : event.target.value)} />}
+        </label>
+      })}
+      {!template.fields?.length && <p className="text-sm text-slate-500">В форме пока нет вопросов.</p>}
+    </fieldset>
+    <ArchivedAnswers value={value} template={template} />
+  </div>
+}
 
-  return (
-    <dl className="grid gap-2 sm:grid-cols-2">
-      {items.map(([label, content]) => (
-        <div
-          key={label}
-          className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-3"
-        >
-          <dt className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-            {label}
-          </dt>
-          <dd className="mt-1 text-sm whitespace-pre-wrap break-words text-slate-900">
-            {content}
-          </dd>
-        </div>
-      ))}
-    </dl>
-  )
+export function PartyEventBriefView({ value = {}, template: suppliedTemplate, companyId = '', orderId = '', orderStatus = 'draft' }) {
+  const { template, error, loading } = useBriefTemplate({ template: suppliedTemplate, companyId, orderId, value, orderStatus })
+  const items = (template.fields || []).map((field) => ({ field, answer: getPartyBriefAnswer(value, field) })).filter(({ answer }) => hasPartyBriefAnswer(answer))
+  return <div className="space-y-3">
+    {loading && <p role="status" className="text-sm text-slate-500">Загрузка формы брифа…</p>}
+    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    {!items.length && <p className="text-sm text-slate-500">Бриф пока не заполнен.</p>}
+    <dl className="grid gap-2 sm:grid-cols-2">{items.map(({ field, answer }) => <div key={field.id} className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 p-3"><dt className="text-xs font-semibold text-slate-500">{field.label}</dt><dd className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-900">{display(answer)}</dd></div>)}</dl>
+    <ArchivedAnswers value={value} template={template} />
+  </div>
 }

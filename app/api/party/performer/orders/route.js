@@ -9,6 +9,8 @@ import {
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { isValidObjectId } from '@server/partyApi'
 import { sanitizePartyOrderForPerformer } from '@helpers/partyPerformerOrders'
+import { getPartyOrderPerformerContactIds } from '@helpers/partyOrderContacts'
+import { buildPartyOrderAccessFilter, canPartyAccess } from '@helpers/partyRolePermissions'
 
 export async function GET() {
   const { sessionUser, memberships } = await getPartyMembershipContext({ excludeLocationOwners: true })
@@ -29,7 +31,7 @@ export async function GET() {
 
   const activeMemberships = memberships.filter(
     (membership) =>
-      membership.status !== 'archived' &&
+      membership.status === 'active' &&
       !membership.isDeveloperAccess &&
       isValidObjectId(membership.staffId)
   )
@@ -42,7 +44,7 @@ export async function GET() {
   const orders = await PartyOrders.find({
     status: { $ne: 'canceled' },
     $or: activeMemberships.map((membership) => ({
-      tenantId: membership.tenantId,
+      ...buildPartyOrderAccessFilter({ ...membership, staff: membership.staff, position: membership.position }),
       'assignedStaff.staffId': String(membership.staffId),
     })),
   })
@@ -79,7 +81,7 @@ export async function GET() {
   const clientFilters = [
     ...new Map(
       orders
-        .flatMap((order) => [order.clientId, order.contactRoles?.onsiteClientId].map((clientId) => ({
+        .flatMap((order) => getPartyOrderPerformerContactIds(order).map((clientId) => ({
           tenantId: String(order.tenantId || ''),
           clientId: String(clientId || ''),
         })))
@@ -138,7 +140,6 @@ export async function GET() {
         $or: responsibleStaffFilters.map((pair) => ({
           _id: pair.staffId,
           tenantId: pair.tenantId,
-          role: { $in: ['owner', 'admin'] },
           status: { $ne: 'archived' },
         })),
       })
@@ -184,14 +185,29 @@ export async function GET() {
           ? membershipsByStaffId.get(`${String(order.tenantId)}:${String(assignment.staffId)}`)
           : null
         if (!membership) return null
-        return sanitizePartyOrderForPerformer({
+        const context = { ...membership, staff: membership.staff, position: membership.position }
+        const can = (resource, action = 'read') => canPartyAccess(context, { resource, action, order })
+        if (!can('orders')) return null
+        const result = sanitizePartyOrderForPerformer({
           order,
           membership,
           locationsById,
           clientsById,
           servicesById,
           staffById,
+          canViewContacts: can('orders.client.name') || can('orders.client.phone') || can('orders.client.email'),
+          contactFieldAccess: { name: can('orders.client.name'), phone: can('orders.client.phone'), email: can('orders.client.email'), channels: can('orders.client.phone') },
         })
+        const fields = Object.fromEntries(['title', 'eventDate', 'dateEnd', 'placeType', 'locationId', 'customAddress', 'servicesIds', 'serviceTitle', 'performerComment', 'responsibleStaffId'].map((field) => [field, can(`orders.${field}`)]))
+        for (const field of ['title', 'eventDate', 'dateEnd', 'placeType', 'customAddress', 'serviceTitle', 'performerComment', 'responsibleStaffId']) if (!fields[field]) delete result[field]
+        if (!fields.locationId) delete result.location
+        if (!fields.servicesIds && !fields.serviceTitle) { delete result.serviceTitle; delete result.serviceTitles }
+        if (!fields.responsibleStaffId) delete result.responsibleStaff
+        if (result.assignment && !can('finance.ownPayout') && !can('finance.payouts')) { delete result.assignment.payoutAmount; delete result.assignment.payoutStatus }
+        if (!can('orders.contactRoles')) delete result.communicationInstructions
+        if (can('orders.eventBrief')) result.eventBrief = order.eventBrief || {}
+        result.permissions = { fields, canViewBrief: can('orders.eventBrief'), canViewContacts: can('orders.client.name') || can('orders.client.phone') || can('orders.client.email'), canViewTasks: can('tasks'), canViewOwnPayout: can('finance.ownPayout') || can('finance.payouts'), canViewPayout: can('finance.ownPayout') || can('finance.payouts'), canViewReports: can('reports'), canViewPreparation: can('orders.preparation'), canViewFinancialSettlement: can('reports.finance') || can('finance.payouts'), canViewFinancialTasks: can('finance.payments') || can('finance.expenses') || can('finance.payouts'), canChangeAssignment: can('orders.ownAssignment', 'edit') }
+        return result
       })
       .filter(Boolean),
   })

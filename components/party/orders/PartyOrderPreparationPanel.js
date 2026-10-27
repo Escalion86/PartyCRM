@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
 const button =
   'min-h-10 cursor-pointer rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50'
@@ -30,12 +31,18 @@ export default function PartyOrderPreparationPanel({
   staffId = '',
   staff = [],
   manager = false,
+  onDirtyChange,
+  onOpenTasks,
 }) {
   const [data, setData] = useState(null)
   const [draft, setDraft] = useState(null)
   const [busy, setBusy] = useState(true)
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState('')
+  useEffect(() => {
+    onDirtyChange?.(dirty)
+    return () => onDirtyChange?.(false)
+  }, [dirty, onDirtyChange])
   const endpoint = manager
     ? `/api/party/orders/${orderId}/preparation`
     : `/api/party/performer/orders/${orderId}/preparation?staffId=${staffId}`
@@ -63,15 +70,11 @@ export default function PartyOrderPreparationPanel({
     load()
   }, [load])
 
-  useEffect(() => {
-    if (!dirty) return
-    const protect = (event) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', protect)
-    return () => window.removeEventListener('beforeunload', protect)
-  }, [dirty])
+  usePartyUnsavedChanges(dirty, {
+    label: 'подготовка заказа',
+    scope: companyId,
+    pending: busy && Boolean(draft),
+  })
 
   const staffById = useMemo(
     () =>
@@ -205,15 +208,50 @@ export default function PartyOrderPreparationPanel({
 
           <section className="space-y-2">
             <h4 className="font-semibold">Чеклист</h4>
+            {data.tasksManaged ? (
+              <div className="space-y-2 rounded-lg bg-sky-50 p-3 text-sm text-sky-900">
+                <p>
+                  Задачи подготовки собраны в разделе «Задачи». Здесь показано
+                  их текущее состояние.
+                </p>
+                {data.canViewTasks ? (
+                  onOpenTasks ? (
+                    <a
+                      href="#tasks"
+                      className="inline-flex min-h-11 cursor-pointer items-center text-sky-700 underline"
+                      onClick={(event) => {
+                        event.preventDefault()
+                        onOpenTasks()
+                      }}
+                    >
+                      Открыть задачи
+                    </a>
+                  ) : (
+                    <a
+                      className="inline-flex min-h-11 cursor-pointer items-center text-sky-700 underline"
+                      href="/performer/tasks"
+                    >
+                      Открыть задачи
+                    </a>
+                  )
+                ) : (
+                  <p>
+                    Для изменения задач обратитесь к сотруднику с
+                    соответствующими правами.
+                  </p>
+                )}
+              </div>
+            ) : null}
             {draft.items.map((item, index) => {
               const canToggle =
-                manager || permissions.itemIds?.includes(String(item._id))
+                !data.tasksManaged &&
+                (manager || permissions.itemIds?.includes(String(item._id)))
               return (
                 <div
                   key={item._id || index}
                   className="rounded-lg border border-slate-200 p-3"
                 >
-                  {manager ? (
+                  {manager && !data.tasksManaged ? (
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="text-sm sm:col-span-2">
                         Пункт
@@ -348,7 +386,7 @@ export default function PartyOrderPreparationPanel({
                         ? 'Вернуть в работу'
                         : 'Отметить выполненным'}
                     </button>
-                    {manager && (
+                    {manager && !data.tasksManaged && (
                       <button
                         type="button"
                         className={button}
@@ -368,7 +406,7 @@ export default function PartyOrderPreparationPanel({
                 </div>
               )
             })}
-            {manager && (
+            {manager && !data.tasksManaged && (
               <button
                 type="button"
                 className={button}

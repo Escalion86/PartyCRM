@@ -7,6 +7,7 @@ import {
 } from '../companySettingsTabs'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { getPartyEntryState } from '@server/partyEntry'
+import { isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,6 +47,6 @@ export default async function CompanySettingsTabPage({ params }) {
     redirect('/company/settings')
   }
 
-  const companies = uniquePartyCompanyMemberships(managementMemberships).map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания' }))
+  const companies = uniquePartyCompanyMemberships(managementMemberships).map((membership) => ({ id: String(membership.tenantId), title: membership.company?.title || 'Компания', restricted: isPartyRestrictedManagementContext(membership) }))
   return <CompanySettingsPageContent activeTab={tab} companies={companies} />
 }

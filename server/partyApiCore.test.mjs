@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import { resolvePartyRequestContext } from './partyApiCore.js'
+import { getPartyDefaultRolePermissions } from '../helpers/partyRolePermissions.js'
 
 const companyId = '507f1f77bcf86cd799439011'
 const otherCompanyId = '507f1f77bcf86cd799439012'
@@ -44,6 +45,33 @@ test('resolvePartyRequestContext rejects performer management access', () => {
 
   assert.equal(result.error.status, 403)
   assert.equal(result.error.code, 'partycrm_forbidden')
+})
+
+test('legacy management endpoints reject a configured administrator with hidden fields or location scope', () => {
+  const permissions = getPartyDefaultRolePermissions('admin')
+  for (const position of [
+    { permissions: { ...permissions, 'finance.payments': 'hidden' }, orderScope: {} },
+    { permissions, orderScope: { locationIds: ['location-a'] } },
+  ]) {
+    const result = resolvePartyRequestContext({ membershipContext: buildMembershipContext('admin', { position }), requestedCompanyId: companyId, managementOnly: true })
+    assert.equal(result.error.status, 403)
+    assert.equal(result.error.code, 'partycrm_granular_permissions_required')
+  }
+})
+
+test('a server-marked permission-aware handler still requires an active management membership', () => {
+  const position = { permissions: { orders: 'read' }, orderScope: { stageIds: ['preparation'] } }
+  const allowed = resolvePartyRequestContext({ membershipContext: buildMembershipContext('admin', { position }), requestedCompanyId: companyId, managementOnly: true, permissionAware: true })
+  assert.equal(allowed.error, null)
+  for (const role of ['performer', 'location_owner']) {
+    const denied = resolvePartyRequestContext({ membershipContext: buildMembershipContext(role, { position }), requestedCompanyId: companyId, managementOnly: true, permissionAware: true })
+    assert.equal(denied.error.status, 403)
+  }
+})
+
+test('full baseline administrator rights remain compatible with legacy management routes', () => {
+  const result = resolvePartyRequestContext({ membershipContext: buildMembershipContext('admin', { position: { permissions: getPartyDefaultRolePermissions('admin'), orderScope: {} } }), requestedCompanyId: companyId, managementOnly: true })
+  assert.equal(result.error, null)
 })
 
 test('resolvePartyRequestContext rejects foreign company id', () => {

@@ -36,6 +36,24 @@ export const COMPANY_SETTINGS_TABS = Object.freeze([
     access: 'management',
   },
   {
+    slug: 'roles',
+    label: 'Должности',
+    href: '/company/settings/roles',
+    access: 'management',
+  },
+  {
+    slug: 'brief',
+    label: 'Бриф заказа',
+    href: '/company/settings/brief',
+    access: 'management',
+  },
+  {
+    slug: 'workflow',
+    label: 'Этапы заказов',
+    href: '/company/settings/workflow',
+    access: 'management',
+  },
+  {
     slug: 'schedule',
     label: 'График ответов',
     href: '/company/settings/schedule',

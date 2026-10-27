@@ -27,12 +27,12 @@ test('party order card shows nearest additional event instead of task counters',
   assert.doesNotMatch(component, /Задачи: \{additionalEventsBadges\.open\}/)
 })
 
-test('party order action menu opens additional events modal', async () => {
+test('party order action menu opens tasks', async () => {
   const component = await source('components/party/lists/OrdersList.js')
 
   assert.match(component, /faCalendarAlt/)
   assert.match(component, /onAdditionalEvents/)
-  assert.match(component, /label="Доп\. события"/)
+  assert.match(component, /label="Задачи"/)
 })
 
 test('party order cards show assignment confirmation statuses', async () => {

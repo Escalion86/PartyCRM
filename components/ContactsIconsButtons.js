@@ -11,20 +11,20 @@ import { faPhone } from '@fortawesome/free-solid-svg-icons/faPhone'
 import { faSms } from '@fortawesome/free-solid-svg-icons/faSms'
 import ClientChatButton from '@components/ClientChatButton'
 import NovofonCallButton from '@components/NovofonCallButton'
+import { getMaxContactAction } from '@helpers/maxContact'
+import useSnackbar from '@helpers/useSnackbar'
 
-const ContactIconBtn = ({ url, icon, size = 'lg', className = null }) => (
+const ContactIconBtn = ({ url, icon, size = 'lg', className = null, title }) => (
+  <button type="button" title={title} aria-label={title} className="inline-flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50" onClick={(event) => { event.stopPropagation(); window.open(url, '_blank', 'noopener,noreferrer') }}>
   <FontAwesomeIcon
     className={cn(
       'hover:text-toxic h-6 cursor-pointer duration-300 hover:scale-110',
       className
     )}
     icon={icon}
-    onClick={(event) => {
-      event.stopPropagation()
-      window.open(url)
-    }}
     size={size}
   />
+  </button>
 )
 
 const ContactIconBtnWithTitle = ({
@@ -34,11 +34,11 @@ const ContactIconBtnWithTitle = ({
   className = null,
   title,
 }) => (
-  <div
-    className="group flex cursor-pointer items-center gap-x-2"
+  <button type="button" title={title} aria-label={title}
+    className="group flex min-h-10 cursor-pointer items-center gap-x-2"
     onClick={(event) => {
       event.stopPropagation()
-      window.open(url)
+      window.open(url, '_blank', 'noopener,noreferrer')
     }}
   >
     <div className="flex w-6 items-center justify-center">
@@ -52,7 +52,7 @@ const ContactIconBtnWithTitle = ({
       />
     </div>
     <span className="group-hover:text-toxic">{title}</span>
-  </div>
+  </button>
 )
 
 const ContactsIconsButtons = ({
@@ -62,14 +62,16 @@ const ContactsIconsButtons = ({
   className,
   message,
   smsViaPhone,
-  forceWhatsApp = true,
-  forceTelegram = true,
+  forceWhatsApp = false,
+  forceTelegram = false,
   showChat = false,
 }) => {
+  const snackbar = useSnackbar()
+  const maxAction = getMaxContactAction(user?.max || user?.phone)
   const Btn = withTitle ? ContactIconBtnWithTitle : ContactIconBtn
 
   const encodedMessage =
-    message !== undefined || message !== null
+    message !== undefined && message !== null
       ? encodeURIComponent(message)
       : undefined
 
@@ -79,7 +81,7 @@ const ContactsIconsButtons = ({
         'my-1 items-center gap-y-2',
         grid
           ? 'laptop:grid-cols-3 tablet:grid-cols-2 grid grid-cols-1'
-          : 'flex',
+          : 'flex flex-wrap',
         withTitle ? 'gap-x-3' : 'gap-x-2',
         className
       )}
@@ -95,7 +97,7 @@ const ContactsIconsButtons = ({
                 ? `sms:+${user.phone}`
                 : `tel:+${user.phone}`
           }
-          title={'+' + user.phone}
+          title={`${message || smsViaPhone ? 'SMS' : 'Позвонить'}: +${user.phone}`}
         />
       )}
       {user?.whatsapp ? (
@@ -105,7 +107,7 @@ const ContactsIconsButtons = ({
           url={`https://wa.me/${user.whatsapp}${
             message ? `?text=${encodedMessage}` : ''
           }`}
-          title={'+' + user.whatsapp}
+          title={`WhatsApp: +${user.whatsapp}`}
         />
       ) : (
         forceWhatsApp &&
@@ -116,7 +118,7 @@ const ContactsIconsButtons = ({
             url={`https://wa.me/${user.phone}${
               message ? `?text=${encodedMessage}` : ''
             }`}
-            title={'+' + user.phone}
+            title={`WhatsApp: +${user.phone}`}
           />
         )
       )}
@@ -125,7 +127,7 @@ const ContactsIconsButtons = ({
           icon={faViber}
           className="text-purple-600"
           url={'viber://chat?number=' + user.viber}
-          title={'+' + user.viber}
+          title={`Viber: +${user.viber}`}
         />
       )}
 
@@ -135,7 +137,7 @@ const ContactsIconsButtons = ({
             icon={faTelegramPlane}
             className="text-blue-600"
             url={`tg://resolve?domain=${user.telegram}`}
-            title={'@' + user.telegram}
+            title={`Telegram: @${user.telegram}`}
           />
         ) : (
           forceTelegram &&
@@ -144,7 +146,7 @@ const ContactsIconsButtons = ({
               icon={faTelegramPlane}
               className="text-red-400"
               url={`tg://resolve?phone=${user.phone}`}
-              title={'+' + user.phone}
+              title={`Telegram: +${user.phone}`}
             />
           )
         ))}
@@ -171,6 +173,24 @@ const ContactsIconsButtons = ({
           url={'mailto:' + user.email}
           title={user.email}
         />
+      )}
+      {!message && maxAction && (
+        <button type="button" className="inline-flex min-h-10 min-w-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 px-2 text-xs font-bold text-violet-700 hover:bg-violet-50"
+          title={maxAction.type === 'phone' ? `Скопировать ${maxAction.phone} и открыть MAX` : 'Открыть контакт в MAX'}
+          aria-label={maxAction.type === 'phone' ? `Скопировать ${maxAction.phone} и открыть MAX` : 'Открыть контакт в MAX'}
+          onClick={async (event) => {
+            event.stopPropagation()
+            if (maxAction.type === 'phone') {
+              try {
+                await navigator.clipboard.writeText(maxAction.phone)
+                snackbar.success('Номер скопирован — вставьте его в поиск MAX')
+              } catch {
+                snackbar.error(`Не удалось скопировать номер: ${maxAction.phone}`)
+                return
+              }
+              window.location.href = maxAction.url
+            } else window.open(maxAction.url, '_blank', 'noopener,noreferrer')
+          }}>MAX{withTitle ? <span>{maxAction.label}</span> : null}</button>
       )}
       {!message && showChat && (
         <NovofonCallButton client={user} withTitle={withTitle} />

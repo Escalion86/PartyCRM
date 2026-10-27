@@ -8,6 +8,7 @@ import partyOrdersSchema from '@schemas/partyOrdersSchema'
 import partyServicesSchema from '@schemas/partyServicesSchema'
 import partyServiceGroupsSchema from '@schemas/partyServiceGroupsSchema'
 import partyStaffSchema from '@schemas/partyStaffSchema'
+import partyRolesSchema from '@schemas/partyRolesSchema'
 import partyStaffInvitesSchema from '@schemas/partyStaffInvitesSchema'
 import partyUsersSchema from '@schemas/partyUsersSchema'
 import partyTariffsSchema from '@schemas/partyTariffsSchema'
@@ -84,6 +85,19 @@ export const getPartyStaffModel = () =>
       schema.index({ tenantId: 1, linkStatus: 1 })
       schema.index({ authUserId: 1, status: 1, role: 1, createdAt: 1 })
       schema.index({ linkedAuthUserId: 1, status: 1 })
+    },
+  })
+
+export const getPartyRoleModel = () =>
+  getProductModel({
+    product: PRODUCTS.PARTYCRM,
+    name: 'PartyRole',
+    collectionName: 'roles',
+    schemaDefinition: partyRolesSchema,
+    schemaOptions: { timestamps: true },
+    configureSchema: (schema) => {
+      schema.index({ tenantId: 1, systemKey: 1 }, { unique: true, partialFilterExpression: { systemKey: { $type: 'string' } } })
+      schema.index({ tenantId: 1, active: 1, title: 1 })
     },
   })
 
@@ -242,6 +256,17 @@ export const getPartyTransactionModel = () =>
       schema.index({ tenantId: 1, clientId: 1, date: -1 })
       schema.index({ tenantId: 1, staffId: 1, date: -1 })
       schema.index({ tenantId: 1, type: 1, date: -1 })
+      schema.index(
+        { tenantId: 1, idempotencyActorId: 1, idempotencyKey: 1 },
+        {
+          name: 'party_transaction_request_idempotency',
+          unique: true,
+          partialFilterExpression: {
+            idempotencyKey: { $type: 'string' },
+            idempotencyActorId: { $type: 'string' },
+          },
+        }
+      )
     },
   })
 

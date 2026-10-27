@@ -14,6 +14,10 @@ import {
   normalizeInventoryMovement,
   validateInventoryMovementQuantity,
 } from '@helpers/partyInventoryMovements'
+import {
+  canPartyInventoryAccess,
+  hasUnrestrictedPartyInventoryScope,
+} from '@helpers/partyInventoryAccess'
 
 export const inventoryStaffName = (staff) =>
   [staff?.firstName, staff?.secondName].filter(Boolean).join(' ') || 'Сотрудник'
@@ -22,6 +26,7 @@ export const performPartyInventoryMovement = async ({
   tenantId,
   actorStaffId,
   body,
+  context = null,
 }) => {
   const movement = normalizeInventoryMovement(body)
   const payloadHash = crypto
@@ -39,6 +44,25 @@ export const performPartyInventoryMovement = async ({
   ])
   await Promise.all([Holdings.init(), Movements.init()])
   return withPartyInventoryTransaction(tenantId, async (session) => {
+    const scopedOrder = context
+      ? await Orders.findOne({ tenantId, _id: movement.orderId })
+          .session(session)
+          .lean()
+      : null
+    if (
+      context &&
+      (scopedOrder
+        ? !canPartyInventoryAccess(context, {
+            resource: 'inventory.movements',
+            action: 'edit',
+            order: scopedOrder,
+          })
+        : !(
+            movement.operation === 'return' &&
+            hasUnrestrictedPartyInventoryScope(context)
+          ))
+    )
+      throw inventoryValidationError('Заказ не найден', 404)
     const repeated = await Movements.findOne({
       tenantId,
       idempotencyKey: movement.idempotencyKey,
@@ -81,9 +105,11 @@ export const performPartyInventoryMovement = async ({
         'Сотрудник не найден или получатель не активен в этой компании',
         404
       )
-    const order = await Orders.findOne({ tenantId, _id: movement.orderId })
-      .session(session)
-      .lean()
+    const order =
+      scopedOrder ||
+      (await Orders.findOne({ tenantId, _id: movement.orderId })
+        .session(session)
+        .lean())
     if (movement.operation !== 'return' && !order)
       throw inventoryValidationError('Заказ не найден', 404)
     if (

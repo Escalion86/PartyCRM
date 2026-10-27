@@ -49,6 +49,7 @@ const partyClientsSchema = {
     default: '',
     maxlength: 120,
   },
+  max: { type: String, trim: true, default: '', maxlength: 300 },
   instagram: {
     type: String,
     trim: true,

@@ -34,6 +34,12 @@ async function setup(currentRoles, currentExtras = {}) {
   let writes = 0
   const deps = {
     ...roles, ...brief, ...payloadHelpers, getPartyOrderWriteGuard,
+    canPartyAccess: () => true,
+    guardPartyOrderPatch: () => ({ ok: true }),
+    getPartyWorkflow: () => ({ initialStageId: 'new' }),
+    filterPartyOrderForAccess: (_context, order) => order,
+    filterPartyInventoryResult: async (_context, inventory) => inventory,
+    filterPartyInventoryResult: async (_context, value) => value,
     getPartyRequestContext: async () => ({ context: { tenantId, company: {} } }),
     isValidObjectId: (value) => typeof value === 'string' && /^[a-f\d]{24}$/i.test(value),
     parseJsonBody: async (req) => req.body,
@@ -46,7 +52,7 @@ async function setup(currentRoles, currentExtras = {}) {
     } }),
     getPartyOrderModel: async () => ({
       findOne: () => q(current), countDocuments: async () => 0,
-      create: async (doc) => { writes++; current = { ...doc, _id: id }; return current },
+      create: async (doc) => { writes++; current = { ...doc, _id: id }; return { ...current, toObject: () => ({ ...current }) } },
       findOneAndUpdate: (filter, update) => {
         assert.equal(filter.tenantId, tenantId)
         writes++; current = { ...current, ...update.$set }; return q(current)
@@ -122,7 +128,7 @@ test('merge remaps all roles within tenant before archiving source', async () =>
   const empty = async () => ({ updateMany: async () => ({ modifiedCount: 0 }) })
   const { mergePartyClients } = await load('./partyClientMerge.js', {
     getPartyClientModel: async () => ({ findOne: (filter) => { assert.equal(filter.tenantId, tenantId); return q({ _id: filter._id }) },
-      findOneAndUpdate: () => { assert.equal(updates.length, 5); return q({}) } }),
+      findOneAndUpdate: () => { assert.equal(updates.length, 6); return q({}) } }),
     getPartyOrderModel: async () => ({ updateMany: async (filter, update) => { updates.push({ filter, update }); return { modifiedCount: 1 } } }),
     getPartyTransactionModel: empty, getPartyCallModel: empty, getPartyVkConversationModel: empty, getPartyVkMessageModel: empty,
     getPartyAvitoConversationModel: empty, getPartyAvitoMessageModel: empty, getPartyTelegramConversationModel: empty, getPartyTelegramMessageModel: empty,
@@ -134,6 +140,10 @@ test('merge remaps all roles within tenant before archiving source', async () =>
     assert.equal(item.filter[`contactRoles.${key}`], clientId)
     assert.deepEqual(item.update.$set, { [`contactRoles.${key}`]: id })
   }
+  const preference = updates.find(({ filter }) => filter['contactRoles.contactSettings.clientId'])
+  assert.equal(preference.filter.tenantId, tenantId)
+  assert.equal(preference.filter['contactRoles.contactSettings.clientId'], clientId)
+  assert.deepEqual(preference.update.$set, { 'contactRoles.contactSettings.$[contact].clientId': id })
 })
 
 
@@ -155,4 +165,35 @@ for (const method of ['POST', 'PATCH']) test(`${method} rejects malformed contac
   assert.equal(response.status, 400)
   assert.equal(response.code, 'partycrm_invalid_contact_roles')
   assert.equal(api.writes(), 0)
+})
+
+test('per-contact settings reject invalid types, foreign metadata and oversized lists', () => {
+  for (const contactSettings of [null, 'phone', [{ clientId, performerCanContact: 'true' }],
+    [{ clientId: 'invalid', performerCanContact: true }], [{ clientId, performerCanContact: true, allowedContactMethods: ['fax'] }],
+    Array.from({ length: 101 }, () => ({ clientId, performerCanContact: true }))])
+    assert.ok(roles.parsePartyOrderContactRoles({ contactSettings }).error)
+  assert.ok(roles.validatePartyOrderContactSettingsOrder({ clientId, contactRoles: { contactSettings: [{ clientId: foreignId, performerCanContact: true }] } }))
+})
+
+test('old editors preserve the new visibility settings while explicit updates are validated', () => {
+  const settings = [{ clientId, performerCanContact: false, allowedContactMethods: ['telegram'] }]
+  const previous = { onsiteClientId: clientId, contactSettings: settings }
+  assert.deepEqual(roles.preservePartyOrderContactSettings({ input: { onsiteClientId: clientId }, previous, clientId }).contactSettings, settings)
+  assert.deepEqual(roles.preservePartyOrderContactSettings({ input: undefined, previous, clientId }).contactSettings, settings)
+  assert.deepEqual(roles.preservePartyOrderContactSettings({ input: { contactSettings: [] }, previous, clientId }).contactSettings, [])
+  assert.deepEqual(roles.preservePartyOrderContactSettings({ input: {}, previous }).contactSettings, [])
+})
+
+test('merging preferences with one explicit restriction cannot broaden performer access', () => {
+  const value = roles.parsePartyOrderContactRoles({ contactSettings: [
+    { clientId, performerCanContact: false, allowedContactMethods: ['telegram'] },
+    { clientId, performerCanContact: true, allowedContactMethods: ['phone'] },
+  ] }).value
+  assert.deepEqual(value.contactSettings, [{ clientId, performerCanContact: false, allowedContactMethods: ['telegram', 'phone'] }])
+})
+
+test('normalizing legacy duplicate contacts preserves distinct comments', () => {
+  assert.deepEqual(roles.normalizePartyOrderOtherContacts([
+    { clientId, comment: 'Мама' }, { clientId, comment: 'На месте' }, { clientId, comment: 'Мама' },
+  ]), [{ clientId, comment: 'Мама' }, { clientId, comment: 'На месте' }])
 })

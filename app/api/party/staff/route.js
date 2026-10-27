@@ -9,6 +9,8 @@ import { normalizePartyPhone } from '@server/partyAuth'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
 import { validateStaffLocationScope } from '@server/partyLocationAccess'
 import { canCreatePartyStaffByTariff } from '@helpers/partyTariffAccess'
+import { getPartyStaffPositionPatch } from '@server/partyRoles'
+import { canPartyAccess } from '@helpers/partyRolePermissions'
 
 const normalizePhone = (phone) => {
   if (!phone) return ''
@@ -137,8 +139,15 @@ export async function POST(req) {
   })
   if (error) return error
 
+  if (!canPartyAccess(context, { resource: 'staff', action: 'edit' })) return partyError(403, 'partycrm_forbidden', 'Нет права изменять сотрудников', 'permission')
+
   const body = await parseJsonBody(req)
   const payload = normalizeStaffPayload(body)
+  if (Object.hasOwn(body, 'positionId')) {
+    try { Object.assign(payload, await getPartyStaffPositionPatch({ context, positionId: body.positionId })) }
+    catch (failure) { return partyError(failure.status || 500, failure.code || 'partycrm_invalid_position', failure.status ? failure.message : 'Не удалось проверить должность', 'permission') }
+  }
+  if (payload.role === 'owner' && (context.role !== 'owner' || !payload.authUserId)) return partyError(403, 'partycrm_owner_assignment_forbidden', 'Владельца с привязанным аккаунтом может назначить только владелец', 'permission')
   if (payload.role === 'location_owner') {
     try {
       payload.locationIds = await validateStaffLocationScope(

@@ -25,6 +25,7 @@ export const DEFAULT_COMPANY_SETTINGS = Object.freeze({
   towns: [],
   defaultTown: '',
   orderNumberFormat: 'P-{YYYY}-{SEQ}',
+  orderFormVariant: 'compact',
   addresses: [],
   orderTypes: [],
   eventTypes: [],
@@ -194,6 +195,7 @@ const normalizeDuration = (value) => {
 export const normalizeCompanySettings = (value = {}) => ({
   ...DEFAULT_COMPANY_SETTINGS,
   ...value,
+  orderFormVariant: value?.orderFormVariant === 'classic' ? 'classic' : 'compact',
   timeZone:
     normalizeAddressPoolString(value?.timeZone) || DEFAULT_COMPANY_SETTINGS.timeZone,
   defaultOrderDurationMinutes: normalizeDuration(value?.defaultOrderDurationMinutes),

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 
 const source = (path) => readFile(join(process.cwd(), path), 'utf8')
 
-test('party public lead API and Tilda create draft orders and notify managers', async () => {
+test('party public lead API and Tilda create draft orders and notify only permitted positions', async () => {
   const apiRoute = await source('app/api/party/public/lead/route.js')
   const tildaRoute = await source('app/api/party/public/lead/tilda/route.js')
   const service = await source('server/partyPublicLeadService.js')
@@ -23,8 +23,8 @@ test('party public lead API and Tilda create draft orders and notify managers', 
   assert.match(core, /status:\s*'draft'/)
   assert.match(core, /leadMeta:\s*\{/)
   assert.match(service, /PartyOrders\.create\(\{/)
-  assert.match(service, /sendPushToTenant\(\{/)
-  assert.match(service, /product:\s*'partycrm'/)
+  assert.match(service, /sendPartyOrderScopedPush\(\{/)
+  assert.match(service, /workflowStageId:/)
   assert.match(service, /source:\s*'party-public-lead'/)
   assert.match(service, /leadSource:\s*normalized\.source/)
   assert.match(service, /client\.leadSource = normalized\.source/)

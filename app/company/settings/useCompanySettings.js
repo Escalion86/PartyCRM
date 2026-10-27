@@ -2,14 +2,21 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
 export default function useCompanySettings(activeCompanyId) {
   const [settings, setSettings] = useState(null)
   const [company, setCompany] = useState(null)
   const [access, setAccess] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const [pendingSaves, setPendingSaves] = useState(0)
+  const saving = pendingSaves > 0
   const [error, setError] = useState('')
+  usePartyUnsavedChanges(false, {
+    label: 'сохранение настроек компании',
+    scope: activeCompanyId,
+    pending: saving,
+  })
 
   const buildRequestOptions = useCallback(
     (options = {}) => ({
@@ -53,7 +60,7 @@ export default function useCompanySettings(activeCompanyId) {
     async (patch) => {
       if (!activeCompanyId) return null
 
-      setSaving(true)
+      setPendingSaves((count) => count + 1)
       setError('')
       try {
         const response = await apiJson(
@@ -71,7 +78,7 @@ export default function useCompanySettings(activeCompanyId) {
         setError(saveError.message || 'Не удалось сохранить настройки компании')
         throw saveError
       } finally {
-        setSaving(false)
+        setPendingSaves((count) => Math.max(0, count - 1))
       }
     },
     [activeCompanyId, buildRequestOptions]

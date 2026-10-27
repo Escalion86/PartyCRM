@@ -1,4 +1,5 @@
 'use client'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
@@ -25,7 +26,7 @@ const SYNC_FIELDS = [
   ['showPayments', 'Оплаты, остаток и статус оплаты'],
   ['showTransactions', 'Транзакции'],
   ['showPayouts', 'Выплаты исполнителям'],
-  ['showAdditionalEvents', 'Дополнительные события'],
+  ['showAdditionalEvents', 'Задачи'],
   ['showNavigationLinks', 'Ссылки для навигации'],
   ['showOrderLink', 'Ссылка на заказ PartyCRM'],
   ['showStatusIcons', 'Иконки финансового состояния'],
@@ -68,7 +69,9 @@ const buttonClass =
 const formatDate = (value) => {
   if (!value) return 'нет данных'
   const date = new Date(value)
-  return Number.isFinite(date.getTime()) ? date.toLocaleString('ru-RU') : 'нет данных'
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleString('ru-RU')
+    : 'нет данных'
 }
 
 const errorLabel = (code) => {
@@ -114,10 +117,30 @@ export default function PartyGoogleCalendarSettings({
   const [draftDirty, setDraftDirty] = useState(false)
   const [calendars, setCalendars] = useState([])
   const [calendarId, setCalendarId] = useState('')
+  const calendarIdRef = useRef(calendarId)
+  const savedCalendarIdRef = useRef('')
+  calendarIdRef.current = calendarId
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [syncProgress, setSyncProgress] = useState(null)
+  usePartyUnsavedChanges(
+    Boolean(
+      status &&
+      ((draftDirty &&
+        JSON.stringify(draft) !==
+          JSON.stringify({
+            ...DEFAULT_SETTINGS,
+            ...(status.settings || {}),
+          })) ||
+        calendarId !== (status.calendarId || ''))
+    ),
+    {
+      label: 'настройки Google Calendar',
+      scope: activeCompanyId,
+      pending: Boolean(busy),
+    }
+  )
   const appliedDraftSyncVersion = useRef(-1)
   const draftRef = useRef(draft)
   const draftDirtyRef = useRef(draftDirty)
@@ -140,7 +163,9 @@ export default function PartyGoogleCalendarSettings({
     setDraft(next.draft)
     setDraftDirty(next.dirty)
     appliedDraftSyncVersion.current = draftSyncVersion
-    setCalendarId(status.calendarId || '')
+    if (calendarIdRef.current === savedCalendarIdRef.current)
+      setCalendarId(status.calendarId || '')
+    savedCalendarIdRef.current = status.calendarId || ''
   }, [draftSyncVersion, status])
 
   const updateDraft = (updater) => {
@@ -217,7 +242,9 @@ export default function PartyGoogleCalendarSettings({
         body: JSON.stringify({ enabled }),
       })
       await reloadStatus?.({ syncDraft: false })
-      setMessage(enabled ? 'Синхронизация включена.' : 'Синхронизация выключена.')
+      setMessage(
+        enabled ? 'Синхронизация включена.' : 'Синхронизация выключена.'
+      )
     })
 
   const disconnect = async () => {
@@ -264,7 +291,8 @@ export default function PartyGoogleCalendarSettings({
           }
         )
         const batch = response.data || {}
-        for (const key of Object.keys(total)) total[key] += Number(batch[key]) || 0
+        for (const key of Object.keys(total))
+          total[key] += Number(batch[key]) || 0
         done = batch.done !== false
         setSyncProgress({ ...total, done })
         if (!done) {
@@ -285,18 +313,26 @@ export default function PartyGoogleCalendarSettings({
   const actionsDisabled = locked || statusLoading || Boolean(busy)
 
   if (statusLoading && !status) {
-    return <div className="text-sm text-slate-500">Проверяем Google Calendar...</div>
+    return (
+      <div className="text-sm text-slate-500">Проверяем Google Calendar...</div>
+    )
   }
 
   return (
     <fieldset disabled={locked} className="grid gap-4 disabled:opacity-60">
       {message ? (
-        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <div
+          role="status"
+          className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800"
+        >
           {message}
         </div>
       ) : null}
       {error ? (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
           {error}
         </div>
       ) : null}
@@ -304,11 +340,20 @@ export default function PartyGoogleCalendarSettings({
       {!connected ? (
         <div className="grid gap-3">
           <p className="text-sm leading-6 text-slate-600">
-            Подключите Google-аккаунт компании, затем выберите календарь. PartyCRM только создаёт и обновляет события и не импортирует данные из Google.
+            Подключите Google-аккаунт компании, затем выберите календарь.
+            PartyCRM только создаёт и обновляет события и не импортирует данные
+            из Google.
           </p>
           <div>
-            <button type="button" onClick={connect} disabled={actionsDisabled} className={`${buttonClass} bg-sky-600 text-white hover:bg-sky-700`}>
-              {busy === 'connect' ? 'Подключаем...' : 'Подключить Google Calendar'}
+            <button
+              type="button"
+              onClick={connect}
+              disabled={actionsDisabled}
+              className={`${buttonClass} bg-sky-600 text-white hover:bg-sky-700`}
+            >
+              {busy === 'connect'
+                ? 'Подключаем...'
+                : 'Подключить Google Calendar'}
             </button>
           </div>
         </div>
@@ -316,59 +361,236 @@ export default function PartyGoogleCalendarSettings({
         <>
           <Section title="Подключение">
             <div className="grid gap-1 text-sm text-slate-600 sm:grid-cols-2">
-              <div><span className="font-semibold text-slate-800">Аккаунт:</span> {status.email || 'не указан'}</div>
-              <div><span className="font-semibold text-slate-800">Календарь:</span> {status.calendarName || 'не выбран'}</div>
+              <div>
+                <span className="font-semibold text-slate-800">Аккаунт:</span>{' '}
+                {status.email || 'не указан'}
+              </div>
+              <div>
+                <span className="font-semibold text-slate-800">Календарь:</span>{' '}
+                {status.calendarName || 'не выбран'}
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={connect} disabled={actionsDisabled} className={`${buttonClass} border border-sky-200 text-sky-700 hover:bg-white`}>Переподключить</button>
-              <button type="button" onClick={disconnect} disabled={actionsDisabled} className={`${buttonClass} border border-red-200 text-red-600 hover:bg-red-50`}>Отключить</button>
+              <button
+                type="button"
+                onClick={connect}
+                disabled={actionsDisabled}
+                className={`${buttonClass} border border-sky-200 text-sky-700 hover:bg-white`}
+              >
+                Переподключить
+              </button>
+              <button
+                type="button"
+                onClick={disconnect}
+                disabled={actionsDisabled}
+                className={`${buttonClass} border border-red-200 text-red-600 hover:bg-red-50`}
+              >
+                Отключить
+              </button>
             </div>
           </Section>
 
           <Section title="Календарь и синхронизация">
             <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
               <label className="grid gap-1.5">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Календарь Google</span>
-                <select value={calendarId} onChange={(event) => setCalendarId(event.target.value)} className="h-11 cursor-pointer rounded-lg border border-sky-100 bg-white px-3 text-sm">
-                  <option value="">{status.calendarName || 'Выберите календарь'}</option>
-                  {calendars.map((calendar) => <option key={calendar.id} value={calendar.id}>{calendar.name || calendar.summary || calendar.id}</option>)}
+                <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                  Календарь Google
+                </span>
+                <select
+                  value={calendarId}
+                  onChange={(event) => setCalendarId(event.target.value)}
+                  className="h-11 cursor-pointer rounded-lg border border-sky-100 bg-white px-3 text-sm"
+                >
+                  <option value="">
+                    {status.calendarName || 'Выберите календарь'}
+                  </option>
+                  {calendars.map((calendar) => (
+                    <option key={calendar.id} value={calendar.id}>
+                      {calendar.name || calendar.summary || calendar.id}
+                    </option>
+                  ))}
                 </select>
               </label>
               <div className="flex flex-wrap items-end gap-2">
-                <button type="button" onClick={loadCalendars} disabled={actionsDisabled} className={`${buttonClass} border border-sky-200 text-sky-700 hover:bg-white`}>Обновить список</button>
-                <button type="button" onClick={selectCalendar} disabled={actionsDisabled || !calendarId} className={`${buttonClass} bg-sky-600 text-white hover:bg-sky-700`}>Выбрать</button>
+                <button
+                  type="button"
+                  onClick={loadCalendars}
+                  disabled={actionsDisabled}
+                  className={`${buttonClass} border border-sky-200 text-sky-700 hover:bg-white`}
+                >
+                  Обновить список
+                </button>
+                <button
+                  type="button"
+                  onClick={selectCalendar}
+                  disabled={actionsDisabled || !calendarId}
+                  className={`${buttonClass} bg-sky-600 text-white hover:bg-sky-700`}
+                >
+                  Выбрать
+                </button>
               </div>
             </div>
-            <Toggle checked={status.enabled === true} disabled={actionsDisabled || !status.calendarId} onChange={toggleEnabled}>Синхронизировать изменения PartyCRM с Google Calendar</Toggle>
-            <p className="text-xs text-slate-500">Часовой пояс событий: {companyTimeZone || 'Europe/Moscow'}</p>
+            <Toggle
+              checked={status.enabled === true}
+              disabled={actionsDisabled || !status.calendarId}
+              onChange={toggleEnabled}
+            >
+              Синхронизировать изменения PartyCRM с Google Calendar
+            </Toggle>
+            <p className="text-xs text-slate-500">
+              Часовой пояс событий: {companyTimeZone || 'Europe/Moscow'}
+            </p>
           </Section>
 
           <Section title="Заголовок и содержимое">
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Заголовок события</span>
-              <select value={draft.syncSettings?.titleMode || 'eventType_services'} onChange={(event) => updateDraft((value) => ({ ...value, syncSettings: { ...value.syncSettings, titleMode: event.target.value } }))} className="h-11 cursor-pointer rounded-lg border border-sky-100 bg-white px-3 text-sm">
-                {TITLE_MODES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <span className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                Заголовок события
+              </span>
+              <select
+                value={draft.syncSettings?.titleMode || 'eventType_services'}
+                onChange={(event) =>
+                  updateDraft((value) => ({
+                    ...value,
+                    syncSettings: {
+                      ...value.syncSettings,
+                      titleMode: event.target.value,
+                    },
+                  }))
+                }
+                className="h-11 cursor-pointer rounded-lg border border-sky-100 bg-white px-3 text-sm"
+              >
+                {TITLE_MODES.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </label>
             <div className="grid gap-2 sm:grid-cols-2">
               {SYNC_FIELDS.map(([key, label]) => (
-                <Toggle key={key} checked={draft.syncSettings?.[key] !== false} onChange={(checked) => updateDraft((value) => ({ ...value, syncSettings: { ...value.syncSettings, [key]: checked } }))}>{label}</Toggle>
+                <Toggle
+                  key={key}
+                  checked={draft.syncSettings?.[key] !== false}
+                  onChange={(checked) =>
+                    updateDraft((value) => ({
+                      ...value,
+                      syncSettings: { ...value.syncSettings, [key]: checked },
+                    }))
+                  }
+                >
+                  {label}
+                </Toggle>
               ))}
             </div>
           </Section>
 
           <Section title="Напоминания">
-            <Toggle checked={draft.reminders?.useDefault === true} onChange={(checked) => updateDraft((value) => ({ ...value, reminders: { ...value.reminders, useDefault: checked } }))}>Использовать стандартные напоминания Google Calendar</Toggle>
+            <Toggle
+              checked={draft.reminders?.useDefault === true}
+              onChange={(checked) =>
+                updateDraft((value) => ({
+                  ...value,
+                  reminders: { ...value.reminders, useDefault: checked },
+                }))
+              }
+            >
+              Использовать стандартные напоминания Google Calendar
+            </Toggle>
             {!draft.reminders?.useDefault ? (
               <div className="grid gap-2">
                 {(draft.reminders?.overrides || []).map((reminder, index) => (
-                  <div key={`${reminder.method}-${index}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]">
-                    <select aria-label={`Тип напоминания ${index + 1}`} value={reminder.method} onChange={(event) => updateDraft((value) => ({ ...value, reminders: { ...value.reminders, overrides: value.reminders.overrides.map((item, itemIndex) => itemIndex === index ? { ...item, method: event.target.value } : item) } }))} className="h-10 cursor-pointer rounded-lg border border-sky-100 bg-white px-2 text-sm"><option value="popup">Всплывающее</option><option value="email">Email</option></select>
-                    <input aria-label={`Минут до события ${index + 1}`} type="number" min="1" value={reminder.minutes} onChange={(event) => updateDraft((value) => ({ ...value, reminders: { ...value.reminders, overrides: value.reminders.overrides.map((item, itemIndex) => itemIndex === index ? { ...item, minutes: Math.max(1, Number(event.target.value) || 1) } : item) } }))} className="h-10 min-w-0 rounded-lg border border-sky-100 px-2 text-sm" />
-                    <button type="button" aria-label={`Удалить напоминание ${index + 1}`} onClick={() => updateDraft((value) => ({ ...value, reminders: { ...value.reminders, overrides: value.reminders.overrides.filter((_, itemIndex) => itemIndex !== index) } }))} className={`${buttonClass} border border-red-200 text-red-600`}>Удалить</button>
+                  <div
+                    key={`${reminder.method}-${index}`}
+                    className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto]"
+                  >
+                    <select
+                      aria-label={`Тип напоминания ${index + 1}`}
+                      value={reminder.method}
+                      onChange={(event) =>
+                        updateDraft((value) => ({
+                          ...value,
+                          reminders: {
+                            ...value.reminders,
+                            overrides: value.reminders.overrides.map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? { ...item, method: event.target.value }
+                                  : item
+                            ),
+                          },
+                        }))
+                      }
+                      className="h-10 cursor-pointer rounded-lg border border-sky-100 bg-white px-2 text-sm"
+                    >
+                      <option value="popup">Всплывающее</option>
+                      <option value="email">Email</option>
+                    </select>
+                    <input
+                      aria-label={`Минут до события ${index + 1}`}
+                      type="number"
+                      min="1"
+                      value={reminder.minutes}
+                      onChange={(event) =>
+                        updateDraft((value) => ({
+                          ...value,
+                          reminders: {
+                            ...value.reminders,
+                            overrides: value.reminders.overrides.map(
+                              (item, itemIndex) =>
+                                itemIndex === index
+                                  ? {
+                                      ...item,
+                                      minutes: Math.max(
+                                        1,
+                                        Number(event.target.value) || 1
+                                      ),
+                                    }
+                                  : item
+                            ),
+                          },
+                        }))
+                      }
+                      className="h-10 min-w-0 rounded-lg border border-sky-100 px-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Удалить напоминание ${index + 1}`}
+                      onClick={() =>
+                        updateDraft((value) => ({
+                          ...value,
+                          reminders: {
+                            ...value.reminders,
+                            overrides: value.reminders.overrides.filter(
+                              (_, itemIndex) => itemIndex !== index
+                            ),
+                          },
+                        }))
+                      }
+                      className={`${buttonClass} border border-red-200 text-red-600`}
+                    >
+                      Удалить
+                    </button>
                   </div>
                 ))}
-                <button type="button" onClick={() => updateDraft((value) => ({ ...value, reminders: { ...value.reminders, overrides: [...(value.reminders.overrides || []), { method: 'popup', minutes: 60 }] } }))} className={`${buttonClass} w-fit border border-sky-200 text-sky-700`}>Добавить напоминание</button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateDraft((value) => ({
+                      ...value,
+                      reminders: {
+                        ...value.reminders,
+                        overrides: [
+                          ...(value.reminders.overrides || []),
+                          { method: 'popup', minutes: 60 },
+                        ],
+                      },
+                    }))
+                  }
+                  className={`${buttonClass} w-fit border border-sky-200 text-sky-700`}
+                >
+                  Добавить напоминание
+                </button>
               </div>
             ) : null}
           </Section>
@@ -391,7 +613,9 @@ export default function PartyGoogleCalendarSettings({
             <div className="grid gap-3 sm:grid-cols-2">
               {STATUS_COLOR_FIELDS.filter(
                 (field) =>
-                  !(draft.deleteCanceledFromCalendar && field.key === 'canceled')
+                  !(
+                    draft.deleteCanceledFromCalendar && field.key === 'canceled'
+                  )
               ).map((field) => {
                 const selectedColor = STATUS_COLOR_OPTIONS.find(
                   (item) => item.value === draft.statusColors?.[field.key]
@@ -441,17 +665,62 @@ export default function PartyGoogleCalendarSettings({
                 )
               })}
             </div>
-            <button type="button" onClick={saveSettings} disabled={actionsDisabled} className={`${buttonClass} w-fit bg-sky-600 text-white hover:bg-sky-700`}>{busy === 'save' ? 'Сохраняем...' : 'Сохранить настройки'}</button>
+            <button
+              type="button"
+              onClick={saveSettings}
+              disabled={actionsDisabled}
+              className={`${buttonClass} w-fit bg-sky-600 text-white hover:bg-sky-700`}
+            >
+              {busy === 'save' ? 'Сохраняем...' : 'Сохранить настройки'}
+            </button>
           </Section>
 
           <Section title="Синхронизация будущих заказов">
-            <p className="text-sm leading-6 text-slate-600">Запуск создаст или обновит события для заказов с сегодняшнего дня. Операцию можно безопасно повторять.</p>
-            <button type="button" onClick={syncFuture} disabled={actionsDisabled || !status.enabled || !status.calendarId} className={`${buttonClass} w-fit bg-sky-600 text-white hover:bg-sky-700`}>{busy === 'sync' ? 'Синхронизируем...' : 'Синхронизировать будущие заказы'}</button>
-            {syncProgress ? <div role="status" className="grid grid-cols-2 gap-2 rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-600 sm:grid-cols-4"><span>Обработано: {syncProgress.processed}</span><span>Синхронизировано: {syncProgress.synced}</span><span>Пропущено: {syncProgress.skipped}</span><span className={syncProgress.failed ? 'text-red-600' : ''}>Ошибки: {syncProgress.failed}</span></div> : null}
+            <p className="text-sm leading-6 text-slate-600">
+              Запуск создаст или обновит события для заказов с сегодняшнего дня.
+              Операцию можно безопасно повторять.
+            </p>
+            <button
+              type="button"
+              onClick={syncFuture}
+              disabled={
+                actionsDisabled || !status.enabled || !status.calendarId
+              }
+              className={`${buttonClass} w-fit bg-sky-600 text-white hover:bg-sky-700`}
+            >
+              {busy === 'sync'
+                ? 'Синхронизируем...'
+                : 'Синхронизировать будущие заказы'}
+            </button>
+            {syncProgress ? (
+              <div
+                role="status"
+                className="grid grid-cols-2 gap-2 rounded-lg border border-slate-100 bg-white p-3 text-xs text-slate-600 sm:grid-cols-4"
+              >
+                <span>Обработано: {syncProgress.processed}</span>
+                <span>Синхронизировано: {syncProgress.synced}</span>
+                <span>Пропущено: {syncProgress.skipped}</span>
+                <span className={syncProgress.failed ? 'text-red-600' : ''}>
+                  Ошибки: {syncProgress.failed}
+                </span>
+              </div>
+            ) : null}
           </Section>
 
           <Section title="Диагностика">
-            <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2"><div>Подключено: {formatDate(status.diagnostics?.connectedAt)}</div><div>Последняя синхронизация: {formatDate(status.diagnostics?.lastSyncAt)}</div><div className="sm:col-span-2">Последняя ошибка: {errorLabel(status.diagnostics?.lastSyncError)}</div></div>
+            <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+              <div>
+                Подключено: {formatDate(status.diagnostics?.connectedAt)}
+              </div>
+              <div>
+                Последняя синхронизация:{' '}
+                {formatDate(status.diagnostics?.lastSyncAt)}
+              </div>
+              <div className="sm:col-span-2">
+                Последняя ошибка:{' '}
+                {errorLabel(status.diagnostics?.lastSyncError)}
+              </div>
+            </div>
           </Section>
         </>
       )}

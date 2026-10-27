@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { apiJson } from '@helpers/apiClient'
 import PartyReportReconciliation from './PartyReportReconciliation'
 import PartyReportCoordinator from './PartyReportCoordinator'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
 const RichEditor = dynamic(() => import('./PartyReportRichEditor'), {
   ssr: false,
@@ -16,6 +17,7 @@ const labels = {
   draft: 'Черновик',
   submitted: 'На проверке',
   accepted: 'Принят',
+  not_required: 'Нет обязательных вопросов для текущей должности',
   revision_requested: 'Нужны правки',
 }
 const button =
@@ -40,6 +42,7 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState('')
+  const reviewDirty = Object.values(comments).some((value) => value.trim())
   const changeAnswer = (fieldId, patch) => {
     setError('')
     setAnswers((previous) => ({
@@ -53,22 +56,21 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
   )
   const canEdit =
     report.canEdit &&
-    report.answers.some((answer) =>
-      ['draft', 'revision_requested'].includes(answer.status)
+    report.answers.some(
+      (answer) =>
+        report.templateSnapshot?.fields.some(
+          (field) => field.id === answer.fieldId && field.canEdit !== false
+        ) && ['draft', 'revision_requested'].includes(answer.status)
     )
   useEffect(() => {
-    onDirtyChange?.(report._id, dirty || uploading)
+    onDirtyChange?.(report._id, dirty || reviewDirty || uploading)
     return () => onDirtyChange?.(report._id, false)
-  }, [dirty, uploading, onDirtyChange, report._id])
-  useEffect(() => {
-    if (!dirty && !uploading) return
-    const protect = (event) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', protect)
-    return () => window.removeEventListener('beforeunload', protect)
-  }, [dirty, uploading])
+  }, [dirty, reviewDirty, uploading, onDirtyChange, report._id])
+  usePartyUnsavedChanges(dirty || reviewDirty, {
+    label: 'отчёт',
+    scope: companyId,
+    pending: busy || uploading,
+  })
   const mutate = async (action, extra = {}) => {
     setBusy(true)
     setError('')
@@ -85,6 +87,13 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
         }),
       })
       setDirty(false)
+      if (action === 'review' && extra.fieldId) {
+        setComments((previous) => {
+          const next = { ...previous }
+          delete next[extra.fieldId]
+          return next
+        })
+      }
       onUpdate(json.data)
     } catch (cause) {
       setError(cause.message)
@@ -106,8 +115,49 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
           · {labels[report.status] || report.status} · Версия формы{' '}
           {report.templateSnapshot?.version || 1}
         </p>
+        {report.dueAt && (
+          <p className="mt-1 text-sm text-slate-600">
+            Сдать до {new Date(report.dueAt).toLocaleString('ru-RU')}
+            {new Date(report.dueAt) < new Date() &&
+            report.status !== 'accepted' &&
+            report.status !== 'submitted'
+              ? ' · Срок пропущен'
+              : ''}
+          </p>
+        )}
+        {(report.templateSnapshot?.blockCloseUntilAccepted ||
+          report.templateSnapshot?.blockPayoutUntilAccepted) && (
+          <p className="mt-1 text-xs text-slate-500">
+            До принятия отчёта:{' '}
+            {[
+              report.templateSnapshot.blockCloseUntilAccepted
+                ? 'заказ нельзя закрыть'
+                : '',
+              report.templateSnapshot.blockPayoutUntilAccepted
+                ? 'выплата автору заблокирована'
+                : '',
+            ]
+              .filter(Boolean)
+              .join('; ')}
+            .
+          </p>
+        )}
       </div>
-      {report.scope === 'team' && <div className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900"><strong>Командный отчёт координатора</strong><p className="mt-1 break-words">Состав при создании: {(report.teamStaffNames || []).map(person => person.name || 'Участник').join(', ') || `${report.teamStaffIds?.length || 0} участников`}.</p><p className="mt-1">Личные расчёты исполнителей оформляются отдельно.</p></div>}
+      {report.scope === 'team' && (
+        <div className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">
+          <strong>Командный отчёт координатора</strong>
+          <p className="mt-1 break-words">
+            Состав при создании:{' '}
+            {(report.teamStaffNames || [])
+              .map((person) => person.name || 'Участник')
+              .join(', ') || `${report.teamStaffIds?.length || 0} участников`}
+            .
+          </p>
+          <p className="mt-1">
+            Личные расчёты исполнителей оформляются отдельно.
+          </p>
+        </div>
+      )}
       {(report.templateSnapshot?.fields || []).map((field) => {
         const answer = report.answers?.find((item) => item.fieldId === field.id)
         const localAnswer = answers[field.id] || {
@@ -117,6 +167,7 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
         }
         const editable =
           report.canEdit &&
+          field.canEdit !== false &&
           ['draft', 'revision_requested'].includes(answer?.status)
         return (
           <section
@@ -279,16 +330,18 @@ function ReportCard({ report, companyId, onUpdate, staff, onDirtyChange }) {
           </section>
         )
       })}
-      {report.scope !== 'team' && (report.templateSnapshot?.fields || []).some(
-        (field) => field.section === 'finance' && field.reconciliationValueType
-      ) && (
-        <PartyReportReconciliation
-          reportId={report._id}
-          companyId={companyId}
-          canCreate={report.canEdit}
-          onDirtyChange={onDirtyChange}
-        />
-      )}
+      {report.scope !== 'team' &&
+        (report.templateSnapshot?.fields || []).some(
+          (field) =>
+            field.section === 'finance' && field.reconciliationValueType
+        ) && (
+          <PartyReportReconciliation
+            reportId={report._id}
+            companyId={companyId}
+            canCreate={report.canEdit}
+            onDirtyChange={onDirtyChange}
+          />
+        )}
       {error && (
         <p role="alert" className="text-sm text-red-700">
           {error}
@@ -344,7 +397,9 @@ function OrderReports({
   const [error, setError] = useState('')
   const availableTemplates = templates.filter(
     (template) =>
-      ((template.audience || 'individual') === 'team' ? permissions.canCreateTeamReport : permissions.canCreateIndividualReport) &&
+      ((template.audience || 'individual') === 'team'
+        ? permissions.canCreateTeamReport
+        : permissions.canCreateIndividualReport) &&
       !reports.some(
         (report) =>
           String(report.staffId) === String(authorStaffId) &&
@@ -363,7 +418,12 @@ function OrderReports({
       })
       setReports(json.data.reports || [])
       setTemplates(json.data.templates || [])
-      setPermissions({ currentStaffId: json.data.currentStaffId, canCreateTeamReport: json.data.canCreateTeamReport === true, canCreateIndividualReport: json.data.canCreateIndividualReport === true })
+      setPermissions({
+        currentStaffId: json.data.currentStaffId,
+        canCreateTeamReport: json.data.canCreateTeamReport === true,
+        canCreateIndividualReport: json.data.canCreateIndividualReport === true,
+        availability: json.data.availability,
+      })
       setTemplateId('')
     } catch (cause) {
       setError(cause.message)
@@ -396,7 +456,13 @@ function OrderReports({
   }
   return (
     <div className="space-y-3">
-      {manager && <PartyReportCoordinator companyId={companyId} orderId={orderId} onChanged={load} />}
+      {manager && (
+        <PartyReportCoordinator
+          companyId={companyId}
+          orderId={orderId}
+          onChanged={load}
+        />
+      )}
       {authorStaffId && availableTemplates.length > 0 && (
         <div className="flex flex-col gap-2 sm:flex-row">
           <label className="min-w-0 flex-1 text-sm">
@@ -410,7 +476,8 @@ function OrderReports({
               {availableTemplates.map((item) => (
                 <option key={item._id} value={item._id}>
                   {item.title} · {item.stage === 'before' ? 'До' : 'После'}{' '}
-                  мероприятия · {item.audience === 'team' ? 'Командная' : 'Личная'}
+                  мероприятия ·{' '}
+                  {item.audience === 'team' ? 'Командная' : 'Личная'}
                 </option>
               ))}
             </select>
@@ -418,7 +485,12 @@ function OrderReports({
           <button
             type="button"
             className={`${button} self-end`}
-            disabled={busy || !availableTemplates.some(item => String(item._id) === templateId)}
+            disabled={
+              busy ||
+              !availableTemplates.some(
+                (item) => String(item._id) === templateId
+              )
+            }
             onClick={create}
           >
             Заполнить отчёт
@@ -444,10 +516,10 @@ function OrderReports({
       )}
       {!busy && !error && !reports.length && (
         <p className="text-sm text-slate-500">
-          Отчётов по формам пока нет.
-          {staffId && !templates.length
-            ? ' Для этого заказа нет подходящих активных форм. Администратор может настроить их в настройках компании.'
-            : ''}
+          {permissions.availability?.message ||
+            (availableTemplates.length
+              ? 'Выберите форму выше, чтобы заполнить свой отчёт.'
+              : 'Отчётов пока нет.')}
         </p>
       )}
       {reports.map((report) => (
@@ -469,5 +541,10 @@ function OrderReports({
 }
 
 export default function PartyOrderReports(props) {
-  return <OrderReports key={`${props.companyId}:${props.orderId}:${props.staffId || ''}`} {...props} />
+  return (
+    <OrderReports
+      key={`${props.companyId}:${props.orderId}:${props.staffId || ''}`}
+      {...props}
+    />
+  )
 }

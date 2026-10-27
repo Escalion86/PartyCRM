@@ -70,6 +70,7 @@ const partyStaffSchema = {
     default: 'performer',
     index: true,
   },
+  positionId: { type: Schema.Types.ObjectId, ref: 'PartyRole', default: null, index: true },
   locationIds: {
     type: [Schema.Types.ObjectId],
     ref: 'Location',

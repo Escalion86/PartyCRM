@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { canPartyOperationalPermission } from '@helpers/partyOperationalPermissions'
+import { canPartyAccess, buildPartyOrderAccessFilter, filterPartyOrderForAccess } from '@helpers/partyRolePermissions'
 import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
 import { getPartyRequestContext, isValidObjectId, partyError } from './partyApi'
 import { getPartyOrderModel } from './partyModels'
@@ -27,7 +28,7 @@ export const serializePartyOrderPricing = (order) => ({
 })
 
 export const partyOrderPricingRoute = (handler) => async (req, params) => {
-  const { context, error } = await getPartyRequestContext({ req })
+  const { context, error } = await getPartyRequestContext({ req, allowLocationOwner: true })
   if (error) return error
   if (!canPartyOperationalPermission(context, 'orders.pricing'))
     return partyError(403, 'partycrm_forbidden', 'Недостаточно прав для изменения стоимости', 'permission')
@@ -38,30 +39,34 @@ export const partyOrderPricingRoute = (handler) => async (req, params) => {
   }
 }
 
-export const listPartyOrderPricing = async ({ tenantId, cursor = '' }) => {
+const configuredPosition = (context) => Boolean(context?.staff?.positionId || Number(context?.position?.revision || 0) > 0)
+const accessibleOrder = (context, order) => configuredPosition(context) ? filterPartyOrderForAccess(context, order) : order
+
+export const listPartyOrderPricing = async ({ tenantId, cursor = '', context = null }) => {
   if (cursor && !isValidObjectId(cursor)) fail(400, 'partycrm_invalid_cursor', 'Некорректный указатель страницы')
   const Orders = await getPartyOrderModel()
-  const orders = await Orders.find({ tenantId, status: { $in: openStatuses }, ...(cursor ? { _id: { $lt: cursor } } : {}) }).select(projection).sort({ _id: -1 }).limit(51).lean()
-  return { orders: orders.slice(0, 50).map(serializePartyOrderPricing), nextCursor: orders.length > 50 ? String(orders[49]._id) : null }
+  const orders = await Orders.find({ ...(configuredPosition(context) ? buildPartyOrderAccessFilter(context) : { tenantId }), status: { $in: openStatuses }, ...(cursor ? { _id: { $lt: cursor } } : {}) }).sort({ _id: -1 }).limit(51).lean()
+  return { orders: orders.slice(0, 50).map((order) => serializePartyOrderPricing(accessibleOrder(context, order))), nextCursor: orders.length > 50 ? String(orders[49]._id) : null }
 }
 
-const loadOrder = async ({ tenantId, orderId }) => {
+const loadOrder = async ({ tenantId, orderId, context = null }) => {
   if (!isValidObjectId(orderId)) fail(400, 'partycrm_invalid_order_id', 'Некорректный id заказа')
   const Orders = await getPartyOrderModel()
   const order = await Orders.findOne({ _id: orderId, tenantId }).lean()
   if (!order) fail(404, 'partycrm_order_not_found', 'Заказ не найден')
+  if (configuredPosition(context) && !canPartyAccess(context, { resource: 'finance.clientAmount', action: 'edit', order })) fail(404, 'partycrm_order_not_found', 'Заказ не найден')
   if (!openStatuses.includes(order.status)) fail(409, 'partycrm_order_pricing_closed', 'Стоимость можно менять только у открытого заказа')
   return { Orders, order }
 }
 
-export const getPartyOrderPricing = async (args) => serializePartyOrderPricing((await loadOrder(args)).order)
+export const getPartyOrderPricing = async (args) => serializePartyOrderPricing(accessibleOrder(args.context, (await loadOrder(args)).order))
 
 export const updatePartyOrderPricing = async ({ context, orderId, body }) => {
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !['contractAmount', 'expectedRevision'].includes(key)) || !Number.isSafeInteger(body.contractAmount) || body.contractAmount < 0 || !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < 0)
     fail(400, 'partycrm_invalid_pricing', 'Укажите стоимость целым числом рублей и текущую версию заказа')
-  const { Orders, order } = await loadOrder({ tenantId: context.tenantId, orderId })
+  const { Orders, order } = await loadOrder({ tenantId: context.tenantId, orderId, context })
   if (Number(order.commercialRevision || 0) !== body.expectedRevision) conflict()
-  if (Number(order.contractAmount || 0) === body.contractAmount) return serializePartyOrderPricing(order)
+  if (Number(order.contractAmount || 0) === body.contractAmount) return serializePartyOrderPricing(accessibleOrder(context, order))
   const paymentTotal = order.clientPayment && typeof order.clientPayment === 'object' && !Array.isArray(order.clientPayment)
     ? { 'clientPayment.totalAmount': body.contractAmount }
     : { clientPayment: { totalAmount: body.contractAmount } }
@@ -81,5 +86,5 @@ export const updatePartyOrderPricing = async ({ context, orderId, body }) => {
   if (audit.status === 'rejected' || audit.value === null) warnings.push('Стоимость сохранена, но запись истории не подтверждена. Сообщите администратору.')
   if (calendar.status === 'rejected' || ['failed', 'hook_failed'].includes(calendar.value?.status)) warnings.push('Стоимость сохранена, но календарь не удалось обновить. Сообщите администратору.')
   if (inventory.status === 'rejected' || inventory.value?.warning || inventory.value?.hasShortage) warnings.push('Стоимость сохранена. Администратору нужно проверить резерв реквизита.')
-  return { ...serializePartyOrderPricing(saved), warnings }
+  return { ...serializePartyOrderPricing(accessibleOrder(context, saved)), warnings }
 }

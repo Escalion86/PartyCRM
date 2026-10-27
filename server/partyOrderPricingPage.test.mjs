@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const permissionsSource = await readFile(new URL('../helpers/partyOperationalPermissions.js', import.meta.url), 'utf8')
+const permissionsSource = (await readFile(new URL('../helpers/partyOperationalPermissions.js', import.meta.url), 'utf8')).replace("'./partyRolePermissions.js'", JSON.stringify(new URL('../helpers/partyRolePermissions.js', import.meta.url).href))
 const permissionsUrl = `data:text/javascript;base64,${Buffer.from(permissionsSource).toString('base64')}`
 const pageSource = await readFile(new URL('../app/performer/pricing/page.js', import.meta.url), 'utf8')
 const source = pageSource

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import { apiJson } from '@helpers/apiClient'
 import { formatMoney } from '@helpers/formatMoney'
 import {
@@ -33,7 +34,7 @@ const TARIFF_WELCOME_STEPS = [
     id: 'order',
     title: 'Создать первый заказ',
     description: 'Проверьте рабочий сценарий с клиентом, датой и командой.',
-    href: '/company/orders',
+    href: '/company/work',
   },
 ]
 
@@ -52,6 +53,7 @@ const PROVIDER_LABELS = {
   yookassa: 'YooKassa',
   tochka: 'Точка',
 }
+const DEFAULT_TOP_UP_AMOUNT = '3000'
 
 export default function CompanySettingsTariffsContent({ activeCompanyId }) {
   const [tariffs, setTariffs] = useState([])
@@ -60,11 +62,19 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
   const [billingConfig, setBillingConfig] = useState(null)
   const [billingDiagnostics, setBillingDiagnostics] = useState(null)
   const [selectedProvider, setSelectedProvider] = useState('')
-  const [topUpAmount, setTopUpAmount] = useState('3000')
+  const [topUpAmount, setTopUpAmount] = useState(DEFAULT_TOP_UP_AMOUNT)
+  const [topUpBaseline, setTopUpBaseline] = useState(DEFAULT_TOP_UP_AMOUNT)
   const [loading, setLoading] = useState(true)
   const [payingTariffId, setPayingTariffId] = useState('')
   const [topUpLoading, setTopUpLoading] = useState(false)
   const [error, setError] = useState('')
+  usePartyUnsavedChanges(topUpAmount !== topUpBaseline, {
+    label: 'сумма пополнения баланса', scope: activeCompanyId, pending: topUpLoading || Boolean(payingTariffId),
+  })
+  useEffect(() => {
+    setTopUpAmount(DEFAULT_TOP_UP_AMOUNT)
+    setTopUpBaseline(DEFAULT_TOP_UP_AMOUNT)
+  }, [activeCompanyId])
 
   const buildRequestOptions = useCallback(
     (options = {}) => ({
@@ -217,6 +227,8 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
         }),
       })
       if (res.data?.confirmationUrl) {
+        // Only the submitted amount is consumed; an edit made during the request stays dirty.
+        setTopUpBaseline(topUpAmount)
         window.open(res.data.confirmationUrl, '_blank')
         await loadData()
         return

@@ -2,15 +2,28 @@
 
 import { useEffect, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import FieldHelp from '@components/FieldHelp'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import {
   REPORT_SECTIONS,
   starterPartyReportTemplates,
+  simplePartyReportTemplate,
 } from '@helpers/partyReportTemplates'
 
 const control =
   'mt-1 min-h-10 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm'
 const button =
   'min-h-10 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50'
+const help = {
+  reviewerPositionId:
+    'Любой действующий сотрудник этой должности может проверить вопрос. Достаточно одного решения; сохраняется имя проверившего. Без должности проверяют владелец и администратор.',
+  serviceId:
+    'К какой услуге относится вопрос. Например, вопрос о дым-машине можно показывать только для заказов с этой услугой. Исполнителю повторно выбирать услугу не нужно.',
+  locationId:
+    'К какой площадке относится вопрос. Чтобы он появлялся только на этой площадке, включите условие совпадения связей.',
+  resourceId:
+    'К какому предмету реквизита относится вопрос. При включённом условии он появится, только если предмет есть в выбранном комплекте заказа.',
+}
 const emptyField = () => ({
   id: crypto.randomUUID(),
   label: '',
@@ -21,6 +34,7 @@ const emptyField = () => ({
   applyWhenBound: false,
   section: 'general',
   reviewerStaffId: null,
+  reviewerPositionId: null,
   resourceId: null,
   serviceId: null,
   locationId: null,
@@ -34,32 +48,69 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
     services: [],
     locations: [],
     resources: [],
+    positions: [],
+    orders: [],
   })
   const [draft, setDraft] = useState(null)
+  const [draftBaseline, setDraftBaseline] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [previewOrderId, setPreviewOrderId] = useState('')
+  const [previewStaffId, setPreviewStaffId] = useState('')
+  const [preview, setPreview] = useState(null)
+  usePartyUnsavedChanges(
+    Boolean(draft && JSON.stringify(draft) !== draftBaseline),
+    { label: 'форма отчёта', scope: activeCompanyId, pending: busy }
+  )
+  const openDraft = (value) => {
+    const next = structuredClone(value)
+    setDraft(next)
+    setDraftBaseline(JSON.stringify(next))
+  }
   useEffect(() => {
     let canceled = false
     const headers = { 'x-partycrm-company-id': activeCompanyId }
-    Promise.all(
+    Promise.allSettled(
       [
         '/api/party/report-templates',
         '/api/party/staff',
         '/api/party/services',
         '/api/party/locations',
         '/api/party/inventory',
+        '/api/party/roles',
+        '/api/party/orders',
       ].map((url) => apiJson(url, { headers }))
     )
-      .then(([forms, staff, services, locations, inventory]) => {
+      .then((results) => {
         if (canceled) return
+        if (results[0].status === 'rejected') throw results[0].reason
+        const [
+          forms,
+          staff,
+          services,
+          locations,
+          inventory,
+          positions,
+          orders,
+        ] = results.map((result) =>
+          result.status === 'fulfilled' ? result.value : { data: [] }
+        )
         setTemplates(forms.data || [])
         setCatalog({
           staff: staff.data || [],
           services: services.data || [],
           locations: locations.data || [],
           resources: inventory.data?.items || [],
+          positions: (positions.data || []).filter(
+            (item) => item.active !== false
+          ),
+          orders: orders.data || [],
         })
+        if (results.slice(1).some((result) => result.status === 'rejected'))
+          setMessage(
+            'Формы загружены. Часть справочников недоступна вашей должности; можно настроить общие вопросы без этих связей.'
+          )
       })
       .catch((cause) => {
         if (!canceled) setError(cause.message)
@@ -68,15 +119,6 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
       canceled = true
     }
   }, [activeCompanyId])
-  useEffect(() => {
-    if (!draft) return
-    const protect = (event) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', protect)
-    return () => window.removeEventListener('beforeunload', protect)
-  }, [draft])
   const editField = (index, patch) =>
     setDraft((previous) => ({
       ...previous,
@@ -94,6 +136,10 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
         headers: { 'x-partycrm-company-id': activeCompanyId },
         body: JSON.stringify({
           ...draft,
+          fields: draft.fields.map((field) => ({
+            ...field,
+            reviewerStaffId: null,
+          })),
           previousTemplateId: draft._id || undefined,
         }),
       })
@@ -110,6 +156,32 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
       setBusy(false)
     }
   }
+  const loadPreview = async () => {
+    setBusy(true)
+    setError('')
+    setPreview(null)
+    try {
+      const json = await apiJson('/api/party/report-templates/preview', {
+        method: 'POST',
+        headers: { 'x-partycrm-company-id': activeCompanyId },
+        body: JSON.stringify({
+          ...draft,
+          orderId: previewOrderId,
+          staffId: previewStaffId || undefined,
+        }),
+      })
+      setPreview({
+        ...json.data,
+        source: JSON.stringify(draft),
+        orderId: previewOrderId,
+        staffId: previewStaffId,
+      })
+    } catch (cause) {
+      setError(cause.message)
+    } finally {
+      setBusy(false)
+    }
+  }
   const move = (index, delta) =>
     setDraft((previous) => {
       const fields = [...previous.fields]
@@ -120,16 +192,25 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
       return { ...previous, fields }
     })
   const options = (field, index, property, title, items) => (
-    <label className="text-sm" key={property}>
-      {title}
+    <label
+      className="text-sm"
+      key={property}
+      htmlFor={`report-${field.id}-${property}`}
+    >
+      {title} <FieldHelp text={help[property]} label={title} />
       <select
+        id={`report-${field.id}-${property}`}
         className={control}
         value={field[property] || ''}
         onChange={(event) =>
           editField(index, { [property]: event.target.value || null })
         }
       >
-        <option value="">Не выбран</option>
+        <option value="">
+          {property === 'reviewerPositionId'
+            ? 'Владелец / администратор'
+            : 'Не выбран'}
+        </option>
         {items.map((item) => (
           <option key={item._id} value={item._id}>
             {item.title ||
@@ -140,12 +221,23 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
       </select>
     </label>
   )
+  const previewFresh =
+    preview &&
+    preview.source === JSON.stringify(draft) &&
+    preview.orderId === previewOrderId &&
+    preview.staffId === previewStaffId
+  const invalidDeadline =
+    draft?.dueOffsetMinutes !== null &&
+    draft?.dueOffsetMinutes !== undefined &&
+    (String(draft.dueOffsetMinutes).trim() === '' ||
+      !Number.isInteger(Number(draft.dueOffsetMinutes)) ||
+      Math.abs(Number(draft.dueOffsetMinutes)) > 525600)
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">
-        Каждое поле — форматируемый текст с фотографиями. Разделы проверяются
-        отдельно; ответственный и связи с услугой, площадкой и реквизитом
-        задаются для каждого поля.
+        Каждый исполнитель заполняет личный отчёт по сохранённой форме. Вопросы
+        — текст с фотографиями; должность проверяющего и условия появления можно
+        настроить отдельно.
       </p>
       {error && (
         <p
@@ -169,8 +261,15 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
             <button
               type="button"
               className={button}
+              onClick={() => openDraft(simplePartyReportTemplate)}
+            >
+              Короткий личный отчёт: два вопроса
+            </button>
+            <button
+              type="button"
+              className={button}
               onClick={() =>
-                setDraft({
+                openDraft({
                   title: '',
                   stage: 'before',
                   audience: 'individual',
@@ -181,13 +280,29 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
             >
               Новая форма
             </button>
-            <button type="button" className={button} onClick={() => setDraft({ ...structuredClone(starterPartyReportTemplates.find(item => item.stage === 'after')), title: 'Командный отчёт координатора', audience: 'team' })}>Командный отчёт: взять образец</button>
+            <button
+              type="button"
+              className={button}
+              onClick={() =>
+                openDraft({
+                  ...structuredClone(
+                    starterPartyReportTemplates.find(
+                      (item) => item.stage === 'after'
+                    )
+                  ),
+                  title: 'Командный отчёт координатора',
+                  audience: 'team',
+                })
+              }
+            >
+              Командный отчёт: взять образец
+            </button>
             {starterPartyReportTemplates.map((template) => (
               <button
                 key={template.stage}
                 type="button"
                 className={button}
-                onClick={() => setDraft(structuredClone(template))}
+                onClick={() => openDraft(template)}
               >
                 Взять за основу: {template.title}
               </button>
@@ -208,14 +323,15 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
                 <p className="text-sm text-slate-500">
                   {template.stage === 'before' ? 'До' : 'После'} мероприятия ·
                   версия {template.version} · {template.fields.length} полей ·{' '}
-                  {template.active ? 'Активна' : 'Отключена'} · {template.audience === 'team' ? 'Командная' : 'Личная'}
+                  {template.active ? 'Активна' : 'Отключена'} ·{' '}
+                  {template.audience === 'team' ? 'Командная' : 'Личная'}
                 </p>
               </div>
               <button
                 type="button"
                 className={button}
                 onClick={() => {
-                  setDraft(structuredClone(template))
+                  openDraft(template)
                   setMessage('')
                 }}
               >
@@ -225,7 +341,11 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
           ))}
         </>
       ) : (
-        <div className="space-y-4 rounded-xl border border-sky-100 bg-white p-3 sm:p-5">
+        <fieldset
+          disabled={busy}
+          aria-label="Редактор формы отчёта"
+          className="min-w-0 space-y-4 rounded-xl border border-sky-100 bg-white p-3 sm:p-5"
+        >
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm">
               Название формы
@@ -253,13 +373,133 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
               </select>
             </label>
           </div>
-          <label className="block text-sm">Кто заполняет
-            <select className={`${control} cursor-pointer`} value={draft.audience || 'individual'} disabled={Boolean(draft._id)} onChange={event => setDraft({ ...draft, audience: event.target.value })}>
-              <option value="individual">Каждый исполнитель — личный отчёт</option>
+          <label className="block text-sm">
+            Кто заполняет
+            <select
+              className={`${control} cursor-pointer`}
+              value={draft.audience || 'individual'}
+              disabled={Boolean(draft._id)}
+              onChange={(event) =>
+                setDraft({ ...draft, audience: event.target.value })
+              }
+            >
+              <option value="individual">
+                Каждый исполнитель — личный отчёт
+              </option>
               <option value="team">Координатор — командный отчёт</option>
             </select>
           </label>
-          {draft.audience === 'team' && <p className="text-sm text-slate-600">Координатор назначается в заказе. Он заполняет общий отчёт по команде; личные финансовые расчёты исполнителей оформляются отдельно. Тип опубликованной формы изменить нельзя — создайте новую.</p>}
+          <section className="space-y-3 rounded-lg border border-slate-200 p-3">
+            <h3 className="font-semibold">
+              Срок и обязательность отчёта{' '}
+              <FieldHelp
+                label="срок и обязательность"
+                text="Срок отсчитывается от начала или окончания заказа. Просрочка видна исполнителю. Ограничения закрытия и выплаты включаются независимо и снимаются после принятия отчёта."
+              />
+            </h3>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="cursor-pointer"
+                checked={
+                  draft.dueOffsetMinutes !== null &&
+                  draft.dueOffsetMinutes !== undefined
+                }
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    dueOffsetMinutes: event.target.checked
+                      ? draft.stage === 'before'
+                        ? -120
+                        : 1440
+                      : null,
+                  })
+                }
+              />
+              Установить срок сдачи
+            </label>
+            {draft.dueOffsetMinutes !== null &&
+              draft.dueOffsetMinutes !== undefined && (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="text-sm" htmlFor="report-due-offset">
+                    Смещение, минут{' '}
+                    <FieldHelp
+                      label="смещение срока"
+                      text="Отрицательное число — до выбранного момента, положительное — после. Например: −120 — за два часа, 1440 — через сутки."
+                    />
+                    <input
+                      id="report-due-offset"
+                      type="number"
+                      min={-525600}
+                      max={525600}
+                      step={1}
+                      className={control}
+                      value={draft.dueOffsetMinutes}
+                      onChange={(event) =>
+                        setDraft({
+                          ...draft,
+                          dueOffsetMinutes: event.target.value,
+                        })
+                      }
+                    />
+                  </label>
+                  <label className="text-sm">
+                    От какого момента
+                    <select
+                      className={`${control} cursor-pointer`}
+                      value={draft.dueAnchor || 'start'}
+                      onChange={(event) =>
+                        setDraft({ ...draft, dueAnchor: event.target.value })
+                      }
+                    >
+                      <option value="start">Начало мероприятия</option>
+                      <option value="end">Окончание мероприятия</option>
+                    </select>
+                  </label>
+                </div>
+              )}
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="cursor-pointer"
+                checked={Boolean(draft.blockCloseUntilAccepted)}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    blockCloseUntilAccepted: event.target.checked,
+                  })
+                }
+              />
+              Не закрывать заказ до принятия отчёта
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="cursor-pointer"
+                disabled={draft.audience === 'team'}
+                checked={Boolean(draft.blockPayoutUntilAccepted)}
+                onChange={(event) =>
+                  setDraft({
+                    ...draft,
+                    blockPayoutUntilAccepted: event.target.checked,
+                  })
+                }
+              />
+              Не выплачивать автору до принятия его личного отчёта{' '}
+              <FieldHelp
+                label="блокировка выплаты"
+                text="Ограничение действует только на выплату автору этого личного отчёта. Отчёты других участников и командный отчёт его выплату не блокируют."
+              />
+            </label>
+          </section>
+          {draft.audience === 'team' && (
+            <p className="text-sm text-slate-600">
+              Координатор назначается в заказе. Он заполняет общий отчёт по
+              команде; личные финансовые расчёты исполнителей оформляются
+              отдельно. Тип опубликованной формы изменить нельзя — создайте
+              новую.
+            </p>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -269,6 +509,10 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
               }
             />
             Доступна для новых отчётов
+            <FieldHelp
+              label="активность формы"
+              text="Выключенная форма не предлагается для новых отчётов. Уже начатые отчёты сохраняются со своими вопросами, сроком и ограничениями."
+            />
           </label>
           {draft.fields.map((field, index) => (
             <fieldset
@@ -326,9 +570,9 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
                 {options(
                   field,
                   index,
-                  'reviewerStaffId',
-                  'Проверяющий',
-                  catalog.staff
+                  'reviewerPositionId',
+                  'Должность проверяющего',
+                  catalog.positions
                 )}
                 {options(
                   field,
@@ -352,9 +596,15 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
                     type="checkbox"
                     className="cursor-pointer"
                     checked={Boolean(field.applyWhenBound)}
-                    onChange={(event) => editField(index, { applyWhenBound: event.target.checked })}
+                    onChange={(event) =>
+                      editField(index, { applyWhenBound: event.target.checked })
+                    }
                   />
                   Показывать только при совпадении выбранных связей
+                  <FieldHelp
+                    label="условие появления вопроса"
+                    text="Если выключено, вопрос виден всегда. Если включено, все выбранные связи должны совпасть с заказом. Без подходящих вопросов вся форма недоступна. Уже начатый отчёт сохраняет свой набор вопросов."
+                  />
                 </label>
                 <p className="text-xs text-slate-600">
                   {field.applyWhenBound
@@ -362,14 +612,25 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
                     : 'Поле показывается во всех отчётах этой формы. Связи указывают, к чему относится ответ.'}
                 </p>
                 {field.applyWhenBound && (
-                  <p className="text-xs text-slate-600">Подходящие поля определяются при создании отчёта. Изменения заказа не меняют уже начатый отчёт.</p>
+                  <p className="text-xs text-slate-600">
+                    Подходящие поля определяются при создании отчёта. Изменения
+                    заказа не меняют уже начатый отчёт.
+                  </p>
                 )}
-                {field.applyWhenBound && !field.serviceId && !field.locationId && !field.resourceId && (
-                  <p className="text-xs text-amber-800">Выберите хотя бы одну связь: услугу, площадку или реквизит.</p>
-                )}
+                {field.applyWhenBound &&
+                  !field.serviceId &&
+                  !field.locationId &&
+                  !field.resourceId && (
+                    <p className="text-xs text-amber-800">
+                      Выберите хотя бы одну связь: услугу, площадку или
+                      реквизит.
+                    </p>
+                  )}
                 {field.applyWhenBound && field.resourceId && (
                   <p className="text-xs text-slate-600">
-                    Реквизит берётся из выбранного комплекта заказа. До мероприятия нужен активный резерв; после учитывается и освобождённый комплект оставшихся в заказе услуг.
+                    Реквизит берётся из выбранного комплекта заказа. До
+                    мероприятия нужен активный резерв; после учитывается и
+                    освобождённый комплект оставшихся в заказе услуг.
                   </p>
                 )}
               </div>
@@ -389,18 +650,32 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
                     type="checkbox"
                     className="cursor-pointer"
                     checked={Boolean(field.requiredMedia)}
-                    onChange={(event) => editField(index, { requiredMedia: event.target.checked })}
+                    onChange={(event) =>
+                      editField(index, { requiredMedia: event.target.checked })
+                    }
                   />
                   Обязательна фотография
+                  <FieldHelp
+                    label="обязательная фотография"
+                    text="Для отправки нужна хотя бы одна фотография в этом ответе. Один текст или ссылка на сторонний файл не заменяют фото."
+                  />
                 </label>
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     className="cursor-pointer"
                     checked={Boolean(field.allowNotApplicable)}
-                    onChange={(event) => editField(index, { allowNotApplicable: event.target.checked })}
+                    onChange={(event) =>
+                      editField(index, {
+                        allowNotApplicable: event.target.checked,
+                      })
+                    }
                   />
                   Разрешить «не применимо» с причиной
+                  <FieldHelp
+                    label="не применимо"
+                    text="Исполнитель сможет пропустить этот вопрос, написав причину. Причина обязательна; фотография и текст самого ответа в этом случае не требуются."
+                  />
                 </label>
                 {field.section === 'creative' && (
                   <label className="flex items-center gap-2 text-sm">
@@ -414,6 +689,10 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
                       }
                     />
                     Показывать творческую часть другим исполнителям компании
+                    <FieldHelp
+                      label="общая творческая библиотека"
+                      text="После принятия ответ попадёт в библиотеку опыта компании. Финансовые ответы в общую библиотеку не попадают."
+                    />
                   </label>
                 )}
               </div>
@@ -460,15 +739,134 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
           >
             Добавить поле
           </button>
+          <section className="space-y-3 rounded-lg border border-sky-200 bg-sky-50/50 p-3">
+            <h3 className="font-semibold">
+              Предпросмотр для заказа{' '}
+              <FieldHelp
+                label="предпросмотр отчёта"
+                text="Выберите реальный заказ: система применит условия услуги, площадки и реквизита и покажет вопросы исполнителя. Предпросмотр не создаёт отчёт и не сохраняет изменения формы."
+              />
+            </h3>
+            <label className="block text-sm">
+              Заказ
+              <select
+                className={`${control} cursor-pointer`}
+                value={previewOrderId}
+                onChange={(event) => setPreviewOrderId(event.target.value)}
+              >
+                <option value="">Выберите заказ</option>
+                {catalog.orders.map((order) => (
+                  <option key={order._id} value={order._id}>
+                    {order.title || order.serviceTitle || 'Заказ'}
+                    {order.eventDate
+                      ? ` · ${new Date(order.eventDate).toLocaleDateString('ru-RU')}`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              От чьего лица
+              <select
+                className={`${control} cursor-pointer`}
+                value={previewStaffId}
+                onChange={(event) => setPreviewStaffId(event.target.value)}
+              >
+                <option value="">
+                  Все вопросы — без ограничения по должности
+                </option>
+                {catalog.staff
+                  .filter((person) => person.status === 'active')
+                  .map((person) => (
+                    <option key={person._id} value={person._id}>
+                      {[person.firstName, person.secondName]
+                        .filter(Boolean)
+                        .join(' ') || person._id}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className={button}
+              disabled={
+                busy ||
+                !previewOrderId ||
+                !draft.fields.length ||
+                draft.fields.some((field) => !field.label.trim())
+              }
+              onClick={loadPreview}
+            >
+              Показать вопросы исполнителя
+            </button>
+            {previewFresh ? (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold">
+                  {preview.order.title}
+                  {preview.dueAt
+                    ? ` · Сдать до ${new Date(preview.dueAt).toLocaleString('ru-RU')}`
+                    : ''}
+                </p>
+                {!preview.fields.some((field) => field.applicable) && (
+                  <p role="status" className="text-sm text-amber-800">
+                    Нет доступных вопросов: проверьте условия и права должности.
+                    Исполнителю эта форма не будет доступна.
+                  </p>
+                )}
+                {preview.fields.map((field) => (
+                  <div
+                    key={field.id}
+                    className={`rounded-lg border bg-white p-3 ${field.applicable ? 'border-slate-200' : 'border-dashed border-amber-300'}`}
+                  >
+                    <p className="text-sm font-semibold">
+                      {field.label}
+                      {field.required || field.requiredMedia ? ' *' : ''}
+                    </p>
+                    {field.applicable ? (
+                      <>
+                        <p className="mt-1 text-sm text-slate-500">
+                          {field.instruction ||
+                            'Ответ — текст с возможностью добавить фотографии.'}
+                        </p>
+                        <textarea
+                          disabled
+                          aria-label={`Предпросмотр: ${field.label}`}
+                          rows={2}
+                          className={`${control} resize-none bg-slate-50`}
+                          placeholder="Здесь исполнитель напишет ответ"
+                        />
+                      </>
+                    ) : (
+                      <p className="mt-1 text-sm text-amber-800">
+                        Не показывается: {field.exclusionReason}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : preview ? (
+              <p className="text-sm text-slate-600">
+                Форма или заказ изменились. Обновите предпросмотр.
+              </p>
+            ) : null}
+          </section>
           <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
             <button
               type="button"
               className={`${button} bg-sky-50`}
               disabled={
                 busy ||
+                invalidDeadline ||
                 !draft.title.trim() ||
                 !draft.fields.length ||
-                draft.fields.some((field) => !field.label.trim() || (field.applyWhenBound && !field.serviceId && !field.locationId && !field.resourceId))
+                draft.fields.some(
+                  (field) =>
+                    !field.label.trim() ||
+                    (field.applyWhenBound &&
+                      !field.serviceId &&
+                      !field.locationId &&
+                      !field.resourceId)
+                )
               }
               onClick={save}
             >
@@ -487,7 +885,7 @@ export default function CompanySettingsReportsContent({ activeCompanyId }) {
               Отмена
             </button>
           </div>
-        </div>
+        </fieldset>
       )}
     </div>
   )

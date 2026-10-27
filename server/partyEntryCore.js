@@ -1,3 +1,5 @@
+import { canPartyAccess, isPartyRestrictedManagementContext } from '../helpers/partyRolePermissions.js'
+
 export const PARTY_WORKSPACE_TYPES = Object.freeze({
   COMPANY: 'company',
   PERFORMER: 'performer',
@@ -58,6 +60,13 @@ export const resolvePartyEntryPath = ({
   user = null,
   memberships = [],
 } = {}) => {
+  const unrestrictedManager = memberships.some((membership) => membership.isAdmin && !isPartyRestrictedManagementContext(membership))
+  if (!unrestrictedManager) {
+    const configured = memberships.filter((membership) => membership.status === 'active' && (isPartyRestrictedManagementContext(membership) || membership.staff?.positionId || (membership.position && (!membership.position.systemKey || membership.position.revision > 0))))
+    const can = (membership, resource) => canPartyAccess({ ...membership, staff: membership.staff, position: membership.position, company: membership.company }, { resource })
+    if (configured.some((membership) => can(membership, 'orders'))) return '/performer/work'
+    if (configured.some((membership) => can(membership, 'tasks'))) return '/performer/tasks'
+  }
   const locationMembership = memberships.find(
     (membership) =>
       membership.role === 'location_owner' && membership.status === 'active'

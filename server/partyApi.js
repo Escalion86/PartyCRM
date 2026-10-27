@@ -40,6 +40,7 @@ export const getPartyRequestContext = async ({
   req = null,
   managementOnly = false,
   allowLocationOwner = false,
+  permissionAware = false,
 } = {}) => {
   const membershipContext = await getPartyMembershipContext()
   const resolved = resolvePartyRequestContext({
@@ -47,6 +48,7 @@ export const getPartyRequestContext = async ({
     requestedCompanyId: getRequestedCompanyId(req),
     managementOnly,
     allowLocationOwner,
+    permissionAware,
   })
 
   if (resolved.error) {

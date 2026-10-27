@@ -3,6 +3,10 @@ import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
 import { getPartyOrderWriteGuard } from '../helpers/partyOrderWriteGuard.js'
+import * as calendarQueries from '../helpers/partyOrderCalendarQuery.js'
+import { canPartyAccess, buildPartyOrderAccessFilter, filterPartyOrderForAccess, guardPartyOrderPatch } from '../helpers/partyRolePermissions.js'
+import { canAccessPartyTransaction } from './partyTransactionAccess.js'
+import { preservePartyOrderContactSettings } from './partyOrderContactRoles.js'
 
 const id = 'a'.repeat(24)
 const load = async (path, deps, name) => {
@@ -11,7 +15,13 @@ const load = async (path, deps, name) => {
   return compileFunction(`${source}\nreturn ${name}`, Object.keys(deps))(...Object.values(deps))
 }
 const base = {
-  getPartyRequestContext: async ({ managementOnly }) => { assert.equal(managementOnly, true); return { context: { tenantId: 'trusted', company: {} } } },
+  ...calendarQueries,
+  getPartyRequestContext: async () => ({ context: { tenantId: 'trusted', company: {}, role: 'owner', staff: { _id: 'owner', tenantId: 'trusted', role: 'owner', status: 'active' } } }),
+  canPartyAccess, buildPartyOrderAccessFilter, filterPartyOrderForAccess, guardPartyOrderPatch, canAccessPartyTransaction,
+  filterPartyInventoryResult: async (_context, value) => value,
+  withPartyOrderReportSummaries: async ({ orders }) => orders,
+  withPartyOrderTaskSummaries: async ({ orders }) => orders,
+  assertPartyReportGate: async () => { throw new Error('An income must not call payout report gate') },
   isValidObjectId: value => /^[a-f\d]{24}$/.test(value),
   parseJsonBody: async req => req.body,
   partyError: (status, code) => ({ status, code }),
@@ -61,7 +71,7 @@ test('stale order editor cannot restore migrated embedded payments', async () =>
   const q = value => ({ lean: async () => value })
   let written
   const PATCH = await load('../app/api/party/orders/[id]/route.js', {
-    ...base, getPartyOrderWriteGuard, normalizeOrderPayload: body => body,
+    ...base, getPartyOrderWriteGuard, preservePartyOrderContactSettings, normalizeOrderPayload: body => body,
     getPartyOrderModel: async () => ({ findOne: () => q(current), findOneAndUpdate: (filter, update) => { assert.equal(filter.tenantId, 'trusted'); written = update.$set; return q({ ...current, ...written }) } }),
     validateOrderReferences: async () => null,
     applyPartyAssignmentAccountDefaults: async ({ payload }) => payload,

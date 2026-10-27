@@ -2,13 +2,12 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-const permissionsSource = await readFile(new URL('../helpers/partyOperationalPermissions.js', import.meta.url), 'utf8')
-const permissionsUrl = `data:text/javascript;base64,${Buffer.from(permissionsSource).toString('base64')}`
+const permissionsUrl = new URL('../helpers/partyInventoryAccess.js', import.meta.url).href
 const pageSource = await readFile(new URL('../app/performer/inventory/page.js', import.meta.url), 'utf8')
 const source = pageSource
   .replace("import { redirect } from 'next/navigation'", 'const redirect = (path) => { throw new Error(path) }')
   .replace("import getPartyMembershipContext from '@server/getPartyMembershipContext'", 'const getPartyMembershipContext = async () => globalThis.__inventoryPageTestContext')
-  .replace('@helpers/partyOperationalPermissions', permissionsUrl)
+  .replace('@helpers/partyInventoryAccess', permissionsUrl)
   .replace(/^import PartyInventoryOperatorWorkspace.*$/m, '')
   .replace('return <PartyInventoryOperatorWorkspace companies={companies} />', 'return companies')
 const { default: renderPage } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)

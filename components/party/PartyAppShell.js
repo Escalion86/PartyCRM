@@ -32,17 +32,24 @@ import {
 } from '../../app/party/site-settings/siteSettingsNav'
 import cn from 'classnames'
 import Link from 'next/link'
+import PartyMobileNav from './PartyMobileNav'
+import PartyUnsavedChangesBootstrap from './navigation/PartyUnsavedChangesBootstrap'
+import { requestPartyLeave, allowPartyNavigation } from './navigation/partyUnsavedChangesRuntime'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { canPartyOperationalPermission } from '@helpers/partyOperationalPermissions'
+import { canPartyAccess, isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
+import { getPartyMobileNavItems } from '@helpers/partyMobileNavigation'
+import {
+  PARTY_ACTIVE_COMPANY_STORAGE_KEY as ACTIVE_COMPANY_STORAGE_KEY,
+  PARTY_ACTIVE_COMPANY_EVENT,
+  readPartyActiveCompanyId,
+} from '@helpers/partyActiveCompany'
 
 const companyMenu = [
   { href: '/company', label: 'Обзор', icon: faHome },
-  {
-    href: '/company/orders',
-    label: 'Заказы',
-    icon: faCalendarCheck,
-  },
+  { href: '/company/tasks', label: 'Задачи', icon: faCalendarCheck, resource: 'tasks' },
+  { href: '/company/work', label: 'Заказы', icon: faBriefcase, resource: 'orders' },
   { href: '/company/calls', label: 'Звонки', icon: faPhone },
   {
     href: '/company/inbox',
@@ -91,13 +98,15 @@ const ordersSubMenu = [
 ]
 
 const performerMenu = [
-  { href: '/performer', label: 'Мои заказы', icon: faBriefcase },
+  { href: '/performer/tasks', label: 'Задачи', icon: faCalendarCheck, resource: 'tasks' },
+  { href: '/performer/work', label: 'Заказы', icon: faBriefcase, resource: 'orders' },
   {
     href: '/performer/reports',
     label: 'Проверка отчётов',
     icon: faCalendarCheck,
+    resource: 'reports',
   },
-  { href: '/performer/library', label: 'Опыт команды', icon: faStar },
+  { href: '/performer/library', label: 'Опыт команды', icon: faStar, resource: 'reports.creative' },
   {
     href: '/performer/inventory',
     label: 'Выдача реквизита',
@@ -117,19 +126,20 @@ const performerMenu = [
     permission: 'orders.assignments',
   },
   { href: '/performer/settings', label: 'Настройки кабинета', icon: faGear },
+  { href: '/company/settings', label: 'Настройки компании', icon: faGear, managementOnly: true },
 ]
 
 const locationOwnerMenu = [
   { href: '/company/my-locations', label: 'Мои площадки', icon: faLocationDot },
+  { href: '/company/tasks', label: 'Задачи', icon: faCalendarCheck, resource: 'tasks' },
+  { href: '/company/work', label: 'Заказы', icon: faBriefcase, resource: 'orders' },
 ]
 
 const secondaryMenu = [
   { href: '/company', label: 'Кабинет компании', icon: faBriefcase },
-  { href: '/performer', label: 'Кабинет исполнителя', icon: faUserTie },
+  { href: '/performer', label: 'Мои назначения', icon: faUserTie, performerOnly: true },
   { href: '/party/settings', label: 'Настройки', icon: faGear, always: true },
 ]
-
-const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
 
 const getDisplayName = (user) =>
   [user?.firstName, user?.secondName].filter(Boolean).join(' ').trim()
@@ -208,6 +218,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const [partyUser, setPartyUser] = useState(null)
   const [memberships, setMemberships] = useState([])
   const [profileLoaded, setProfileLoaded] = useState(false)
+  const [activeCompanyId, setActiveCompanyId] = useState('')
   const effectiveVariant = useMemo(() => {
     if (variant === 'company' && isCompanySettingsPath(pathname || '')) {
       return 'company-settings'
@@ -222,10 +233,6 @@ export default function PartyAppShell({ variant = 'company', children }) {
     )
   const canUsePerformer = interfaceRoles.includes('performer')
   const canUseBoth = canUseCompany && canUsePerformer
-  const activeCompanyId =
-    typeof window !== 'undefined'
-      ? window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
-      : ''
   const activeMembership =
     memberships.find((item) => item.tenantId === activeCompanyId) ||
     memberships[0] ||
@@ -252,20 +259,25 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const canUseSiteSettings = canAccessPartySiteSettings(partyUser?.role)
   const isCompanyVariant =
     effectiveVariant === 'company' || effectiveVariant === 'company-settings'
+  const mobileCompany = isCompanyVariant || (effectiveVariant === 'settings' && canUseCompany)
+  const legacyCompanyAllowed = activeMembership?.status === 'active' && activeMembership?.isAdmin && !isPartyRestrictedManagementContext(activeMembership)
   const visibleCompanyMenu = companyMenu.filter(
-    (item) => !item.managementOnly || activeMembership?.isAdmin
+    (item) => (legacyCompanyAllowed || ['/company/work', '/company/tasks'].includes(item.href) || (item.href === '/company/settings' && activeMembership?.status === 'active' && activeMembership?.isAdmin)) && (!item.managementOnly || activeMembership?.isAdmin) && (!item.resource || (activeMembership && canPartyAccess({ ...activeMembership, staff: activeMembership.staff, position: activeMembership.position }, { resource: item.resource })))
   )
   const visiblePerformerMenu = performerMenu.filter(
     (item) =>
+      (item.href !== '/performer' || canUsePerformer) &&
+      (!item.managementOnly || memberships.some((membership) => membership.status === 'active' && membership.isAdmin)) &&
+      (!item.resource || memberships.some((membership) => canPartyAccess({ ...membership, staff: membership.staff, position: membership.position }, { resource: item.resource }))) && (
       !item.permission ||
       memberships.some((membership) =>
         canPartyOperationalPermission(membership, item.permission)
-      )
+      ))
   )
   const primaryMenu =
     (activeMembership?.role === 'location_owner' && isCompanyVariant) ||
     pathname === '/company/my-locations'
-      ? locationOwnerMenu
+      ? locationOwnerMenu.filter((item) => !item.resource || (activeMembership && canPartyAccess(activeMembership, { resource: item.resource })))
       : effectiveVariant === 'performer'
         ? visiblePerformerMenu
         : effectiveVariant === 'settings'
@@ -277,8 +289,15 @@ export default function PartyAppShell({ variant = 'company', children }) {
           : effectiveVariant === 'company-settings'
             ? visibleCompanyMenu
             : visibleCompanyMenu
+  const mobileNavItems = getPartyMobileNavItems({
+    menu: primaryMenu,
+    company: mobileCompany,
+    preferWork: ['/company/work', '/performer/work', '/company/tasks', '/performer/tasks'].includes(pathname) || !legacyCompanyAllowed && !canUsePerformer,
+    canCreate: Boolean(activeMembership && canPartyAccess(activeMembership, { resource: 'orders', action: 'create' })),
+  })
   const visibleSecondaryMenu = secondaryMenu.filter((item) => {
     if (item.always) return true
+    if (item.performerOnly) return profileLoaded && canUsePerformer
     if (!profileLoaded || !canUseBoth) return false
     if (item.href === '/company') return canUseCompany
     if (item.href === '/performer') return canUsePerformer
@@ -287,7 +306,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const title = (() => {
     if (variant === 'performer') {
       const performerName = getDisplayName(partyUser)
-      return performerName ? `Исполнитель "${performerName}"` : 'Исполнитель'
+      const positionTitle = activeMembership?.position?.title || 'Сотрудник'
+      return performerName ? `${positionTitle}: ${performerName}` : positionTitle
     }
 
     if (effectiveVariant === 'settings') return 'Настройки'
@@ -297,6 +317,23 @@ export default function PartyAppShell({ variant = 'company', children }) {
     const companyTitle = activeMembership?.company?.title || ''
     return companyTitle ? `Компания "${companyTitle}"` : 'Компания'
   })()
+
+  useEffect(() => {
+    const syncCompany = (event) => {
+      const companyId = String(event?.detail?.companyId || readPartyActiveCompanyId(memberships))
+      if (memberships.some((membership) => String(membership.tenantId) === companyId)) setActiveCompanyId(companyId)
+    }
+    const syncStoredCompany = (event) => {
+      if (event.key === ACTIVE_COMPANY_STORAGE_KEY) syncCompany()
+    }
+    syncCompany()
+    window.addEventListener(PARTY_ACTIVE_COMPANY_EVENT, syncCompany)
+    window.addEventListener('storage', syncStoredCompany)
+    return () => {
+      window.removeEventListener(PARTY_ACTIVE_COMPANY_EVENT, syncCompany)
+      window.removeEventListener('storage', syncStoredCompany)
+    }
+  }, [memberships])
 
   useEffect(() => {
     const syncHash = () => setCurrentHash(window.location.hash || '')
@@ -343,11 +380,14 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   useEffect(() => {
     if (!profileLoaded) return
+    // Task pages verify the active membership themselves and work in either UI mode.
+    if (['/company/tasks', '/performer/tasks', '/company/work', '/performer/work'].includes(pathname)) return
     if (
       activeMembership?.role === 'location_owner' &&
       isCompanyVariant &&
       pathname !== '/company/my-locations'
     ) {
+      allowPartyNavigation('/company/my-locations')
       router.replace('/company/my-locations')
       return
     }
@@ -357,10 +397,12 @@ export default function PartyAppShell({ variant = 'company', children }) {
     )
       return
     if (effectiveVariant === 'performer' && canUseCompany && !canUsePerformer) {
+      allowPartyNavigation('/company')
       router.replace('/company')
       return
     }
     if (effectiveVariant !== 'performer' && canUsePerformer && !canUseCompany) {
+      allowPartyNavigation('/performer')
       router.replace('/performer')
     }
   }, [
@@ -391,6 +433,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   const isActive = (href) => {
     const [path, hash] = href.split('#')
+    if (href === '/company/work' && ['/company/work', '/company/orders', '/company/orders-past'].includes(pathname)) return true
     if (href === '/company/settings') {
       if (pathname === '/company/settings') return true
       if (pathname?.startsWith('/company/settings/')) return true
@@ -409,12 +452,15 @@ export default function PartyAppShell({ variant = 'company', children }) {
   }
 
   const logout = async () => {
+    const target = '/party/login?callbackUrl=/party/entry'
+    if (!requestPartyLeave({ kind: 'route', target })) return
     await fetch('/api/party/auth/logout', { method: 'POST' }).catch(() => null)
-    router.replace('/party/login?callbackUrl=/party/entry')
+    allowPartyNavigation(target)
+    router.replace(target)
   }
 
   return (
-    <main className="grid h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#eaf6ff] text-slate-950 md:grid-cols-[248px_1fr]">
+    <><PartyUnsavedChangesBootstrap /><main style={{ '--party-mobile-nav-height': profileLoaded && primaryMenu.length > 0 ? '4rem' : '0px' }} className="grid h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#eaf6ff] text-slate-950 md:grid-cols-[248px_1fr]">
       <aside className="hidden min-h-0 flex-col bg-slate-950 text-white md:flex">
         <div className="flex h-16 items-center border-b border-white/10 px-5">
           <Link href="/party" className="text-lg font-semibold text-sky-200">
@@ -581,7 +627,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
           </header>
 
           {mobileMenuOpen && (
-            <div className="border-b border-sky-100 bg-slate-950 px-3 py-3 md:hidden">
+            <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] top-16 z-30 overflow-y-auto border-b border-sky-100 bg-slate-950 px-3 py-3 md:hidden">
               <nav className="grid gap-1">
                 {primaryMenu.map((item) => {
                   const isOrdersGroup =
@@ -750,10 +796,20 @@ export default function PartyAppShell({ variant = 'company', children }) {
           )}
         </div>
 
-        <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
+        <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pb-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] md:pb-0">
           {children}
         </div>
       </section>
-    </main>
+      {profileLoaded && primaryMenu.length > 0 && (
+        <PartyMobileNav pathname={pathname} items={mobileNavItems}
+          menuOpen={mobileMenuOpen} onMenu={setMobileMenuOpen}
+          onCreate={(href) => {
+            if (pathname !== href && !requestPartyLeave({ kind: 'route', target: `${href}?create=order` })) return
+            setMobileMenuOpen(false)
+            if (pathname === href) window.dispatchEvent(new Event('partycrm:create-order'))
+            else router.push(`${href}?create=order`)
+          }} />
+      )}
+    </main></>
   )
 }

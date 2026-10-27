@@ -5,12 +5,18 @@ import TabList from './TabList'
 
 const TabContext = ({
   value,
+  requestedTab,
   children,
   variant = 'scrollable',
   scrollButtons = 'auto',
   allowScrollButtonsMobile = true,
 }) => {
   const [tab, setTab] = useState(value)
+  const [lastRequest, setLastRequest] = useState(requestedTab)
+  if (requestedTab && requestedTab !== lastRequest) {
+    setLastRequest(requestedTab)
+    setTab(typeof requestedTab === 'string' ? requestedTab : requestedTab.name)
+  }
   const tabs = []
   children.forEach((child, index) => {
     if (child?.props?.tabName) {

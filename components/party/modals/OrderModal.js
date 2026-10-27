@@ -19,7 +19,7 @@ import InputWrapper from '@components/InputWrapper'
 import DateTimePicker from '@components/DateTimePicker'
 import Textarea from '@components/Textarea'
 import ServiceMultiSelect from '@components/ServiceMultiSelect'
-import OtherContactsPicker from '@components/OtherContactsPicker'
+import PartyTasks from '@components/party/tasks/PartyTasks'
 import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPicker'
 import PartyOrderTypePicker from '@components/party/inputs/PartyOrderTypePicker'
 import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTransactionsSection'
@@ -33,7 +33,8 @@ import {
 } from '@components/party/modals/OrderAdditionalEventsModal'
 import partyServicesAtom from '@state/atoms/partyServicesAtom'
 import AddIconButton from '@components/AddIconButton'
-import TabContext from '@components/Tabs/TabContext'
+import PartyOrderFormLayout from '@components/party/orders/PartyOrderFormLayout'
+import PartyOrderAiAssistant from '@components/party/orders/PartyOrderAiAssistant'
 import TabPanel from '@components/Tabs/TabPanel'
 import {
   EMPTY_PARTY_CLIENT,
@@ -91,6 +92,16 @@ const getStaffLabel = (staffMember) =>
   staffMember?.email ||
   'Без имени'
 
+const formatOrderSummaryDate = (value) => {
+  if (!value || !Number.isFinite(Date.parse(value))) return 'Дата не указана'
+  return new Date(value).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 const isAdminStaff = (staffMember) =>
   ['owner', 'admin'].includes(String(staffMember?.role || '')) &&
   staffMember?.status !== 'archived'
@@ -117,6 +128,7 @@ export default function OrderModal({
   companySettings,
   activeCompanyId,
   canManage = false,
+  aiAvailable = false,
   saving,
   onClose,
   onSubmit,
@@ -151,6 +163,7 @@ export default function OrderModal({
 
   // Ошибка отправки формы (показывается внизу модального окна)
   const [submitError, setSubmitError] = useState('')
+  const [focusSection, setFocusSection] = useState('')
   const hasUnsavedChanges = useUnsavedChanges(orderDraft, open)
   const hasUnsavedAdditionalEventChanges = useUnsavedChanges(
     editingAdditionalEventDraft,
@@ -387,7 +400,7 @@ export default function OrderModal({
     (index) => {
       const target = additionalEvents[index]
       if (!target || !canManage) return
-      if (!window.confirm('Удалить это доп. событие?')) return
+      if (!window.confirm('Удалить эту задачу?')) return
       updateAdditionalEvents(additionalEvents.filter((_, idx) => idx !== index))
     },
     [additionalEvents, canManage, updateAdditionalEvents]
@@ -672,6 +685,7 @@ export default function OrderModal({
 
     // Проверка: клиент не выбран
     if (!orderDraft.clientId) {
+      setFocusSection({ name: 'Клиенты и контакты' })
       setSubmitError('Укажите клиента')
       return
     }
@@ -683,9 +697,18 @@ export default function OrderModal({
       !orderDraft.serviceTitle
     ) {
       setSubmitError('Укажите услугу')
+      setFocusSection({ name: 'Основное' })
       return
     }
 
+    if (
+      !orderDraft.eventDate ||
+      !Number.isFinite(Date.parse(orderDraft.eventDate))
+    ) {
+      setSubmitError('Укажите дату и время')
+      setFocusSection({ name: 'Основное', field: 'date' })
+      return
+    }
     try {
       await onSubmit()
     } catch (err) {
@@ -696,6 +719,7 @@ export default function OrderModal({
     orderDraft.orderItems,
     orderDraft.serviceTitle,
     orderDraft.servicesIds,
+    orderDraft.eventDate,
     onSubmit,
   ])
 
@@ -737,158 +761,239 @@ export default function OrderModal({
       size="full"
       footer={footerContent}
     >
-      <TabContext value="Основное">
+      {canManage &&
+        aiAvailable &&
+        !['closed', 'canceled'].includes(orderDraft.status) && (
+          <PartyOrderAiAssistant
+            key={activeCompanyId}
+            draft={orderDraft}
+            onApply={setOrderDraft}
+            companyId={activeCompanyId}
+            clients={clients}
+            locations={locations}
+            services={services}
+            disabled={saving}
+          />
+        )}
+      <PartyOrderFormLayout
+        compact={companySettings?.orderFormVariant !== 'classic'}
+        focusSection={focusSection}
+        initialSection={!orderDraft.clientId ? 'Клиенты и контакты' : ''}
+        summaries={{
+          Услуги:
+            [
+              orderDraft.title,
+              ...(orderDraft.servicesIds || []).map(
+                (id) =>
+                  services.find((item) => String(item._id) === String(id))
+                    ?.title
+              ),
+              orderDraft.serviceTitle,
+            ]
+              .filter(Boolean)
+              .join(' · ') || 'Услуги не выбраны',
+          'Дата и ответственный': [
+            formatOrderSummaryDate(orderDraft.eventDate),
+            `${orderDraft.durationMinutes || 60} мин`,
+            adminStaffOptions.find(
+              (item) => item.value === orderDraft.responsibleStaffId
+            )?.label,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          Место:
+            orderDraft.placeType === 'company_location'
+              ? locations.find(
+                  (item) => String(item._id) === String(orderDraft.locationId)
+                )?.title || 'Точка не выбрана'
+              : orderDraft.customAddress || 'Выезд к клиенту',
+          Комментарии:
+            orderDraft.adminComment ||
+            orderDraft.performerComment ||
+            'Для администратора и исполнителя',
+          Основное: [
+            orderDraft.title,
+            orderDraft.eventDate
+              ? new Date(orderDraft.eventDate).toLocaleString('ru-RU')
+              : 'Дата не указана',
+            locations.find(
+              (item) => String(item._id) === String(orderDraft.locationId)
+            )?.title,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          Бриф: 'Программа, пожелания и особенности праздника',
+          'Клиенты и контакты': [
+            selectedClient
+              ? getPersonFullName(selectedClient)
+              : 'Клиент не выбран',
+            `Доп. контактов: ${orderDraft.otherContacts?.length || 0}`,
+          ].join(' · '),
+          Команда: `Назначено: ${orderDraft.assignedStaff?.length || 0}`,
+          'Финансы и документы': `Сумма: ${Number(orderDraft.clientPayment?.totalAmount ?? orderDraft.contractAmount ?? 0).toLocaleString('ru-RU')} ₽`,
+          'Задачи': `Осталось задач: ${additionalEvents.filter((item) => !item.done).length}`,
+        }}
+      >
         {/* ====== Вкладка 1: Основное ====== */}
         <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
-            <PartyOrderTypePicker
-              value={orderDraft.title || ''}
-              onChange={(val) => handleChange('title', val || '')}
-              orderTypes={companySettings?.orderTypes || []}
-              onCreateOrderType={handleOrderTypeCreate}
-              allowCreate={Boolean(activeCompanyId)}
-            />
-            <ServiceMultiSelect
-              value={orderDraft.servicesIds || []}
-              onChange={(val) => handleChange('servicesIds', val)}
-              services={services}
-              atom={partyServicesAtom}
-              onCreate={() => setServiceModal(true)}
-              required
-              tone="party"
-            />
-            <div className="flex flex-col gap-2 md:flex-row">
-              <DateTimePicker
-                label="Дата и время"
-                value={orderDraft.eventDate}
-                onChange={(val) => handleChange('eventDate', val)}
-                tone="party"
-                required
+            <div data-order-group="Услуги" className="grid gap-2">
+              <PartyOrderTypePicker
+                value={orderDraft.title || ''}
+                onChange={(val) => handleChange('title', val || '')}
+                orderTypes={companySettings?.orderTypes || []}
+                onCreateOrderType={handleOrderTypeCreate}
+                allowCreate={Boolean(activeCompanyId)}
               />
-              <Input
-                label="Длительность, мин"
-                type="number"
-                value={orderDraft.durationMinutes}
-                onChange={(val) => handleChange('durationMinutes', val)}
-                min={1}
-                step={30}
+              <ServiceMultiSelect
+                value={orderDraft.servicesIds || []}
+                onChange={(val) => handleChange('servicesIds', val)}
+                services={services}
+                atom={partyServicesAtom}
+                onCreate={() => setServiceModal(true)}
+                required
                 tone="party"
               />
             </div>
+            <div data-order-group="Дата и ответственный" className="grid gap-2">
+              <div className="flex flex-col gap-2 md:flex-row">
+                <DateTimePicker
+                  label="Дата и время"
+                  value={orderDraft.eventDate}
+                  onChange={(val) => handleChange('eventDate', val)}
+                  tone="party"
+                  required
+                />
+                <Input
+                  label="Длительность, мин"
+                  type="number"
+                  value={orderDraft.durationMinutes}
+                  onChange={(val) => handleChange('durationMinutes', val)}
+                  min={1}
+                  step={30}
+                  tone="party"
+                />
+              </div>
 
-            <Select
-              label="Ответственный администратор"
-              value={orderDraft.responsibleStaffId || ''}
-              onChange={(val) => handleChange('responsibleStaffId', val)}
-              options={adminStaffOptions}
-              placeholder={
-                adminStaffOptions.length === 0
-                  ? 'Администраторы не найдены'
-                  : undefined
-              }
-              disabled={adminStaffOptions.length === 0}
-              fullWidth
-              tone="party"
-            />
-
-            <Select
-              label="Место"
-              value={orderDraft.placeType}
-              onChange={(val) => {
-                handleChange('placeType', val)
-                if (val === 'company_location') {
-                  handleChange('locationId', orderDraft.locationId || '')
-                } else {
-                  handleChange('locationId', '')
+              <Select
+                label="Ответственный администратор"
+                value={orderDraft.responsibleStaffId || ''}
+                onChange={(val) => handleChange('responsibleStaffId', val)}
+                options={adminStaffOptions}
+                placeholder={
+                  adminStaffOptions.length === 0
+                    ? 'Администраторы не найдены'
+                    : undefined
                 }
-              }}
-              options={[
-                { value: 'company_location', label: 'Точка компании' },
-                { value: 'client_address', label: 'Выезд к клиенту' },
-              ]}
-              fullWidth
-              tone="party"
-            />
-
-            {orderDraft.placeType === 'company_location' ? (
-              <InputWrapper label="Точка" tone="party">
-                <div className="relative flex flex-1 items-center">
-                  <select
-                    className="peer w-full cursor-pointer appearance-none bg-transparent px-1 text-black outline-none"
-                    value={orderDraft.locationId || ''}
-                    onChange={(e) => handleChange('locationId', e.target.value)}
-                  >
-                    <option value="">Без точки</option>
-                    {locations.map((loc) => (
-                      <option key={loc._id} value={loc._id}>
-                        {loc.title}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none shrink-0 text-gray-400">
-                    <svg
-                      className="h-4 w-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
-                  </div>
-                  <AddIconButton
-                    onClick={() => {
-                      setLocationDraft(EMPTY_LOCATION)
-                      setLocationModal(true)
-                    }}
-                    title="Добавить точку"
-                    size="xs"
-                    tone="party"
-                    className="shrink-0"
-                  />
-                </div>
-              </InputWrapper>
-            ) : (
-              <PartyAddressPoolPicker
-                value={orderDraft.clientAddress || {}}
-                onChange={(nextAddress) => {
-                  handleChange('clientAddress', nextAddress)
-                  const parts = [
-                    nextAddress.town,
-                    nextAddress.street,
-                    nextAddress.house ? `д. ${nextAddress.house}` : '',
-                    nextAddress.room,
-                  ].filter(Boolean)
-                  const line =
-                    parts.join(', ') +
-                    (nextAddress.comment ? ` (${nextAddress.comment})` : '')
-                  handleChange('customAddress', line)
-                }}
-                companySettings={companySettings}
-                activeCompanyId={activeCompanyId}
-                onCompanySettingsChange={onCompanySettingsChange}
+                disabled={adminStaffOptions.length === 0}
+                fullWidth
+                tone="party"
               />
-            )}
-            <Textarea
-              label="Комментарий для администратора"
-              value={orderDraft.adminComment || ''}
-              onChange={(val) => handleChange('adminComment', val)}
-              rows={3}
-              fullWidth
-              tone="party"
-            />
-            <Textarea
-              label="Комментарий для исполнителя"
-              value={orderDraft.performerComment || ''}
-              onChange={(val) => handleChange('performerComment', val)}
-              rows={3}
-              fullWidth
-              tone="party"
-            />
+            </div>
+            <div data-order-group="Место" className="grid gap-2">
+              <Select
+                label="Место"
+                value={orderDraft.placeType}
+                onChange={(val) => {
+                  handleChange('placeType', val)
+                  if (val === 'company_location') {
+                    handleChange('locationId', orderDraft.locationId || '')
+                  } else {
+                    handleChange('locationId', '')
+                  }
+                }}
+                options={[
+                  { value: 'company_location', label: 'Точка компании' },
+                  { value: 'client_address', label: 'Выезд к клиенту' },
+                ]}
+                fullWidth
+                tone="party"
+              />
+
+              {orderDraft.placeType === 'company_location' ? (
+                <InputWrapper label="Точка" tone="party">
+                  <div className="relative flex flex-1 items-center">
+                    <select
+                      className="peer w-full cursor-pointer appearance-none bg-transparent px-1 text-black outline-none"
+                      value={orderDraft.locationId || ''}
+                      onChange={(e) =>
+                        handleChange('locationId', e.target.value)
+                      }
+                    >
+                      <option value="">Без точки</option>
+                      {locations.map((loc) => (
+                        <option key={loc._id} value={loc._id}>
+                          {loc.title}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none shrink-0 text-gray-400">
+                      <svg
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </div>
+                    <AddIconButton
+                      onClick={() => {
+                        setLocationDraft(EMPTY_LOCATION)
+                        setLocationModal(true)
+                      }}
+                      title="Добавить точку"
+                      size="xs"
+                      tone="party"
+                      className="shrink-0"
+                    />
+                  </div>
+                </InputWrapper>
+              ) : (
+                <PartyAddressPoolPicker
+                  value={orderDraft.clientAddress || {}}
+                  onChange={(nextAddress) => {
+                    handleChange('clientAddress', nextAddress)
+                    const parts = [
+                      nextAddress.town,
+                      nextAddress.street,
+                      nextAddress.house ? `д. ${nextAddress.house}` : '',
+                      nextAddress.room,
+                    ].filter(Boolean)
+                    const line =
+                      parts.join(', ') +
+                      (nextAddress.comment ? ` (${nextAddress.comment})` : '')
+                    handleChange('customAddress', line)
+                  }}
+                  companySettings={companySettings}
+                  activeCompanyId={activeCompanyId}
+                  onCompanySettingsChange={onCompanySettingsChange}
+                />
+              )}
+            </div>
+            <div data-order-group="Комментарии" className="grid gap-2">
+              <Textarea
+                label="Комментарий для администратора"
+                value={orderDraft.adminComment || ''}
+                onChange={(val) => handleChange('adminComment', val)}
+                rows={3}
+                fullWidth
+                tone="party"
+              />
+              <Textarea
+                label="Комментарий для исполнителя"
+                value={orderDraft.performerComment || ''}
+                onChange={(val) => handleChange('performerComment', val)}
+                rows={3}
+                fullWidth
+                tone="party"
+              />
+            </div>
           </div>
         </TabPanel>
 
@@ -896,13 +1001,33 @@ export default function OrderModal({
           <PartyEventBriefEditor
             value={orderDraft.eventBrief || {}}
             onChange={(eventBrief) => handleChange('eventBrief', eventBrief)}
+            companyId={activeCompanyId}
+            orderId={orderDraft._id || ''}
+            orderStatus={orderDraft.status || 'draft'}
           />
         </TabPanel>
 
         {/* ====== Вкладка 2: Клиенты и контакты ====== */}
         <TabPanel tabName="Клиенты и контакты">
           <div className="flex flex-col gap-2">
-            <ClientPicker
+            <PartyOrderContactRolesEditor
+              value={orderDraft.contactRoles || {}}
+              clients={clients}
+              primaryClientId={orderDraft.clientId || null}
+              otherContacts={orderDraft.otherContacts || []}
+              onChangeContactRoles={(value) => handleChange('contactRoles', value)}
+              onChangeOtherContacts={(value) => handleChange('otherContacts', value)}
+              onAddContact={handleOtherContactAdd}
+              onEditContact={(clientId) => {
+                const person = clientsById.get(String(clientId))
+                if (person) { setClientDraft(person); setClientModal('edit') }
+              }}
+              onViewContact={(clientId) => {
+                const person = clientsById.get(String(clientId))
+                if (person) { setClientDraft(person); setClientModal('edit') }
+              }}
+              canEdit={canManage}
+              renderPrimaryClient={<ClientPicker
               label="Клиент"
               selectedClient={selectedClient}
               selectedClientId={orderDraft.clientId || null}
@@ -920,39 +1045,7 @@ export default function OrderModal({
               compact
               fullWidth
               tone="party"
-            />
-            <PartyOrderContactRolesEditor value={orderDraft.contactRoles || {}} clients={clients} onChange={value => handleChange('contactRoles', value)} />
-            <OtherContactsPicker
-              label="Доп. контакты"
-              contacts={orderDraft.otherContacts || []}
-              clients={clients}
-              tone="party"
-              onSelectContact={handleOtherContactSelect}
-              onChangeComment={handleOtherContactCommentChange}
-              onRemoveContact={handleOtherContactRemove}
-              onEditContact={(index) => {
-                const contact = orderDraft.otherContacts?.[index]
-                const contactClient = contact?.clientId
-                  ? clientsById.get(String(contact.clientId))
-                  : null
-                if (contactClient) {
-                  setClientDraft(contactClient)
-                  setClientModal('edit')
-                }
-              }}
-              onViewContact={(index) => {
-                const contact = orderDraft.otherContacts?.[index]
-                const contactClient = contact?.clientId
-                  ? clientsById.get(String(contact.clientId))
-                  : null
-                if (contactClient) {
-                  setClientDraft(contactClient)
-                  setClientModal('edit')
-                } else {
-                  handleOtherContactSelect(index)
-                }
-              }}
-              onAddContact={handleOtherContactAdd}
+              />}
             />
           </div>
         </TabPanel>
@@ -1139,9 +1232,8 @@ export default function OrderModal({
           </div>
         </TabPanel>
 
-        {/* ====== Вкладка 5: Доп. события ====== */}
-        <TabPanel tabName="Доп. события">
-          <div className="flex flex-col gap-2">
+        <TabPanel tabName="Задачи">
+          {orderDraft._id ? <PartyTasks companyId={activeCompanyId} orderId={String(orderDraft._id)} compact /> : <div className="flex flex-col gap-2">
             <div className="flex items-center justify-end">
               <button
                 type="button"
@@ -1154,7 +1246,7 @@ export default function OrderModal({
 
             {additionalEvents.length === 0 ? (
               <p className="text-sm text-gray-500">
-                Дополнительные события еще не добавлены.
+                Задачи ещё не добавлены. После сохранения заказа будут доступны назначения сотрудникам и должности, фотографии и повторения.
               </p>
             ) : (
               <div className="flex flex-col gap-3">
@@ -1188,9 +1280,9 @@ export default function OrderModal({
                 ))}
               </div>
             )}
-          </div>
+          </div>}
         </TabPanel>
-      </TabContext>
+      </PartyOrderFormLayout>
 
       {/* Client Modals */}
       <ClientSelectModal
@@ -1260,8 +1352,8 @@ export default function OrderModal({
           open={true}
           title={
             editingAdditionalEvent === -1
-              ? 'Создать доп. событие'
-              : 'Редактировать доп. событие'
+              ? 'Создать задачу'
+              : 'Редактировать задачу'
           }
           draft={editingAdditionalEventDraft}
           setDraft={setEditingAdditionalEventDraft}

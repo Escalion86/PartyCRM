@@ -1,5 +1,12 @@
-import { parsePartyOrderContactRoles, PARTY_ORDER_CONTACT_ROLE_KEYS } from '@server/partyOrderContactRoles'
+import { parsePartyOrderContactRoles, PARTY_ORDER_CONTACT_ROLE_KEYS, normalizePartyOrderOtherContacts, validatePartyOrderContactSettingsOrder } from '@server/partyOrderContactRoles'
+import { canPartyAccess, buildPartyOrderAccessFilter, filterPartyOrderForAccess, guardPartyOrderPatch } from '@helpers/partyRolePermissions'
+import { getPartyWorkflow } from '@helpers/partyWorkflow'
+import { maskPartyOrderConflicts } from '@helpers/partyOrderAccess'
+import { filterPartyInventoryResult } from '@server/partyInventoryApi'
 import { NextResponse } from 'next/server'
+import { withPartyOrderReportSummaries } from '@server/partyOrderReportSummaries'
+import { withPartyOrderTaskSummaries } from '@server/partyOrderTaskSummaries'
+import { hasPartyOrderCalendarQuery, parsePartyOrderCalendarQuery, buildPartyOrderCalendarInterval } from '@helpers/partyOrderCalendarQuery'
 import { syncPartyOrderInventory } from '@server/partyInventory'
 import {
   getPartyClientModel,
@@ -51,7 +58,7 @@ const parseDate = (value) => {
 const parseMoney = (value) => {
   if (value === null || value === undefined || value === '') return 0
   const number = Number(value)
-  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : 0
+  return Number.isFinite(number) && number >= 0 ? Math.round(number * 100) / 100 : 0
 }
 
 const normalizePaymentStatus = (value) =>
@@ -186,22 +193,7 @@ const normalizeTransactions = (items) => {
 }
 
 const normalizeOtherContacts = (items) => {
-  if (!Array.isArray(items)) return []
-  const seen = new Set()
-  return items
-    .map((item) => {
-      const clientId = String(item?.clientId || '').trim()
-      if (!isValidObjectId(clientId) || seen.has(clientId)) return null
-      seen.add(clientId)
-      return {
-        clientId,
-        comment:
-          typeof item?.comment === 'string'
-            ? item.comment.trim().slice(0, 180)
-            : '',
-      }
-    })
-    .filter(Boolean)
+  return normalizePartyOrderOtherContacts(items)
 }
 
 export const normalizeOrderPayload = (
@@ -229,6 +221,7 @@ export const normalizeOrderPayload = (
     status: ['draft', 'active', 'canceled', 'closed'].includes(body.status)
       ? body.status
       : 'draft',
+    workflowStageId: typeof body.workflowStageId === 'string' ? body.workflowStageId : '',
     clientId,
     contactRoles: body.contactRoles,
     client: {
@@ -306,6 +299,8 @@ export const validateOrderReferences = async ({
     return partyError(400, 'partycrm_invalid_contact_roles', parsedContactRoles.error, 'validation')
   }
   payload.contactRoles = parsedContactRoles.value
+  const settingsError = validatePartyOrderContactSettingsOrder(payload)
+  if (settingsError) return partyError(400, 'partycrm_invalid_contact_roles', settingsError, 'validation')
   const clientIds = [
     ...PARTY_ORDER_CONTACT_ROLE_KEYS.map((key) => payload.contactRoles[key]),
     payload.clientId,
@@ -376,14 +371,13 @@ export const validateOrderReferences = async ({
     const count = await PartyStaff.countDocuments({
       _id: { $in: uniqueIds },
       tenantId,
-      role: { $in: ['owner', 'admin'] },
       status: { $ne: 'archived' },
     })
     if (count !== uniqueIds.length) {
       return partyError(
         400,
         'partycrm_responsible_staff_not_found',
-        'Выбранный ответственный администратор не найден',
+        'Выбранный ответственный сотрудник не найден',
         'validation'
       )
     }
@@ -479,21 +473,34 @@ const buildOrderClientSnapshot = async ({ tenantId, payload }) => {
 export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
     req,
-    managementOnly: true,
+    allowLocationOwner: true,
   })
   if (error) return error
+  if (!canPartyAccess(context, { resource: 'orders' })) return partyError(403, 'partycrm_forbidden', 'Нет доступа к заказам')
 
-  const preparationFilter = new URL(req.url).searchParams.get('preparation')
+  const searchParams = new URL(req.url).searchParams
+  if (hasPartyOrderCalendarQuery(searchParams) && !canPartyAccess(context, { resource: 'orders.eventDate' })) return partyError(403, 'partycrm_calendar_forbidden', 'Календарь недоступен без права просмотра даты заказа')
+  let calendar
+  try { calendar = parsePartyOrderCalendarQuery(searchParams) }
+  catch (cause) { return partyError(cause.status || 400, cause.code || 'partycrm_invalid_calendar_range', cause.message, 'validation') }
+  const preparationFilter = searchParams.get('preparation')
   if (preparationFilter && preparationFilter !== 'open') return partyError(400, 'partycrm_invalid_preparation_filter', 'Некорректный фильтр подготовки', 'validation')
   const PartyOrders = await getPartyOrderModel()
-  const orders = await PartyOrders.find({
-    tenantId: context.tenantId,
+  const accessFilter = {
+    ...buildPartyOrderAccessFilter(context),
     status: { $ne: 'canceled' },
     ...(preparationFilter === 'open' ? buildPartyOpenPreparationFilter() : {}),
-  })
-    .sort({ eventDate: 1, createdAt: -1 })
-    .limit(120)
+  }
+  const fetchedOrders = await PartyOrders.find(calendar ? { $and: [
+    accessFilter,
+    buildPartyOrderCalendarInterval(calendar, canPartyAccess(context, { resource: 'orders.dateEnd' })),
+    ...(calendar.cursor ? [{ _id: { $gt: calendar.cursor } }] : []),
+  ] } : accessFilter)
+    .sort(calendar ? { _id: 1 } : { eventDate: 1, createdAt: -1 })
+    .limit(calendar ? 121 : 120)
     .lean()
+  const orders = calendar ? fetchedOrders.slice(0, 120) : fetchedOrders
+  const nextCursor = calendar && fetchedOrders.length > 120 ? String(orders.at(-1)._id) : null
   const assignmentStaffIds = [
     ...new Set(
       orders.flatMap((order) =>
@@ -543,6 +550,7 @@ export async function GET(req) {
       amount: Number(transaction.amount || 0),
       type: transaction.type,
       category: transaction.category,
+      staffId: transaction.staffId ? String(transaction.staffId) : null,
       date: transaction.date ? new Date(transaction.date).toISOString() : null,
       comment: transaction.comment || '',
       paymentMethod: transaction.paymentMethod || 'transfer',
@@ -560,7 +568,9 @@ export async function GET(req) {
     }
   })
 
-  return NextResponse.json({ success: true, data: ordersWithTransactions })
+  const withReports = await withPartyOrderReportSummaries({ context, orders: ordersWithTransactions })
+  const withTasks = await withPartyOrderTaskSummaries({ context, orders: withReports })
+  return NextResponse.json({ success: true, data: withTasks.map((order) => filterPartyOrderForAccess(context, order)).filter(Boolean), ...(calendar ? { meta: { nextCursor, dateFrom: calendar.dateFrom.toISOString(), dateTo: calendar.dateTo.toISOString() } } : {}) })
 }
 
 export const applyPartyAssignmentAccountDefaults = async ({
@@ -592,17 +602,27 @@ export const applyPartyAssignmentAccountDefaults = async ({
 export async function POST(req) {
   const { context, error } = await getPartyRequestContext({
     req,
-    managementOnly: true,
+    allowLocationOwner: true,
   })
   if (error) return error
+  if (!canPartyAccess(context, { resource: 'orders', action: 'create' })) return partyError(403, 'partycrm_forbidden', 'Нет права создавать заказы')
 
   const body = await parseJsonBody(req)
-  const normalizedPayload = normalizeOrderPayload(body, {
+  if (body.status === 'closed' || body.status === 'canceled') return partyError(400, 'partycrm_invalid_initial_status', 'Создайте заявку, затем используйте действие закрытия или отмены')
+  if ((body.transactions || []).some((transaction) => transaction.category === 'payout')) return partyError(400, 'partycrm_use_payout_action', 'Выплату исполнителю проводите отдельным действием после сохранения заказа')
+  const createBody = { ...body, ...(Array.isArray(body.assignedStaff) ? { assignedStaff: body.assignedStaff.map(({ staffId, role, payoutAmount }) => ({ staffId, role, payoutAmount })) } : {}) }
+  const baseline = normalizeOrderPayload({})
+  const changedFields = Object.fromEntries(Object.entries(createBody).filter(([key, value]) => !['_id', 'workflowStageId'].includes(key) && JSON.stringify(value) !== JSON.stringify(baseline[key])))
+  const normalizedPayload = normalizeOrderPayload(createBody, {
     fallbackResponsibleStaffId: context.staff?._id,
   })
+  const createGuard = guardPartyOrderPatch(context, changedFields, { ...normalizedPayload, tenantId: context.tenantId, workflowStageId: getPartyWorkflow(context.company).initialStageId })
+  if (!createGuard.ok) return partyError(403, 'partycrm_forbidden_order_fields', 'Нет права менять некоторые поля заказа', 'permission', { fields: createGuard.forbiddenFields })
   // Applying an accepted proposal is the only API allowed to create this link.
   const payload = {
     ...normalizedPayload,
+    workflowStageId: getPartyWorkflow(context.company).initialStageId,
+    eventBrief: { ...normalizedPayload.eventBrief, templateSnapshot: null },
     agreedProposal: {},
     commercialRevision: 0,
   }
@@ -673,7 +693,7 @@ export async function POST(req) {
       'partycrm_order_conflict',
       'Найдены пересечения по точке или исполнителю',
       'validation',
-      { conflicts }
+      { conflicts: maskPartyOrderConflicts(context, conflicts) }
     )
   }
 
@@ -703,5 +723,6 @@ export async function POST(req) {
   })
 
   const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, staffId: context.staff?._id })
-  return NextResponse.json({ success: true, data: order, inventory }, { status: 201 })
+  const safeOrder = filterPartyOrderForAccess(context, order.toObject())
+  return NextResponse.json({ success: true, data: safeOrder, ...(canPartyAccess(context, { resource: 'inventory', order }) ? { inventory: await filterPartyInventoryResult(context, inventory, 'inventory.reservations') } : {}) }, { status: 201 })
 }

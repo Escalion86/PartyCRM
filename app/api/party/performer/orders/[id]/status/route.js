@@ -8,6 +8,8 @@ import {
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
 import { syncPartyOrderToPerformerCalendars } from '@server/partyPerformerGoogleCalendarSync'
 import { recordPartyOrderAudit } from '@server/partyAuditLog'
+import { canPartyAccess } from '@helpers/partyRolePermissions'
+import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
 
 const ALLOWED_STATUSES = new Set(['confirmed', 'declined', 'done'])
 
@@ -46,7 +48,7 @@ export async function PATCH(req, { params }) {
   }
 
   const membership = memberships.find(
-    (item) => String(item.staffId) === staffId && item.status !== 'archived'
+    (item) => String(item.staffId) === staffId && item.status === 'active'
   )
 
   if (!membership) {
@@ -59,10 +61,14 @@ export async function PATCH(req, { params }) {
   }
 
   const PartyOrders = await getPartyOrderModel()
+  const currentOrder = await PartyOrders.findOne({ _id: id, tenantId: membership.tenantId, 'assignedStaff.staffId': staffId }).lean()
+  const accessContext = { ...membership, staff: membership.staff, position: membership.position }
+  if (!currentOrder || !canPartyAccess(accessContext, { resource: 'orders', order: currentOrder }) || !canPartyAccess(accessContext, { resource: 'orders.ownAssignment', action: 'edit', order: currentOrder })) return partyError(403, 'partycrm_performer_order_access_denied', 'Нет права менять участие в этом заказе')
   const order = await PartyOrders.findOneAndUpdate(
     {
       _id: id,
       tenantId: membership.tenantId,
+      ...getPartyOrderWriteGuard(currentOrder),
       status: { $nin: ['canceled', 'closed'] },
       'assignedStaff.staffId': staffId,
     },

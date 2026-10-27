@@ -1,4 +1,10 @@
-import { assertPayrollSnapshotCurrent, assertPayrollSnapshotMembership } from '@helpers/partyPayrollSnapshot'
+import {
+  assertPayrollSnapshotCurrent,
+  assertPayrollSnapshotMembership,
+} from '@helpers/partyPayrollSnapshot'
+import { assertPartyReportGate } from './partyReportGates'
+import { getPartyOrderModel } from './partyModels'
+import { canPartyAccess } from '../helpers/partyRolePermissions.js'
 import {
   getPartyPayrollStatementModel,
   getPartyFinancialSettlementModel,
@@ -35,6 +41,8 @@ export const getPeriodFromKey = (key, timeZone) => {
 export const generatePartyPayrollStatement = async ({ context, periodKey }) => {
   if (!isFinancialManager(context))
     throw financialError('Недостаточно прав для ведомости', 403)
+  if (!canPartyAccess(context, { resource: 'finance.payouts', action: 'edit' }))
+    throw financialError('Нет права изменять ведомость выплат', 403)
   const period = getPeriodFromKey(
     periodKey,
     getCompanyFinancialTimeZone(context.company)
@@ -48,7 +56,9 @@ export const generatePartyPayrollStatement = async ({ context, periodKey }) => {
     const existing = await Statements.findOne({
       tenantId: context.tenantId,
       periodKey: period.periodKey,
-    }).session(session).lean()
+    })
+      .session(session)
+      .lean()
     if (existing && existing.status !== 'draft')
       throw financialError('Утверждённую ведомость нельзя пересобирать', 409)
     const settlements = await enrichSettlements(
@@ -75,7 +85,11 @@ export const generatePartyPayrollStatement = async ({ context, periodKey }) => {
       totals: item.totals,
     }))
     const updated = await Statements.findOneAndUpdate(
-      { tenantId: context.tenantId, periodKey: period.periodKey, status: 'draft' },
+      {
+        tenantId: context.tenantId,
+        periodKey: period.periodKey,
+        status: 'draft',
+      },
       {
         $set: {
           ...period,
@@ -87,7 +101,11 @@ export const generatePartyPayrollStatement = async ({ context, periodKey }) => {
       },
       { upsert: !existing, new: true, session, runValidators: true }
     ).lean()
-    if (!updated) throw financialError('Ведомость изменилась. Обновите её перед повтором.', 409)
+    if (!updated)
+      throw financialError(
+        'Ведомость изменилась. Обновите её перед повтором.',
+        409
+      )
     return updated
   })
 }
@@ -99,6 +117,8 @@ export const changePartyPayrollStatementStatus = async ({
 }) => {
   if (!isFinancialManager(context))
     throw financialError('Недостаточно прав для ведомости', 403)
+  if (!canPartyAccess(context, { resource: 'finance.payouts', action: 'edit' }))
+    throw financialError('Нет права изменять ведомость выплат', 403)
   return withPartyFinancialTransaction(context.tenantId, async (session) => {
     const Statements = await getPartyPayrollStatementModel()
     const statement = await Statements.findOne({
@@ -127,7 +147,9 @@ export const changePartyPayrollStatementStatus = async ({
           tenantId: context.tenantId,
           periodKey: statement.periodKey,
           status: 'approved',
-        }).session(session).lean(),
+        })
+          .session(session)
+          .lean(),
         { session }
       )
       assertPayrollSnapshotCurrent(statement.lines, current)
@@ -148,11 +170,36 @@ export const changePartyPayrollStatementStatus = async ({
         { session }
       )
       assertPayrollSnapshotMembership(statement.lines, current)
-      if (current.some((item) => item.status !== 'approved' || item.totals.balance !== 0))
+      if (
+        current.some(
+          (item) => item.status !== 'approved' || item.totals.balance !== 0
+        )
+      )
         throw financialError(
           'Сначала зафиксируйте отдельные выплаты: в ведомости остались долги или переплаты',
           409
         )
+      const Orders = await getPartyOrderModel()
+      const byOrder = new Map()
+      for (const line of current) {
+        const orderId = String(line.orderId)
+        if (!byOrder.has(orderId)) {
+          const order = await Orders.findOneAndUpdate(
+            { tenantId: context.tenantId, _id: line.orderId },
+            { $inc: { sharedLocationRevision: 1 } },
+            { session, new: true }
+          ).lean()
+          if (!order) throw financialError('Заказ ведомости не найден', 409)
+          byOrder.set(orderId, order)
+        }
+        await assertPartyReportGate({
+          tenantId: context.tenantId,
+          order: byOrder.get(orderId),
+          action: 'payout',
+          staffId: line.staffId,
+          session,
+        })
+      }
       patch = { status: 'paid', paidAt: now, paidByStaffId: context.staff._id }
     } else throw financialError('Недопустимый переход статуса ведомости', 409)
     const updated = await Statements.findOneAndUpdate(
@@ -160,7 +207,11 @@ export const changePartyPayrollStatementStatus = async ({
       { $set: patch },
       { new: true, session, runValidators: true }
     ).lean()
-    if (!updated) throw financialError('Ведомость изменилась. Обновите её перед повтором.', 409)
+    if (!updated)
+      throw financialError(
+        'Ведомость изменилась. Обновите её перед повтором.',
+        409
+      )
     return updated
   })
 }

@@ -1,5 +1,5 @@
 import { getPartySessionUser } from './partyAuth'
-import { getPartyCompanyModel, getPartyStaffModel } from './partyModels'
+import { getPartyCompanyModel, getPartyStaffModel, getPartyRoleModel } from './partyModels'
 import {
   buildPartyDeveloperMemberships,
   buildPartyMembership,
@@ -50,9 +50,16 @@ const getPartyMembershipContext = async ({
     companies.map((company) => [String(company._id), company])
   )
 
+  // Reload positions on every request: revocation must not depend on a cached session.
+  const Roles = await getPartyRoleModel()
+  const positions = staffItems.length ? await Roles.find({ tenantId: { $in: [...new Set(staffItems.map((staff) => String(staff.tenantId)))] } }).lean() : []
+  const positionFor = (staff) => staff.positionId
+    ? positions.find((position) => String(position._id) === String(staff.positionId) && String(position.tenantId) === String(staff.tenantId))
+    : positions.find((position) => position.systemKey === staff.role && String(position.tenantId) === String(staff.tenantId))
+
   const staffMemberships = staffItems
     .map((staff) =>
-      buildPartyMembership(staff, companiesById.get(String(staff.tenantId)))
+      buildPartyMembership(staff, companiesById.get(String(staff.tenantId)), positionFor(staff))
     )
     .filter((membership) => membership.company)
   const developerMemberships = isDeveloper

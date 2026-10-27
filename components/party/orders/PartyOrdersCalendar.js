@@ -147,7 +147,7 @@ export default function PartyOrdersCalendar({
               {formatMonthTitle(monthCursor)}
             </div>
             <div className="text-xs text-slate-500">
-              Заказов: {monthMeta.orders} | Доп. событий: {monthMeta.additional}
+              Заказов: {monthMeta.orders} | Задач: {monthMeta.additional}
             </div>
           </div>
         </div>

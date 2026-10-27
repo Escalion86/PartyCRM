@@ -1,5 +1,7 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import useCompanySettings from '../useCompanySettings'
 
 const PROVIDER_REQUISITE_FIELDS = [
@@ -64,15 +66,47 @@ const readFileAsBase64 = (file) =>
       resolve(payload || '')
     }
     reader.onerror = () => reject(new Error('Ошибка чтения файла'))
+    reader.onabort = () => reject(new Error('Чтение файла отменено'))
     reader.readAsDataURL(file)
   })
 
 export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
   const { settings, access, loading, saving, error, savePatch } =
     useCompanySettings(activeCompanyId)
+  const [readingTemplate, setReadingTemplate] = useState(false)
+  const [fileError, setFileError] = useState('')
+  const [proposalDrafts, setProposalDrafts] = useState({})
 
   const documents = settings?.documents ?? {}
   const requisites = documents.requisites ?? {}
+  const proposalValues = {
+    proposalValidityDays: String(documents.proposalValidityDays || 14),
+    proposalTaxText: documents.proposalTaxText || '',
+    proposalPaymentTerms: documents.proposalPaymentTerms || '',
+    proposalIncludedText: documents.proposalIncludedText || '',
+  }
+  usePartyUnsavedChanges(Object.entries(proposalDrafts).some(([key, value]) => value !== proposalValues[key]), {
+    label: 'настройки документов', scope: activeCompanyId, pending: readingTemplate,
+  })
+  useEffect(() => {
+    setProposalDrafts({})
+    setFileError('')
+  }, [activeCompanyId])
+
+  const changeProposalField = (key, value) => setProposalDrafts((previous) => ({ ...previous, [key]: value }))
+  const saveProposalField = async (key, input) => {
+    const value = key === 'proposalValidityDays' ? String(Math.min(365, Math.max(1, Number(input) || 14))) : input
+    changeProposalField(key, value)
+    try {
+      if (value !== proposalValues[key]) await savePatch({ documents: { ...documents, [key]: key === 'proposalValidityDays' ? Number(value) : value } })
+      setProposalDrafts((previous) => {
+        if (previous[key] !== value) return previous
+        const next = { ...previous }
+        delete next[key]
+        return next
+      })
+    } catch {} // The settings hook displays the error; keep the draft for retry.
+  }
 
   const saveRequisite = (key, value) =>
     savePatch({
@@ -83,7 +117,7 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
           [key]: value,
         },
       },
-    })
+    }).catch(() => null)
 
   const saveDocxTemplate = async (type, file) => {
     if (!file) return
@@ -91,24 +125,33 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
       file.type !==
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ) {
+      setFileError('Выберите файл шаблона в формате DOCX')
       return
     }
 
-    const base64 = await readFileAsBase64(file)
-    const nextDocuments = { ...documents }
+    setReadingTemplate(true)
+    setFileError('')
+    try {
+      const base64 = await readFileAsBase64(file)
+      const nextDocuments = { ...documents }
 
-    if (type === 'contract') {
-      nextDocuments.contractDocxTemplateBase64 = base64
-      nextDocuments.contractDocxTemplateFileName = file.name
-    } else if (type === 'act') {
-      nextDocuments.actDocxTemplateBase64 = base64
-      nextDocuments.actDocxTemplateFileName = file.name
-    } else {
-      nextDocuments.proposalDocxTemplateBase64 = base64
-      nextDocuments.proposalDocxTemplateFileName = file.name
+      if (type === 'contract') {
+        nextDocuments.contractDocxTemplateBase64 = base64
+        nextDocuments.contractDocxTemplateFileName = file.name
+      } else if (type === 'act') {
+        nextDocuments.actDocxTemplateBase64 = base64
+        nextDocuments.actDocxTemplateFileName = file.name
+      } else {
+        nextDocuments.proposalDocxTemplateBase64 = base64
+        nextDocuments.proposalDocxTemplateFileName = file.name
+      }
+
+      await savePatch({ documents: nextDocuments })
+    } catch (cause) {
+      setFileError(cause.message || 'Не удалось загрузить шаблон')
+    } finally {
+      setReadingTemplate(false)
     }
-
-    await savePatch({ documents: nextDocuments })
   }
 
   if (loading) {
@@ -135,6 +178,7 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
           {error}
         </div>
       ) : null}
+      {fileError ? <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{fileError}</div> : null}
 
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
         <div className="text-base font-semibold">Реквизиты компании</div>
@@ -194,10 +238,12 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
           <input
             type="file"
             accept=".docx"
+            disabled={readingTemplate}
             className="mt-4 block text-sm"
             onChange={async (event) => {
-              await saveDocxTemplate('contract', event.target.files?.[0])
-              event.target.value = ''
+              const input = event.target
+              try { await saveDocxTemplate('contract', input.files?.[0]) }
+              finally { input.value = '' }
             }}
           />
           <div className="mt-4 text-xs leading-5 text-slate-500">
@@ -213,10 +259,12 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
           <input
             type="file"
             accept=".docx"
+            disabled={readingTemplate}
             className="mt-4 block text-sm"
             onChange={async (event) => {
-              await saveDocxTemplate('act', event.target.files?.[0])
-              event.target.value = ''
+              const input = event.target
+              try { await saveDocxTemplate('act', input.files?.[0]) }
+              finally { input.value = '' }
             }}
           />
           <div className="mt-4 text-xs leading-5 text-slate-500">
@@ -240,18 +288,9 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
               type="number"
               min={1}
               max={365}
-              defaultValue={documents.proposalValidityDays || 14}
-              onBlur={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    proposalValidityDays: Math.min(
-                      365,
-                      Math.max(1, Number(event.target.value) || 14)
-                    ),
-                  },
-                })
-              }
+              value={proposalDrafts.proposalValidityDays ?? proposalValues.proposalValidityDays}
+              onChange={(event) => changeProposalField('proposalValidityDays', event.target.value)}
+              onBlur={(event) => saveProposalField('proposalValidityDays', event.target.value)}
               className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
             />
           </label>
@@ -261,16 +300,10 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
             </span>
             <input
               type="text"
-              defaultValue={documents.proposalTaxText || ''}
+              value={proposalDrafts.proposalTaxText ?? proposalValues.proposalTaxText}
               placeholder="НДС не облагается..."
-              onBlur={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    proposalTaxText: event.target.value,
-                  },
-                })
-              }
+              onChange={(event) => changeProposalField('proposalTaxText', event.target.value)}
+              onBlur={(event) => saveProposalField('proposalTaxText', event.target.value)}
               className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
             />
           </label>
@@ -280,16 +313,10 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
             </span>
             <textarea
               rows={3}
-              defaultValue={documents.proposalPaymentTerms || ''}
+              value={proposalDrafts.proposalPaymentTerms ?? proposalValues.proposalPaymentTerms}
               placeholder="Например: предоплата 50%, остаток в день мероприятия"
-              onBlur={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    proposalPaymentTerms: event.target.value,
-                  },
-                })
-              }
+              onChange={(event) => changeProposalField('proposalPaymentTerms', event.target.value)}
+              onBlur={(event) => saveProposalField('proposalPaymentTerms', event.target.value)}
               className="rounded-lg border border-sky-100 px-3 py-2 text-sm"
             />
           </label>
@@ -299,16 +326,10 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
             </span>
             <textarea
               rows={3}
-              defaultValue={documents.proposalIncludedText || ''}
+              value={proposalDrafts.proposalIncludedText ?? proposalValues.proposalIncludedText}
               placeholder="Работа команды, оборудование, транспорт..."
-              onBlur={(event) =>
-                savePatch({
-                  documents: {
-                    ...documents,
-                    proposalIncludedText: event.target.value,
-                  },
-                })
-              }
+              onChange={(event) => changeProposalField('proposalIncludedText', event.target.value)}
+              onBlur={(event) => saveProposalField('proposalIncludedText', event.target.value)}
               className="rounded-lg border border-sky-100 px-3 py-2 text-sm"
             />
           </label>
@@ -321,10 +342,12 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
           <input
             type="file"
             accept=".docx"
+            disabled={readingTemplate}
             className="mt-4 block cursor-pointer text-sm"
             onChange={async (event) => {
-              await saveDocxTemplate('proposal', event.target.files?.[0])
-              event.target.value = ''
+              const input = event.target
+              try { await saveDocxTemplate('proposal', input.files?.[0]) }
+              finally { input.value = '' }
             }}
           />
           <div className="mt-3 text-xs leading-5 text-slate-500">
@@ -333,7 +356,7 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
         </label>
       </div>
 
-      {saving ? (
+      {saving || readingTemplate ? (
         <p className="text-xs text-slate-500">Сохраняем изменения...</p>
       ) : null}
     </div>

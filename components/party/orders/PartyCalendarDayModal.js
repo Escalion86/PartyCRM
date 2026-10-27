@@ -47,7 +47,7 @@ export default function PartyCalendarDayModal({
     >
       <div className="grid gap-2">
         <div className="text-sm text-slate-500">
-          Заказы и дополнительные события: {items.length}
+          Заказы и задачи: {items.length}
         </div>
         {items.map((item, index) => {
           const order = ordersById.get(String(item.orderId))
@@ -79,7 +79,7 @@ export default function PartyCalendarDayModal({
                           : 'bg-amber-100 text-amber-700'
                       }`}
                     >
-                      {isOrder ? 'Заказ' : 'Доп. событие'}
+                      {isOrder ? 'Заказ' : 'Задача'}
                     </span>
                   </div>
                   {!isOrder && order ? (

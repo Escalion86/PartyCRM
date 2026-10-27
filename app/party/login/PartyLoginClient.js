@@ -2,29 +2,24 @@
 
 import Link from 'next/link'
 import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
+import { PhoneNumberField } from '@components/PhoneInput'
+import {
+  formatPhoneLocalDigits,
+  getPhoneLocalDigits,
+  normalizePhoneNumber,
+} from '@helpers/phoneInput'
 import { normalizeAuthPhoneForCall } from './authPhone.mjs'
 import PartyVkIdOneTap from './PartyVkIdOneTap'
 
 const normalizePhone = (value) => {
-  const digits = String(value || '').replace(/[^\d]/g, '')
-  if (digits.length === 10) return `7${digits}`
-  if (digits.length === 11 && digits.startsWith('8'))
-    return `7${digits.slice(1)}`
-  return digits
+  return (
+    normalizePhoneNumber(value) || String(value || '').replace(/[^\d]/g, '')
+  )
 }
 
 const formatPhone = (value) => {
-  let digits = value.replace(/[^\d]/g, '').slice(0, 11)
-  if (!digits) return ''
-  if (digits[0] === '8') {
-    digits = '7' + digits.slice(1)
-  }
-  let formatted = '+7'
-  if (digits.length > 1) formatted += ` (${digits.slice(1, 4)}`
-  if (digits.length > 4) formatted += `) ${digits.slice(4, 7)}`
-  if (digits.length > 7) formatted += `-${digits.slice(7, 9)}`
-  if (digits.length > 9) formatted += `-${digits.slice(9, 11)}`
-  return formatted
+  const local = getPhoneLocalDigits(value)
+  return local ? `+7 ${formatPhoneLocalDigits(local)}` : ''
 }
 
 const formatDisplayPhone = (phone) => {
@@ -155,50 +150,49 @@ const Field = ({
   const passwordInputType =
     canTogglePassword && passwordVisible ? 'text' : 'password'
 
-  const handleChange = (event) => {
-    if (type === 'phone') {
-      let inputValue = event.target.value
-      if (value === '' && inputValue.length > 0) {
-        const digits = inputValue.replace(/[^\d]/g, '')
-        if (digits.length > 0) {
-          const firstDigit = digits[0]
-          if (firstDigit !== '7' && firstDigit !== '8') {
-            const normalized = '7' + digits
-            const formatted = formatPhone(normalized)
-            onChange(formatted)
-            return
-          }
-        }
-      }
-      const formatted = formatPhone(inputValue)
-      onChange(formatted)
-    } else {
-      onChange(event.target.value)
-    }
-  }
-
   return (
     <label className="grid gap-1 text-sm">
       <span className="font-medium text-black/65">{label}</span>
       <span className="relative">
-        <input
-          name={name}
-          type={
-            type === 'phone'
-              ? 'text'
-              : isPasswordField
-                ? passwordInputType
-                : type
-          }
-          inputMode={type === 'phone' ? 'tel' : undefined}
-          autoComplete={autoComplete}
-          value={value}
-          onChange={handleChange}
-          readOnly={readOnly}
-          className={`h-10 w-full rounded-md border border-sky-100 bg-white px-3 outline-none focus:border-sky-500 ${
-            canTogglePassword ? 'pr-11' : ''
-          } ${readOnly ? 'bg-slate-50 text-slate-400' : ''}`}
-        />
+        {type === 'phone' ? (
+          <span className="flex min-h-10 items-center rounded-md border border-sky-100 bg-white px-3 focus-within:border-sky-500">
+            <PhoneNumberField
+              label={label}
+              name={name}
+              value={value}
+              onChange={(phone) =>
+                onChange(
+                  phone
+                    ? `+7 ${formatPhoneLocalDigits(String(phone).slice(1))}`
+                    : ''
+                )
+              }
+              autoComplete={autoComplete}
+              readOnly={readOnly}
+              copyPasteButtons={false}
+              tone="party"
+            />
+          </span>
+        ) : (
+          <input
+            name={name}
+            type={
+              type === 'phone'
+                ? 'text'
+                : isPasswordField
+                  ? passwordInputType
+                  : type
+            }
+            inputMode={type === 'phone' ? 'tel' : undefined}
+            autoComplete={autoComplete}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            readOnly={readOnly}
+            className={`h-10 w-full rounded-md border border-sky-100 bg-white px-3 outline-none focus:border-sky-500 ${
+              canTogglePassword ? 'pr-11' : ''
+            } ${readOnly ? 'bg-slate-50 text-slate-400' : ''}`}
+          />
+        )}
         {canTogglePassword && (
           <button
             type="button"

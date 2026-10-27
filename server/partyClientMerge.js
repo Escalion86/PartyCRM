@@ -126,6 +126,11 @@ export const mergePartyClients = async ({
     { $set: { 'otherContacts.$[contact].clientId': targetClientId } },
     { arrayFilters: [{ 'contact.clientId': sourceClientId }] }
   )
+  await PartyOrders.updateMany(
+    { tenantId, 'contactRoles.contactSettings.clientId': sourceClientId },
+    { $set: { 'contactRoles.contactSettings.$[contact].clientId': targetClientId } },
+    { arrayFilters: [{ 'contact.clientId': sourceClientId }] }
+  )
 
   const archivedClient = await PartyClients.findOneAndUpdate(
     { _id: sourceClientId, tenantId },

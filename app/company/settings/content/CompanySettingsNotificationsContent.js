@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import {
   getPushRegistration,
   isPushSupported,
@@ -27,6 +28,7 @@ export default function CompanySettingsNotificationsContent({
   const [pushAvailable, setPushAvailable] = useState(false)
   const [pushPermission, setPushPermission] = useState('default')
   const [pushSubscribed, setPushSubscribed] = useState(false)
+  usePartyUnsavedChanges(false, { label: 'настройки push-уведомлений', scope: activeCompanyId, pending: Boolean(pushBusy) })
 
   const notifications = settings?.notifications ?? {}
   const pushEnabled = notifications.pushEnabled === true
@@ -51,11 +53,15 @@ export default function CompanySettingsNotificationsContent({
       return
     }
 
-    const registration = await getPushRegistration()
-    const subscription = await registration?.pushManager
-      ?.getSubscription()
-      .catch(() => null)
-    setPushSubscribed(Boolean(subscription))
+    try {
+      const registration = await getPushRegistration()
+      const subscription = await registration?.pushManager
+        ?.getSubscription()
+        .catch(() => null)
+      setPushSubscribed(Boolean(subscription))
+    } catch {
+      setPushSubscribed(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -95,8 +101,8 @@ export default function CompanySettingsNotificationsContent({
     } catch (pushLoadError) {
       setPushError(pushLoadError.message || 'Не удалось подключить push')
     } finally {
+      await refreshPushState()
       setPushBusy('')
-      refreshPushState()
     }
   }
 
@@ -110,12 +116,14 @@ export default function CompanySettingsNotificationsContent({
         ?.getSubscription()
         .catch(() => null)
       if (subscription) {
-        await fetch('/api/party/push/unsubscribe', {
+        const response = await fetch('/api/party/push/unsubscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...partyPushHeaders },
           body: JSON.stringify({ subscription: subscription.toJSON() }),
         })
-        await subscription.unsubscribe().catch(() => null)
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok || payload?.success === false) throw new Error(payload?.error || 'Не удалось отключить push-подписку')
+        await subscription.unsubscribe()
       }
       await savePatch({
         notifications: {
@@ -128,8 +136,8 @@ export default function CompanySettingsNotificationsContent({
     } catch (pushLoadError) {
       setPushError(pushLoadError.message || 'Не удалось отключить push')
     } finally {
+      await refreshPushState()
       setPushBusy('')
-      refreshPushState()
     }
   }
 
@@ -138,11 +146,12 @@ export default function CompanySettingsNotificationsContent({
     setPushError('')
     setPushMessage('')
     try {
-      await syncPushSubscription({
+      const result = await syncPushSubscription({
         ensureLocalSubscription: true,
         apiBasePath: '/api/party/push',
         headers: partyPushHeaders,
       })
+      if (!result?.ok) throw new Error('Не удалось создать push-подписку')
       const response = await fetch('/api/party/push/test', {
         method: 'POST',
         headers: partyPushHeaders,
@@ -155,8 +164,8 @@ export default function CompanySettingsNotificationsContent({
     } catch (pushLoadError) {
       setPushError(pushLoadError.message || 'Не удалось отправить тест push')
     } finally {
+      await refreshPushState()
       setPushBusy('')
-      refreshPushState()
     }
   }
 
@@ -241,7 +250,7 @@ export default function CompanySettingsNotificationsContent({
                     ...notifications,
                     additionalEventsPushTime: event.target.value,
                   },
-                })
+                }).catch(() => null)
               }
               className="h-11 max-w-52 rounded-lg border border-sky-100 px-3 text-sm"
             />
@@ -263,7 +272,7 @@ export default function CompanySettingsNotificationsContent({
                     additionalEventsReminderDaysBefore:
                       normalizeReminderDaysBefore(event.target.value),
                   },
-                })
+                }).catch(() => null)
               }
               className="h-11 max-w-52 rounded-lg border border-sky-100 px-3 text-sm"
             />

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext, parseJsonBody } from '@server/partyApi'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
+import { isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
+import { serializePartyRestrictedCompanySettings } from '@server/partyMembershipResponse'
 import {
   preservePartyGoogleCalendarSettings,
   serializePartyCompanySettingsForResponse,
@@ -17,6 +19,7 @@ export async function GET(req) {
   const { context, error } = await getPartyRequestContext({
     req,
     managementOnly: true,
+    permissionAware: true,
   })
   if (error) return error
 
@@ -34,6 +37,11 @@ export async function GET(req) {
     .lean()
   const { access, serializedAccess } =
     await getPartyCompanyTariffAccessState(company)
+
+  if (isPartyRestrictedManagementContext(context)) {
+    const featureAccess = Object.fromEntries(Object.entries(serializedAccess || {}).filter(([key]) => key !== 'tariff'))
+    return NextResponse.json({ success: true, data: { company: normalizeCompanyProfile(company ?? {}), settings: serializePartyRestrictedCompanySettings(company?.settings), access: featureAccess, restricted: true, canEdit: false, restrictionMessage: 'Изменение общих настроек и интеграций доступно владельцу или администратору без ограничений. Должности, бриф и этапы проверяют отдельные полномочия.' } })
+  }
 
   return NextResponse.json({
     success: true,

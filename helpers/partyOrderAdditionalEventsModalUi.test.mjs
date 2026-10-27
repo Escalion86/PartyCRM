@@ -5,18 +5,18 @@ import { join } from 'node:path'
 
 const source = (path) => readFile(join(process.cwd(), path), 'utf8')
 
-test('party order additional events modal mirrors ArtistCRM list flow', async () => {
+test('party order tasks modal opens the canonical task list with its order and company', async () => {
   const component = await source(
     'components/party/modals/OrderAdditionalEventsModal.js'
   )
 
-  assert.match(component, /title="Доп\. события"/)
-  assert.match(component, /Всего: \{additionalEvents\.length\}/)
-  assert.match(component, /Создать доп\. событие/)
-  assert.match(component, /getAdditionalEventsDisplayGroups/)
-  assert.match(component, /openAdditionalEvent/)
-  assert.match(component, /toggleAdditionalEventDone/)
-  assert.match(component, /Редактировать доп\. событие/)
+  const live = component.slice(component.indexOf('export default function OrderAdditionalEventsModal'))
+  assert.match(live, /title="Задачи"/)
+  assert.match(live, /<PartyTasks/)
+  assert.match(live, /companyId=\{activeCompanyId/)
+  assert.match(live, /orderId=\{String\(order\._id\)\}/)
+  assert.match(live, /hasUnsavedChanges=\{dirty\}/)
+  assert.doesNotMatch(live, /AdditionalEventCard|AdditionalEventEditModal/)
 })
 
 test('company workspace opens order additional events modal from selected card', async () => {
@@ -31,28 +31,19 @@ test('company workspace opens order additional events modal from selected card',
   assert.match(workspace, /onUpdateOrder=\{\(nextOrder\) =>/)
 })
 
-test('order editor uses additional event cards and create modal', async () => {
+test('saved order editor uses canonical tasks and unsaved draft keeps initial task notes', async () => {
   const orderModal = await source('components/party/modals/OrderModal.js')
 
-  assert.match(orderModal, /AdditionalEventCard/)
-  assert.match(orderModal, /AdditionalEventEditModal/)
-  assert.match(orderModal, /createAdditionalEvent/)
-  assert.match(orderModal, /editingAdditionalEvent === -1/)
-  assert.doesNotMatch(orderModal, /handleAddAdditionalEvent/)
+  assert.match(orderModal, /<TabPanel tabName="Задачи">/)
+  assert.match(orderModal, /orderDraft\._id \? <PartyTasks/)
+  assert.match(orderModal, /orderId=\{String\(orderDraft\._id\)\}/)
+  assert.match(orderModal, /После сохранения заказа будут доступны назначения сотрудникам и должности/)
 })
 
-test('new additional event inherits responsible staff from order', async () => {
-  const orderModal = await source('components/party/modals/OrderModal.js')
-  const additionalEventsModal = await source(
-    'components/party/modals/OrderAdditionalEventsModal.js'
-  )
-
-  assert.match(
-    orderModal,
-    /responsibleStaffId: orderDraft\.responsibleStaffId \|\| '',/
-  )
-  assert.match(
-    additionalEventsModal,
-    /responsibleStaffId: order\?\.responsibleStaffId \|\| '',/
-  )
+test('canonical tasks support a person, a position and no order association', async () => {
+  const tasks = await source('components/party/tasks/PartyTasks.js')
+  assert.match(tasks, /orderId = null/)
+  assert.match(tasks, /assigneeStaffIds/)
+  assert.match(tasks, /assigneeRoleId/)
+  assert.match(tasks, /emptyDraft\(data\.currentStaffId, orderId\)/)
 })

@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import CompanyPageShell from '../CompanyPageShell'
 import getPartyMembershipContext from '@server/getPartyMembershipContext'
-import { getPartyEntryState } from '@server/partyEntry'
+import { getPartyEntryState, resolvePartyEntryPath } from '@server/partyEntry'
 
 const sectionTitles = {
   orders: 'Заказы',
@@ -44,6 +44,8 @@ export default async function CompanySectionPage({ params }) {
   if (!sessionUser?._id) {
     redirect(`/party/login?callbackUrl=/company/${section}`)
   }
+  const entryPath = resolvePartyEntryPath({ user: sessionUser, memberships })
+  if (['/performer/work', '/performer/tasks'].includes(entryPath)) redirect(entryPath)
 
   const state = getPartyEntryState({ user: sessionUser, memberships })
   if (!state.canUseCompany) {

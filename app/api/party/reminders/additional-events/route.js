@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server'
-import PushReminderLogs from '@models/PushReminderLogs'
 import { getPartySessionUser } from '@server/partyAuth'
-import { getPartyCompanyModel, getPartyOrderModel } from '@server/partyModels'
-import { sendPushToTenant } from '@server/pushNotifications'
-import { runPartyAdditionalEventReminderBatch } from '@server/partyReminderCore'
+import { runPartyTaskScheduler } from '@server/partyTaskScheduler'
 
 const canRun = async (req) => {
   const secret = process.env.PARTYCRM_CRON_SECRET || process.env.BILLING_CRON_SECRET || ''
@@ -32,52 +29,12 @@ export async function POST(req) {
     )
   }
 
-  const PartyCompanies = await getPartyCompanyModel()
-  const PartyOrders = await getPartyOrderModel()
-
-  const result = await runPartyAdditionalEventReminderBatch({
-    dependencies: {
-      findCompanies: () =>
-        PartyCompanies.find({
-          status: 'active',
-          'settings.notifications.pushEnabled': true,
-        })
-          .select({ _id: 1, title: 1, settings: 1 })
-          .lean(),
-      findOrders: ({ companyId, dateToExclusive }) =>
-        PartyOrders.find({
-          tenantId: companyId,
-          status: { $nin: ['canceled', 'closed'] },
-          additionalEvents: {
-            $elemMatch: {
-              done: { $ne: true },
-              date: { $lt: dateToExclusive },
-            },
-          },
-        })
-          .select({ _id: 1, title: 1, status: 1, additionalEvents: 1 })
-          .lean(),
-      createReminderLog: (entry) =>
-        PushReminderLogs.create({
-          tenantId: entry.tenantId,
-          orderId: entry.orderId,
-          additionalEventId: entry.additionalEventId,
-          additionalEventIndex: entry.additionalEventIndex,
-          reminderType: entry.reminderType,
-          dateKey: entry.dateKey,
-        }),
-      sendPush: ({ tenantId, companyId, payload }) =>
-        sendPushToTenant({
-          tenantId,
-          product: 'partycrm',
-          companyId,
-          source: 'party-additional-events-reminder',
-          payload,
-        }),
-    },
-  })
-
-  return NextResponse.json({ success: true, data: result })
+  try {
+    const result = await runPartyTaskScheduler()
+    return NextResponse.json({ success: true, data: result })
+  } catch {
+    return NextResponse.json({ success: false, error: { code: 'partycrm_task_scheduler_failed', message: 'Не удалось обработать задачи. Повторите запуск.' } }, { status: 500 })
+  }
 }
 
 export const dynamic = 'force-dynamic'

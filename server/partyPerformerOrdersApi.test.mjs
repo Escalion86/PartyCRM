@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { sanitizePartyOrderForPerformer } from '../helpers/partyPerformerOrders.js'
+import { getPartyOrderPerformerContactIds } from '../helpers/partyOrderContacts.js'
+import { buildPartyOrderAccessFilter, canPartyAccess } from '../helpers/partyRolePermissions.js'
 
 const code = (await readFile(new URL('../app/api/party/performer/orders/route.js', import.meta.url), 'utf8'))
   .replace(/^import[\s\S]*?from '[^']+'\r?\n/gm, '')
@@ -11,7 +13,7 @@ const query = (value) => ({ sort() { return this }, select() { return this }, li
 test('performer GET hydrates customer and onsite within each tenant without querying payer or partner', async () => {
   const tenants = ['company-a', 'company-b']
   const filters = []
-  const memberships = tenants.map((tenantId) => ({ tenantId, staffId: 'staff', role: 'performer' }))
+  const memberships = tenants.map((tenantId) => ({ tenantId, staffId: 'staff', role: 'performer', status: 'active', staff: { _id: 'staff', tenantId, role: 'performer', status: 'active' } }))
   const orders = tenants.map((tenantId) => ({
     _id: tenantId, tenantId, clientId: 'customer', assignedStaff: [{ staffId: 'staff' }],
     contactRoles: { onsiteClientId: 'onsite', partnerClientId: 'private-partner', payerClientId: 'private-payer', representAs: tenantId },
@@ -28,12 +30,14 @@ test('performer GET hydrates customer and onsite within each tenant without quer
     },
     isValidObjectId: () => true,
     getPartyOrderModel: async () => ({ find: (filter) => {
-      assert.deepEqual(filter.$or, tenants.map((tenantId) => ({ tenantId, 'assignedStaff.staffId': 'staff' })))
+      assert.deepEqual(filter.$or.map((part) => ({ tenantId: part.tenantId, staffId: part['assignedStaff.staffId'] })), tenants.map((tenantId) => ({ tenantId, staffId: 'staff' })))
+      assert.ok(filter.$or.every((part) => part.$and), 'assignment scope must remain in every tenant branch')
       return query(orders)
     } }),
     getPartyClientModel: async () => ({ find: (filter) => { filters.push(filter); return query(clients) } }),
     getPartyLocationModel: emptyModel, getPartyServiceModel: emptyModel, getPartyStaffModel: emptyModel,
     sanitizePartyOrderForPerformer,
+    getPartyOrderPerformerContactIds, buildPartyOrderAccessFilter, canPartyAccess,
   }
   const GET = new Function(...Object.keys(deps), `${code}\nreturn GET`)(...Object.values(deps))
   const result = await GET()

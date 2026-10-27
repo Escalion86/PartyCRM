@@ -44,15 +44,13 @@ test('party me route resolves active company through request context', async () 
   assert.match(source, /company/)
 })
 
-test('party additionalEvents reminder cron route sends deduped PartyCRM push', async () => {
+test('party task cron uses the shared scoped scheduler and preserves cron authorization', async () => {
   const source = await route('app/api/party/reminders/additional-events/route.js')
 
   assert.match(source, /PARTYCRM_CRON_SECRET/)
-  assert.match(source, /runPartyAdditionalEventReminderBatch/)
-  assert.match(source, /PushReminderLogs\.create/)
-  assert.match(source, /getPartyOrderModel/)
-  assert.match(source, /sendPushToTenant/)
-  assert.match(source, /product:\s*'partycrm'/)
+  assert.match(source, /runPartyTaskScheduler\(\)/)
+  assert.match(source, /if \(!access\.ok\)/)
+  assert.doesNotMatch(source, /sendPushToTenant|runPartyAdditionalEventReminderBatch/)
 })
 
 test('party tariff select route charges paid tariffs from company balance', async () => {
@@ -264,7 +262,9 @@ test('party close-past route returns close financial summaries for owner review'
   assert.match(source, /closed:\s*closed/)
   assert.match(source, /summary:\s*readiness\.summary/)
   assert.match(source, /closedIds:\s*closed\.map/)
-  assert.match(source, /skipped\.push\(\{\s*orderId,\s*blockers:\s*readiness\.blockers,\s*summary:\s*readiness\.summary/)
+  assert.match(source, /blockers:\s*readiness\.blockers,\s*summary:\s*readiness\.summary/)
+  assert.match(source, /if\s*\(outcome\.blockers\)\s*skipped\.push\(safeOutcome\)/)
+  assert.match(source, /withPartyFinancialTransaction/)
 })
 
 test('party closed orders and their transactions are immutable through management API', async () => {

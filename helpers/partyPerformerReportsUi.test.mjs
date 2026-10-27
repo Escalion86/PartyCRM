@@ -5,49 +5,40 @@ import { join } from 'node:path'
 
 const source = (path) => readFile(join(process.cwd(), path), 'utf8')
 
-test('party performer reports are stored on assigned staff and sanitized for performer', async () => {
-  const schema = await source('schemas/partyOrdersSchema.js')
-  const sanitizer = await source('helpers/partyPerformerOrders.js')
-
-  assert.match(schema, /partyPerformerReportSchema/)
-  assert.match(schema, /report:\s*\{\s*type:\s*partyPerformerReportSchema/)
+test('configured reports keep a versioned snapshot and per-question answers', async () => {
+  const schema = await source('schemas/partyReportsSchema.js')
+  assert.match(schema, /templateSnapshot:.*templateSnapshotSchema/)
+  assert.match(schema, /answers:.*answerSchema/)
   assert.match(schema, /revision_requested/)
-  assert.match(schema, /files:\s*\{/)
-  assert.match(sanitizer, /report:\s*assignment\.report/)
+  assert.match(schema, /reviewedByStaffId/)
 })
 
-test('performer can submit report through own assignment endpoint', async () => {
-  const route = await source('app/api/party/performer/orders/[id]/report/route.js')
-  const helper = await source('server/partyPerformerReports.js')
-
-  assert.match(route, /getPartyMembershipContext/)
-  assert.match(route, /staffId/)
-  assert.match(route, /assignedStaff\.staffId/)
-  assert.match(route, /assignedStaff\.\$\.report/)
-  assert.match(helper, /submittedAt/)
+test('old performer submission endpoint points to the retired read-only handler', async () => {
+  const route = await source(
+    'app/api/party/performer/orders/[id]/report/route.js'
+  )
+  assert.match(route, /retirePartyLegacyReport as PATCH/)
+  assert.doesNotMatch(route, /assignedStaff\.\$\.report|findOneAndUpdate/)
 })
 
-test('owner admin can review performer report from company endpoint', async () => {
-  const route = await source('app/api/party/orders/[id]/reports/[staffId]/route.js')
-  const helper = await source('server/partyPerformerReports.js')
-
-  assert.match(route, /getPartyRequestContext\(\{\s*req,\s*managementOnly:\s*true/)
-  assert.match(route, /tenantId:\s*context\.tenantId/)
-  assert.match(helper, /accepted/)
-  assert.match(helper, /revision_requested/)
-  assert.match(route, /reviewComment/)
+test('old company review endpoint cannot keep a second report system alive', async () => {
+  const route = await source(
+    'app/api/party/orders/[id]/reports/[staffId]/route.js'
+  )
+  const helper = await source('server/partyLegacyReportRetirement.js')
+  assert.match(route, /retirePartyLegacyReport as PATCH/)
+  assert.match(helper, /getPartyRequestContext/)
+  assert.match(helper, /tenantId:\s*context\.tenantId/)
+  assert.match(helper, /410/)
+  assert.doesNotMatch(helper, /\$set|recordPartyOrderAudit/)
 })
 
-test('performer and company UIs expose performer reports', async () => {
+test('performer has one entry into the configured report form', async () => {
   const performer = await source('app/performer/PerformerWorkspaceClient.js')
-  const orderView = await source('components/party/modals/OrderViewModal.js')
-  const ordersList = await source('components/party/lists/OrdersList.js')
-
-  assert.match(performer, /Отчет по заказу/)
-  assert.match(performer, /savePerformerReport/)
-  assert.match(performer, /reportDrafts/)
-  assert.match(orderView, /Отчеты исполнителей/)
-  assert.match(orderView, /onReviewReport/)
-  assert.match(ordersList, /Ждет отчет/)
-  assert.match(ordersList, /Отчет на проверке/)
+  assert.match(performer, /<PartyOrderReports/)
+  assert.match(performer, /Отчёт/)
+  assert.doesNotMatch(
+    performer,
+    /savePerformerReport|reportDrafts|PerformerReportEditor|PerformerReportModal/
+  )
 })

@@ -29,11 +29,17 @@ export default function InventoryWarnings({ result, services = [] }) {
             <strong>Часть реквизита ещё у сотрудников</strong>
             {result.holdingRisks.map((holding, index) => (
               <div key={index}>
-                {holding.title}: {holding.quantity} у {holding.holderName} ·
-                заказ № {String(holding.orderId).slice(-6)} · возврат{' '}
-                {holding.expectedReturnAt
-                  ? formatDate(holding.expectedReturnAt)
-                  : 'не указан'}
+                {holding.unavailableOrder ? (
+                  'Занято недоступным заказом'
+                ) : (
+                  <>
+                    {holding.title}: {holding.quantity} у {holding.holderName} ·
+                    заказ № {String(holding.orderId).slice(-6)} · возврат{' '}
+                    {holding.expectedReturnAt
+                      ? formatDate(holding.expectedReturnAt)
+                      : 'не указан'}
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -52,32 +58,56 @@ export default function InventoryWarnings({ result, services = [] }) {
           className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
         >
           <strong>
-            {warning.title}: не хватает {warning.shortage}
+            {warning.title}:{' '}
+            {warning.shortage === undefined
+              ? 'недостаточно реквизита'
+              : `не хватает ${warning.shortage}`}
           </strong>
-          <div>
-            {formatDate(warning.startAt)} — {formatDate(warning.endAt)}
-          </div>
-          <div>
-            Всего {warning.quantity}, недоступно {warning.unavailableQuantity},
-            занято {warning.occupied}, нужно {warning.needed}
-          </div>
+          {warning.startAt && warning.endAt ? (
+            <div>
+              {formatDate(warning.startAt)} — {formatDate(warning.endAt)}
+            </div>
+          ) : null}
+          {warning.quantity !== undefined ? (
+            <div>
+              Всего {warning.quantity}, недоступно {warning.unavailableQuantity}
+              , занято {warning.occupied}, нужно {warning.needed}
+            </div>
+          ) : warning.needed !== undefined ? (
+            <div>Для этого заказа нужно: {warning.needed}</div>
+          ) : null}
           {warning.conflicts.map((conflict, number) => (
             <div key={number}>
-              Заказ {conflict.orderTitle} · №{' '}
-              {String(conflict.orderId).slice(-6)} ·{' '}
-              {titleFor(conflict.serviceId)}: {conflict.quantity}
+              {conflict.unavailableOrder ? (
+                'Занято недоступным заказом'
+              ) : (
+                <>
+                  Заказ {conflict.orderTitle} · №{' '}
+                  {String(conflict.orderId).slice(-6)} ·{' '}
+                  {conflict.serviceId ? titleFor(conflict.serviceId) : ''}
+                  {conflict.quantity !== undefined
+                    ? `: ${conflict.quantity}`
+                    : ''}
+                </>
+              )}
             </div>
           ))}
           {warning.holders?.map((holder, number) => (
             <div key={`holder:${number}`}>
-              Ещё не возвращено: {holder.quantity} у {holder.holderName} · заказ
-              № {String(holder.orderId).slice(-6)} · срок{' '}
-              {holder.expectedReturnAt
-                ? formatDate(holder.expectedReturnAt)
-                : 'не указан'}
+              {holder.unavailableOrder ? (
+                'Занято недоступным заказом'
+              ) : (
+                <>
+                  Ещё не возвращено: {holder.quantity} у {holder.holderName} ·
+                  заказ № {String(holder.orderId).slice(-6)} · срок{' '}
+                  {holder.expectedReturnAt
+                    ? formatDate(holder.expectedReturnAt)
+                    : 'не указан'}
+                </>
+              )}
             </div>
           ))}
-          {warning.serviceLineIds.length > 1 && (
+          {warning.serviceLineIds?.length > 1 && (
             <div>
               Внутри этого заказа одновременно используется в{' '}
               {warning.serviceLineIds.length} услугах.

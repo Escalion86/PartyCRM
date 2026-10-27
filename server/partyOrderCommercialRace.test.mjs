@@ -5,6 +5,8 @@ import { compileFunction } from 'node:vm'
 import { getPartyOrderWriteGuard } from '../helpers/partyOrderWriteGuard.js'
 import { buildPartyProposalApplication } from '../helpers/partyProposalApply.js'
 import { preservePartyAssignmentConfirmationStatuses } from '../helpers/partyOrderAssignments.js'
+import { canPartyAccess, filterPartyOrderForAccess, guardPartyOrderPatch } from '../helpers/partyRolePermissions.js'
+import { preservePartyOrderContactSettings } from './partyOrderContactRoles.js'
 
 const id = '507f1f77bcf86cd799439011'
 const serviceId = '507f1f77bcf86cd799439012'
@@ -35,7 +37,12 @@ function setup() {
   }
   return { current, Orders, deps: {
     getPartyOrderWriteGuard, buildPartyProposalApplication,
-    getPartyRequestContext: async () => ({ context: { tenantId, company: {}, staff: { _id: id } } }),
+    getPartyRequestContext: async () => ({ context: { tenantId, role: 'owner', company: {}, staff: { _id: id, tenantId, status: 'active', role: 'owner' } } }),
+    canPartyAccess, filterPartyOrderForAccess, guardPartyOrderPatch, preservePartyOrderContactSettings,
+    filterPartyInventoryResult: async (_context, value) => value,
+    getPartyReportGateBlockers: async () => [],
+    getPartyTaskOrderReadiness: async ({ order }) => ({ order, blockers: [] }),
+    snapshotPartyBriefForClose: async ({ order }) => order.eventBrief || {},
     getPartyCompanyTariffAccessState: async () => ({ access: { allowDocuments: true } }),
     isValidObjectId: (value) => /^[a-f\d]{24}$/i.test(value),
     parseJsonBody: async (req) => req.body,

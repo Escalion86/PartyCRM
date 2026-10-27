@@ -6,6 +6,11 @@ import {
   getPartyInventoryItemModel,
 } from '@server/partyInventoryModels'
 import { getPartyOrderModel, getPartyStaffModel } from '@server/partyModels'
+import { buildPartyOrderAccessFilter } from '@helpers/partyRolePermissions'
+import {
+  canPartyInventoryAccess,
+  hasUnrestrictedPartyInventoryScope,
+} from '@helpers/partyInventoryAccess'
 import {
   inventoryId,
   isInventoryId,
@@ -32,6 +37,7 @@ export const POST = inventoryRoute(async (req, context) => {
     tenantId: context.tenantId,
     actorStaffId: context.staff._id,
     body: await parseJsonBody(req),
+    context,
   })
   return inventoryResponse({
     movement: safeMovement(result.movement),
@@ -54,20 +60,49 @@ export const GET = inventoryRoute(async (req, context) => {
     getPartyInventoryItemModel(),
   ])
   const filter = { tenantId: context.tenantId }
+  const unrestricted = hasUnrestrictedPartyInventoryScope(context)
+  const scopedOrders = unrestricted
+    ? null
+    : await Orders.find(buildPartyOrderAccessFilter(context))
+        .select('_id')
+        .lean()
+  const scopedOrderFilter = scopedOrders
+    ? { orderId: { $in: scopedOrders.map(inventoryId) } }
+    : {}
+  const requestedOrder = orderId
+    ? await Orders.findOne({ ...filter, _id: orderId }).lean()
+    : null
   if (
     orderId &&
-    !(await Orders.exists({ ...filter, _id: orderId })) &&
-    !(await Holdings.exists({ ...filter, orderId, quantity: { $gt: 0 } }))
+    !(
+      requestedOrder &&
+      canPartyInventoryAccess(context, {
+        resource: 'inventory.movements',
+        order: requestedOrder,
+      })
+    ) &&
+    !(
+      unrestricted &&
+      !requestedOrder &&
+      (await Holdings.exists({ ...filter, orderId, quantity: { $gt: 0 } }))
+    )
   )
     throw inventoryValidationError('Заказ не найден', 404)
   const [allHoldings, movements, items] = await Promise.all([
-    Holdings.find({ ...filter, quantity: { $gt: 0 } })
+    Holdings.find({
+      ...filter,
+      ...(!canPartyInventoryAccess(context, { resource: 'inventory.stock' })
+        ? scopedOrderFilter
+        : {}),
+      quantity: { $gt: 0 },
+    })
       .select(
         '_id resourceId orderId holderStaffId quantity issuedAt expectedReturnAt'
       )
       .lean(),
     Movements.find({
       ...filter,
+      ...scopedOrderFilter,
       ...(orderId ? { orderId } : {}),
       ...(cursor ? { _id: { $lt: cursor } } : {}),
     })
@@ -83,7 +118,12 @@ export const GET = inventoryRoute(async (req, context) => {
       .lean(),
   ])
   const holdings = allHoldings.filter(
-    (holding) => !orderId || inventoryId(holding.orderId) === orderId
+    (holding) =>
+      (!orderId || inventoryId(holding.orderId) === orderId) &&
+      (!scopedOrders ||
+        scopedOrders.some(
+          (order) => inventoryId(order) === inventoryId(holding.orderId)
+        ))
   )
   const [staff, orders] = await Promise.all([
     Staff.find({
@@ -97,6 +137,7 @@ export const GET = inventoryRoute(async (req, context) => {
       .lean(),
     Orders.find({
       ...filter,
+      ...buildPartyOrderAccessFilter(context),
       ...(orderId
         ? { _id: orderId }
         : {
@@ -108,7 +149,9 @@ export const GET = inventoryRoute(async (req, context) => {
     })
       .sort({ eventDate: -1 })
       .limit(300)
-      .select('_id title serviceTitle eventDate status')
+      .select(
+        '_id tenantId title serviceTitle eventDate status workflowStageId locationId assignedStaff responsibleStaffId'
+      )
       .lean(),
   ])
   const staffNames = new Map(
@@ -144,5 +187,12 @@ export const GET = inventoryRoute(async (req, context) => {
     orders,
     movements: movements.slice(0, 50),
     nextCursor: movements.length > 50 ? inventoryId(movements[49]) : null,
+    permissions: {
+      canEdit: canPartyInventoryAccess(context, {
+        resource: 'inventory.movements',
+        action: 'edit',
+      }),
+      stock: canPartyInventoryAccess(context, { resource: 'inventory.stock' }),
+    },
   })
 }, 'inventory.movements')

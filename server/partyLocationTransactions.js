@@ -21,6 +21,10 @@ import {
 import { getPartyOrderCloseReadiness } from '@helpers/partyOrderCloseReadiness'
 import { recordPartyOrderAudit } from './partyAuditLog'
 import { syncPartyOrderCalendarAfterCrud } from './partyOrderCalendarHooks'
+import { assertPartyReportGate } from './partyReportGates'
+import { getPartyTaskOrderReadiness } from './partyTaskReadiness'
+import { snapshotPartyBriefForClose } from './partyBriefTemplates'
+import { maskPartyOrderBlockers } from '@helpers/partyOrderAccess'
 
 const getLocationMoneyRequestModel = () =>
   getProductModel({
@@ -129,6 +133,14 @@ export const createLocationTransaction = async ({ context, body, key }) => {
       const { error } = validatePartyPayoutTransactionStaff({ order, payload })
       if (error)
         locationFailure('Получатель выплаты должен быть назначен на этот заказ')
+      if (payload.type === 'expense' && payload.category === 'payout')
+        await assertPartyReportGate({
+          tenantId: context.tenantId,
+          order,
+          action: 'payout',
+          staffId: payload.staffId,
+          session,
+        })
       if (
         payload.staffId &&
         !(await Staff.exists({
@@ -210,23 +222,40 @@ export const closeLocationOrder = async ({ context, orderId }) => {
       })
         .session(session)
         .lean()
-      const readiness = getPartyOrderCloseReadiness({
+      const tasks = await getPartyTaskOrderReadiness({
+        tenantId: context.tenantId,
         order: previousOrder,
+        session,
+      })
+      const readiness = getPartyOrderCloseReadiness({
+        order: tasks.order,
         transactions: transactions.length
           ? transactions
           : previousOrder.transactions,
       })
+      readiness.blockers.push(...tasks.blockers)
+      readiness.ok = readiness.blockers.length === 0
       if (!readiness.ok)
         locationFailure(
-          `Заказ не готов к закрытию: ${readiness.blockers.map((item) => item.message).join('; ')}`,
+          `Заказ не готов к закрытию: ${maskPartyOrderBlockers(context, previousOrder, readiness.blockers).map((item) => item.message).join('; ')}`,
           409
         )
+      await assertPartyReportGate({
+        tenantId: context.tenantId,
+        order: previousOrder,
+        action: 'close',
+        session,
+      })
+      const eventBrief = await snapshotPartyBriefForClose({
+        tenantId: context.tenantId,
+        order: previousOrder,
+      })
       const updated = await Orders.updateOne(
         buildLocationOrderFilter(context, {
           _id: orderId,
           status: previousOrder.status,
         }),
-        { $set: { status: 'closed' } },
+        { $set: { status: 'closed', eventBrief } },
         { session }
       )
       if (!updated.matchedCount)

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getPartyStaffModel } from '@server/partyModels'
 import { validateStaffLocationScope } from '@server/partyLocationAccess'
+import { getPartyStaffPositionPatch } from '@server/partyRoles'
+import { canPartyAccess } from '@helpers/partyRolePermissions'
+import { withPartyStaffMutationLock } from '@server/partyStaffMutation'
 import {
   getPartyRequestContext,
   isValidObjectId,
@@ -65,20 +68,29 @@ const getId = async (params) => {
   return resolved?.id
 }
 
-const ensureNotLastOwner = async ({ PartyStaff, tenantId, staffId, patch }) => {
+const ensureNotLastOwner = async ({
+  PartyStaff,
+  tenantId,
+  staffId,
+  patch,
+  session,
+}) => {
   const affectsOwner =
-    patch.status === 'archived' || (patch.role && patch.role !== 'owner')
+    (patch.status && patch.status !== 'active') ||
+    (patch.role && patch.role !== 'owner')
   if (!affectsOwner) return null
 
-  const target = await PartyStaff.findOne({ _id: staffId, tenantId }).lean()
+  const target = await PartyStaff.findOne({ _id: staffId, tenantId })
+    .session(session)
+    .lean()
   if (target?.role !== 'owner') return null
 
   const ownersCount = await PartyStaff.countDocuments({
     tenantId,
     role: 'owner',
-    status: { $ne: 'archived' },
+    status: 'active',
     _id: { $ne: staffId },
-  })
+  }).session(session)
 
   return ownersCount > 0
     ? null
@@ -91,8 +103,10 @@ const ensureNotLastOwner = async ({ PartyStaff, tenantId, staffId, patch }) => {
 }
 
 // Проверяет, что цель не является владельцем (владельца удалять нельзя)
-const ensureNotOwner = async ({ PartyStaff, tenantId, staffId }) => {
-  const target = await PartyStaff.findOne({ _id: staffId, tenantId }).lean()
+const ensureNotOwner = async ({ PartyStaff, tenantId, staffId, session }) => {
+  const target = await PartyStaff.findOne({ _id: staffId, tenantId })
+    .session(session)
+    .lean()
   if (target?.role === 'owner') {
     return partyError(
       400,
@@ -136,6 +150,13 @@ export async function PATCH(req, { params }) {
     managementOnly: true,
   })
   if (error) return error
+  if (!canPartyAccess(context, { resource: 'staff', action: 'edit' }))
+    return partyError(
+      403,
+      'partycrm_forbidden',
+      'Нет права изменять сотрудников',
+      'permission'
+    )
 
   const id = await getId(params)
   if (!isValidObjectId(id)) {
@@ -143,98 +164,180 @@ export async function PATCH(req, { params }) {
   }
 
   const body = await parseJsonBody(req)
-  const patch = pickStaffPatch(body)
-  const PartyStaff = await getPartyStaffModel()
+  try {
+    return await withPartyStaffMutationLock({
+      context,
+      work: async ({ session }) => {
+        const patch = pickStaffPatch(body)
+        const PartyStaff = await getPartyStaffModel()
 
-  // Передача прав владельца — только текущий владелец может назначить нового
-  const currentStaff = await PartyStaff.findOne({
-    _id: id,
-    tenantId: context.tenantId,
-  }).lean()
-  if (!currentStaff)
-    return partyError(404, 'partycrm_staff_not_found', 'Сотрудник не найден')
-  if ((patch.role || currentStaff.role) === 'location_owner') {
-    try {
-      patch.locationIds = await validateStaffLocationScope(
-        context.tenantId,
-        body.locationIds ?? currentStaff.locationIds
-      )
-    } catch (failure) {
-      return partyError(
-        failure.status || 400,
-        'partycrm_invalid_location_scope',
-        failure.status ? failure.message : 'Не удалось проверить площадки',
-        'validation'
-      )
-    }
-  } else if (patch.role) patch.locationIds = []
-  let previousOwnerData = null
-  if (patch.role === 'owner') {
-    if (context.role !== 'owner') {
-      return partyError(
-        403,
-        'partycrm_only_owner_can_transfer',
-        'Только владелец может передать права владельца',
-        'permission'
-      )
-    }
+        // Передача прав владельца — только текущий владелец может назначить нового
+        const currentStaff = await PartyStaff.findOne({
+          _id: id,
+          tenantId: context.tenantId,
+        })
+          .session(session)
+          .lean()
+        if (!currentStaff)
+          return partyError(
+            404,
+            'partycrm_staff_not_found',
+            'Сотрудник не найден'
+          )
+        if (Object.hasOwn(body, 'positionId')) {
+          try {
+            Object.assign(
+              patch,
+              await getPartyStaffPositionPatch({
+                context,
+                positionId: body.positionId,
+                targetStaff: currentStaff,
+              })
+            )
+          } catch (failure) {
+            return partyError(
+              failure.status || 500,
+              failure.code || 'partycrm_invalid_position',
+              failure.status
+                ? failure.message
+                : 'Не удалось проверить должность',
+              'permission'
+            )
+          }
+        } else if (patch.role && patch.role !== currentStaff.role)
+          patch.positionId = null
+        if (
+          context.role !== 'owner' &&
+          (currentStaff.role === 'owner' ||
+            (String(currentStaff._id) === String(context.staff._id) &&
+              ((patch.role && patch.role !== currentStaff.role) ||
+                (Object.hasOwn(patch, 'positionId') &&
+                  String(patch.positionId || '') !==
+                    String(currentStaff.positionId || '')))))
+        )
+          return partyError(
+            403,
+            'partycrm_self_position_change',
+            'Свою должность или владельца может изменить только владелец',
+            'permission'
+          )
+        if ((patch.role || currentStaff.role) === 'location_owner') {
+          try {
+            patch.locationIds = await validateStaffLocationScope(
+              context.tenantId,
+              body.locationIds ?? currentStaff.locationIds
+            )
+          } catch (failure) {
+            return partyError(
+              failure.status || 400,
+              'partycrm_invalid_location_scope',
+              failure.status
+                ? failure.message
+                : 'Не удалось проверить площадки',
+              'validation'
+            )
+          }
+        } else if (patch.role) patch.locationIds = []
+        let previousOwnerData = null
+        let ownerToDemoteId = null
+        const ownerError = await ensureNotLastOwner({
+          PartyStaff,
+          tenantId: context.tenantId,
+          staffId: id,
+          patch,
+          session,
+        })
+        if (ownerError) return ownerError
+        if (patch.role === 'owner') {
+          if (context.role !== 'owner') {
+            return partyError(
+              403,
+              'partycrm_only_owner_can_transfer',
+              'Только владелец может передать права владельца',
+              'permission'
+            )
+          }
 
-    // Нельзя назначить владельцем подрядчика без привязанного аккаунта
-    const targetStaff = await PartyStaff.findOne({
-      _id: id,
-      tenantId: context.tenantId,
-    }).lean()
-    if (!targetStaff) {
-      return partyError(404, 'partycrm_staff_not_found', 'Сотрудник не найден')
-    }
-    if (!targetStaff.authUserId) {
-      return partyError(
-        400,
-        'partycrm_owner_requires_account',
-        'Нельзя назначить владельцем подрядчика без привязанного аккаунта. Сначала привяжите аккаунт.',
-        'validation'
-      )
-    }
+          // Нельзя назначить владельцем подрядчика без привязанного аккаунта
+          const targetStaff = await PartyStaff.findOne({
+            _id: id,
+            tenantId: context.tenantId,
+          })
+            .session(session)
+            .lean()
+          if (!targetStaff) {
+            return partyError(
+              404,
+              'partycrm_staff_not_found',
+              'Сотрудник не найден'
+            )
+          }
+          if (!targetStaff.authUserId) {
+            return partyError(
+              400,
+              'partycrm_owner_requires_account',
+              'Нельзя назначить владельцем подрядчика без привязанного аккаунта. Сначала привяжите аккаунт.',
+              'validation'
+            )
+          }
 
-    // Найти текущего владельца и понизить до администратора
-    const currentOwnerStaffId = context.staff?._id
-    if (currentOwnerStaffId && String(currentOwnerStaffId) !== String(id)) {
-      const demotedOwner = await PartyStaff.findOneAndUpdate(
-        { _id: currentOwnerStaffId, tenantId: context.tenantId },
-        { $set: { role: 'admin' } },
-        { returnDocument: 'after' }
-      ).lean()
-      if (demotedOwner) {
-        previousOwnerData = { _id: demotedOwner._id, role: demotedOwner.role }
-      }
-    }
-  } else {
-    // При смене роли с владельца на другую — проверка, что это не последний владелец
-    const ownerError = await ensureNotLastOwner({
-      PartyStaff,
-      tenantId: context.tenantId,
-      staffId: id,
-      patch,
+          // First persist the new owner. A failed target write must never leave no owner.
+          const currentOwnerStaffId = context.staff?._id
+          if (
+            isValidObjectId(currentOwnerStaffId) &&
+            String(currentOwnerStaffId) !== String(id)
+          ) {
+            ownerToDemoteId = currentOwnerStaffId
+          }
+        }
+
+        const staff = await PartyStaff.findOneAndUpdate(
+          { _id: id, tenantId: context.tenantId },
+          { $set: patch },
+          { returnDocument: 'after', runValidators: true, session }
+        ).lean()
+
+        if (!staff) {
+          return partyError(
+            404,
+            'partycrm_staff_not_found',
+            'Сотрудник не найден'
+          )
+        }
+
+        if (
+          ownerToDemoteId &&
+          staff.role === 'owner' &&
+          staff.status === 'active'
+        ) {
+          const demotedOwner = await PartyStaff.findOneAndUpdate(
+            { _id: ownerToDemoteId, tenantId: context.tenantId, role: 'owner' },
+            { $set: { role: 'admin', positionId: null } },
+            { returnDocument: 'after', session }
+          ).lean()
+          if (demotedOwner)
+            previousOwnerData = {
+              _id: demotedOwner._id,
+              role: demotedOwner.role,
+            }
+        }
+
+        const responsePayload = { success: true, data: staff }
+        if (previousOwnerData) {
+          responsePayload.previousOwner = previousOwnerData
+        }
+
+        return NextResponse.json(responsePayload)
+      },
     })
-    if (ownerError) return ownerError
+  } catch (failure) {
+    return partyError(
+      failure.status || 500,
+      failure.code || 'partycrm_staff_update_failed',
+      failure.status ? failure.message : 'Не удалось изменить сотрудника',
+      failure.status === 403 ? 'permission' : 'server'
+    )
   }
-
-  const staff = await PartyStaff.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId },
-    { $set: patch },
-    { returnDocument: 'after' }
-  ).lean()
-
-  if (!staff) {
-    return partyError(404, 'partycrm_staff_not_found', 'Сотрудник не найден')
-  }
-
-  const responsePayload = { success: true, data: staff }
-  if (previousOwnerData) {
-    responsePayload.previousOwner = previousOwnerData
-  }
-
-  return NextResponse.json(responsePayload)
 }
 
 export async function DELETE(req, { params }) {
@@ -243,6 +346,13 @@ export async function DELETE(req, { params }) {
     managementOnly: true,
   })
   if (error) return error
+  if (!canPartyAccess(context, { resource: 'staff', action: 'edit' }))
+    return partyError(
+      403,
+      'partycrm_forbidden',
+      'Нет права изменять сотрудников',
+      'permission'
+    )
 
   const id = await getId(params)
   if (!isValidObjectId(id)) {
@@ -251,31 +361,51 @@ export async function DELETE(req, { params }) {
 
   const PartyStaff = await getPartyStaffModel()
 
-  // Владельца удалить нельзя
-  const ownerCheckError = await ensureNotOwner({
-    PartyStaff,
-    tenantId: context.tenantId,
-    staffId: id,
-  })
-  if (ownerCheckError) return ownerCheckError
+  try {
+    return await withPartyStaffMutationLock({
+      context,
+      work: async ({ session }) => {
+        // Владельца удалить нельзя
+        const ownerCheckError = await ensureNotOwner({
+          PartyStaff,
+          tenantId: context.tenantId,
+          staffId: id,
+          session,
+        })
+        if (ownerCheckError) return ownerCheckError
 
-  const ownerError = await ensureNotLastOwner({
-    PartyStaff,
-    tenantId: context.tenantId,
-    staffId: id,
-    patch: { status: 'archived' },
-  })
-  if (ownerError) return ownerError
+        const ownerError = await ensureNotLastOwner({
+          PartyStaff,
+          tenantId: context.tenantId,
+          staffId: id,
+          patch: { status: 'archived' },
+          session,
+        })
+        if (ownerError) return ownerError
 
-  const staff = await PartyStaff.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId },
-    { $set: { status: 'archived' } },
-    { returnDocument: 'after' }
-  ).lean()
+        const staff = await PartyStaff.findOneAndUpdate(
+          { _id: id, tenantId: context.tenantId },
+          { $set: { status: 'archived' } },
+          { returnDocument: 'after', session }
+        ).lean()
 
-  if (!staff) {
-    return partyError(404, 'partycrm_staff_not_found', 'Сотрудник не найден')
+        if (!staff) {
+          return partyError(
+            404,
+            'partycrm_staff_not_found',
+            'Сотрудник не найден'
+          )
+        }
+
+        return NextResponse.json({ success: true, data: staff })
+      },
+    })
+  } catch (failure) {
+    return partyError(
+      failure.status || 500,
+      failure.code || 'partycrm_staff_delete_failed',
+      failure.status ? failure.message : 'Не удалось архивировать сотрудника',
+      failure.status === 403 ? 'permission' : 'server'
+    )
   }
-
-  return NextResponse.json({ success: true, data: staff })
 }

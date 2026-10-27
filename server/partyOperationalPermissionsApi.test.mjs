@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
+import * as inventoryAccess from '../helpers/partyInventoryAccess.js'
+import * as rolePermissions from '../helpers/partyRolePermissions.js'
 import {
   PARTY_OPERATIONAL_PERMISSIONS,
   normalizePartyOperationalPermissions,
@@ -144,7 +146,7 @@ test('reject invalid IDs, foreign staff, roles, revisions and malformed grants',
   )
 })
 const wrapperSource = await read('./partyInventoryApi.js')
-test('inventory wrapper keeps default management guard; explicit permission rechecked every request', async () => {
+test('inventory wrapper keeps catalog private to legacy operators and rechecks endpoint permission each request', async () => {
   const context = {
     tenantId: 'a',
     role: 'performer',
@@ -157,11 +159,12 @@ test('inventory wrapper keeps default management guard; explicit permission rech
   }
   const guards = []
   const deps = {
-    NextResponse: {},
+    ...inventoryAccess,
+    NextResponse: { json: (body, options) => ({ status: options?.status || 200, json: async () => body }) },
     canPartyOperationalPermission,
     partyError: (status) => ({ status }),
     getPartyRequestContext: async (options) => {
-      guards.push(options.managementOnly)
+      guards.push(options)
       return options.managementOnly ? { error: { status: 403 } } : { context }
     },
   }
@@ -172,7 +175,7 @@ test('inventory wrapper keeps default management guard; explicit permission rech
   let calls = 0
   const handler = async () => {
     calls++
-    return { status: 200 }
+    return { status: 200, json: async () => ({ success: true, data: {} }) }
   }
   assert.equal((await wrapper(handler)({})).status, 403)
   const granted = wrapper(handler, 'inventory.movements')
@@ -181,7 +184,8 @@ test('inventory wrapper keeps default management guard; explicit permission rech
   assert.equal((await granted({})).status, 403)
   assert.equal((await wrapper(handler, 'unknown')({})).status, 403)
   assert.equal(calls, 1)
-  assert.deepEqual(guards, [true, false, false, false])
+  assert.equal(guards.length, 4)
+  assert.ok(guards.every(options => options.managementOnly !== true && options.allowLocationOwner === true))
 })
 test('ordinary staff CRUD does not accept operational grant or revision injection', async () => {
   for (const [path, fn] of [
@@ -235,6 +239,7 @@ test('movement route gates both verbs and exposes only operational order/staff p
   const gates = []
   let movementArgs
   const deps = {
+    ...inventoryAccess, ...rolePermissions,
     parseJsonBody: async (req) => req.body,
     inventoryResponse: (data) => ({ data }),
     inventoryRoute: (handler, permission) => {
@@ -272,12 +277,12 @@ test('movement route gates both verbs and exposes only operational order/staff p
     Object.keys(deps)
   )(...Object.values(deps))
   assert.deepEqual(gates, ['inventory.movements', 'inventory.movements'])
-  const context = { tenantId: 'trusted', staff: { _id: 'actor' } }
+  const context = { tenantId: 'trusted', role: 'owner', staff: { _id: 'actor', tenantId: 'trusted', role: 'owner', status: 'active' } }
   await api.GET({ nextUrl: new URL('http://localhost/') }, context)
   for (const call of queries) assert.equal(call.filter.tenantId, 'trusted')
   assert.equal(
     queries.find((q) => q.kind === 'orders').fields,
-    '_id title serviceTitle eventDate status'
+    '_id tenantId title serviceTitle eventDate status workflowStageId locationId assignedStaff responsibleStaffId'
   )
   assert.equal(
     queries.find((q) => q.kind === 'staff').fields,

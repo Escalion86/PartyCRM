@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faCheck, faPlus, faTrash } from '@fortawesome/free-solid-svg-icons'
 import useCompanySettings from '../useCompanySettings'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
 const normalizeList = (items = []) =>
   Array.from(
@@ -31,6 +32,7 @@ function DictionarySection({
     () => JSON.stringify(normalizedItems) !== JSON.stringify(serverItems),
     [normalizedItems, serverItems]
   )
+  usePartyUnsavedChanges(changed, { label: title, pending: saving })
 
   const handleAdd = () => {
     const newValue = window.prompt(promptLabel)
@@ -40,7 +42,9 @@ function DictionarySection({
   }
 
   const handleDelete = (value) => {
-    setLocalItems((prev) => normalizeList(prev.filter((item) => item !== value)))
+    setLocalItems((prev) =>
+      normalizeList(prev.filter((item) => item !== value))
+    )
   }
 
   const handleSave = async () => {
@@ -52,19 +56,20 @@ function DictionarySection({
   }
 
   return (
-    <div className="p-5 bg-white border rounded-2xl border-sky-100">
-      <div className="flex items-center justify-between gap-3 mb-1">
+    <div className="rounded-2xl border border-sky-100 bg-white p-5">
+      <div className="mb-1 flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">{title}</div>
           <div className="text-xs text-slate-500">
-            {subtitle ? `${subtitle} · ` : ''}Элементов: {normalizedItems.length}
+            {subtitle ? `${subtitle} · ` : ''}Элементов:{' '}
+            {normalizedItems.length}
           </div>
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={handleAdd}
-            className="flex items-center justify-center w-8 h-8 transition border rounded-full cursor-pointer border-sky-200 text-sky-600 hover:bg-sky-50"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-sky-200 text-sky-600 transition hover:bg-sky-50"
             title={promptLabel}
           >
             <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
@@ -82,26 +87,26 @@ function DictionarySection({
         </div>
       </div>
 
-      <div className="mt-3 overflow-hidden border border-gray-200 rounded-lg">
+      <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
         {normalizedItems.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-sm text-gray-400">
             {emptyLabel}
           </div>
         ) : (
-          <div className="overflow-y-auto max-h-64">
+          <div className="max-h-64 overflow-y-auto">
             {normalizedItems.map((value) => (
               <div
                 key={value}
-                className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0"
+                className="flex items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0"
               >
                 <div className="text-sm font-medium text-gray-800">{value}</div>
                 <button
                   type="button"
-                  className="flex items-center justify-center text-red-500 transition border border-red-200 rounded cursor-pointer h-7 w-7 hover:bg-red-50"
+                  className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-red-200 text-red-500 transition hover:bg-red-50"
                   onClick={() => handleDelete(value)}
                   title="Удалить"
                 >
-                  <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
+                  <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
                 </button>
               </div>
             ))}
@@ -131,6 +136,11 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
     const b = JSON.stringify(serverTowns)
     return a !== b || (settings?.defaultTown ?? '') !== (defaultTown ?? '')
   }, [normalizedTowns, serverTowns, settings?.defaultTown, defaultTown])
+  usePartyUnsavedChanges(Boolean(settings && townsChanged), {
+    label: 'города компании',
+    scope: activeCompanyId,
+    pending: saving,
+  })
 
   // Sync from server: always on first data arrival, then only when unchanged
   useEffect(() => {
@@ -179,7 +189,7 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
 
   if (loading) {
     return (
-      <div className="p-6 text-sm border rounded-2xl border-sky-100 bg-sky-50 text-slate-500">
+      <div className="rounded-2xl border border-sky-100 bg-sky-50 p-6 text-sm text-slate-500">
         Загружаем списки компании...
       </div>
     )
@@ -188,7 +198,7 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
   return (
     <div className="grid gap-4">
       {error ? (
-        <div className="p-3 text-sm border rounded-md border-danger/30 bg-danger/10 text-danger">
+        <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-3 text-sm">
           {error}
         </div>
       ) : null}
@@ -198,8 +208,8 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
       ) : null}
 
       {/* ---- Towns ---- */}
-      <div className="p-5 bg-white border rounded-2xl border-sky-100">
-        <div className="flex items-center justify-between gap-3 mb-1">
+      <div className="rounded-2xl border border-sky-100 bg-white p-5">
+        <div className="mb-1 flex items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold">Города</div>
             <div className="text-xs text-slate-500">
@@ -215,7 +225,7 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
             <button
               type="button"
               onClick={handleAddTown}
-              className="flex items-center justify-center w-8 h-8 transition border rounded-full cursor-pointer border-sky-200 text-sky-600 hover:bg-sky-50"
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-sky-200 text-sky-600 transition hover:bg-sky-50"
               title="Добавить город"
             >
               <FontAwesomeIcon icon={faPlus} className="h-3.5 w-3.5" />
@@ -232,31 +242,31 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
           </div>
         </div>
 
-        <div className="mt-3 overflow-hidden border border-gray-200 rounded-lg">
+        <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
           {normalizedTowns.length === 0 ? (
             <div className="flex items-center justify-center py-8 text-sm text-gray-400">
               Городов пока нет
             </div>
           ) : (
-            <div className="overflow-y-auto max-h-64">
+            <div className="max-h-64 overflow-y-auto">
               {normalizedTowns.map((town) => {
                 const isDefault = defaultTown === town
                 return (
                   <div
                     key={town}
-                    className="flex items-center justify-between gap-3 px-3 py-2 border-b border-gray-100 last:border-b-0"
+                    className="flex items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0"
                   >
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        className="flex items-center justify-center w-5 h-5 text-transparent transition border border-gray-300 rounded cursor-pointer hover:border-emerald-500"
+                        className="flex h-5 w-5 cursor-pointer items-center justify-center rounded border border-gray-300 text-transparent transition hover:border-emerald-500"
                         onClick={() => setDefaultTown(town)}
                         title="Сделать городом по умолчанию"
                       >
                         {isDefault && (
                           <FontAwesomeIcon
                             icon={faCheck}
-                            className="w-3 h-3 text-emerald-600"
+                            className="h-3 w-3 text-emerald-600"
                           />
                         )}
                       </button>
@@ -272,11 +282,11 @@ export default function CompanySettingsListsContent({ activeCompanyId }) {
                       )}
                       <button
                         type="button"
-                        className="flex items-center justify-center text-red-500 transition border border-red-200 rounded cursor-pointer h-7 w-7 hover:bg-red-50"
+                        className="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-red-200 text-red-500 transition hover:bg-red-50"
                         onClick={() => handleDeleteTown(town)}
                         title="Удалить город"
                       >
-                        <FontAwesomeIcon icon={faTrash} className="w-3 h-3" />
+                        <FontAwesomeIcon icon={faTrash} className="h-3 w-3" />
                       </button>
                     </div>
                   </div>

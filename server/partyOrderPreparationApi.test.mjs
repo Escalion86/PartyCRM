@@ -4,9 +4,13 @@ import { readFile } from 'node:fs/promises'
 
 const source = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')
 
-test('management preparation API is tenant scoped, optimistic and audited', async () => {
+test('position-granted preparation API is tenant scoped, optimistic and audited', async () => {
   const route = await source('app/api/party/orders/[id]/preparation/route.js')
-  assert.match(route, /managementOnly:\s*true/)
+  assert.doesNotMatch(route, /managementOnly:\s*true/)
+  assert.match(route, /allowLocationOwner:\s*true/)
+  assert.match(route, /resource:\s*'orders.preparation',\s*action:\s*'edit'/)
+  assert.match(route, /getPartyOrderWriteGuard\(current\)/)
+  assert.match(route, /buildPartyOrderAccessFilter\(context\)/)
   assert.match(route, /tenantId:\s*context\.tenantId/)
   assert.match(route, /expectedRevision/)
   assert.match(route, /preparation\.revision/)
@@ -14,13 +18,16 @@ test('management preparation API is tenant scoped, optimistic and audited', asyn
   assert.match(route, /\$nin:\s*\['closed', 'canceled'\]/)
 })
 
-test('performer preparation API allows only own item status and address acknowledgement', async () => {
+test('performer preparation API redirects checklist changes to tasks and guards own address acknowledgement', async () => {
   const route = await source('app/api/party/performer/orders/[id]/preparation/route.js')
   assert.match(route, /excludeLocationOwners:\s*true/)
-  assert.match(route, /item\.responsibleStaffId':\s*access\.staffId/)
+  assert.match(route, /partycrm_preparation_tasks_managed/)
+  assert.doesNotMatch(route, /'preparation\.items\.\$\[item\]\.status'/)
   assert.match(route, /'assignedStaff\.staffId':\s*access\.staffId/)
   assert.match(route, /set_item_status/)
   assert.match(route, /acknowledge_address/)
+  assert.match(route, /getPartyOrderWriteGuard\(current\)/)
+  assert.match(route, /resource:\s*'orders.preparation'/)
   assert.doesNotMatch(route, /managementOnly:\s*true/)
 })
 

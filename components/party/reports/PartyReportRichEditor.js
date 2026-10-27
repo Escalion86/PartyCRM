@@ -12,6 +12,8 @@ export default function PartyReportRichEditor({
   companyId,
   reportId,
   fieldId,
+  uploadUrl = '/api/party/report-media',
+  uploadFields,
   label,
   requiredMedia = false,
   disabled = false,
@@ -58,9 +60,13 @@ export default function PartyReportRichEditor({
     try {
       const body = new FormData()
       body.append('file', file)
-      body.append('reportId', reportId)
-      body.append('fieldId', fieldId)
-      const response = await fetch('/api/party/report-media', {
+      for (const [key, entry] of Object.entries(
+        uploadFields || { reportId, fieldId }
+      )) {
+        if (entry !== null && entry !== undefined)
+          body.append(key, String(entry))
+      }
+      const response = await fetch(uploadUrl, {
         method: 'POST',
         headers: { 'x-partycrm-company-id': companyId },
         body,

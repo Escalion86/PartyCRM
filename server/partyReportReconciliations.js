@@ -1,6 +1,8 @@
 import {
   isReportAuthor,
   isReportManager,
+  canReviewReportField,
+  hasPartyReportPermission,
   reportFailure,
 } from './partyReportCore.js'
 
@@ -30,6 +32,7 @@ export const getReportReconciliationFields = (report) =>
       valueType: field.reconciliationValueType,
       required: field.reconciliationRequired === true,
       reviewerStaffId: field.reviewerStaffId || null,
+      reviewerPositionId: field.reviewerPositionId || null,
     }))
 
 export const canAccessReportReconciliation = ({
@@ -39,6 +42,11 @@ export const canAccessReportReconciliation = ({
   fields = getReportReconciliationFields(report),
 }) => {
   if (context?.role === 'location_owner') return false
+  if (
+    !hasPartyReportPermission(context, 'reports', 'read', order) ||
+    !hasPartyReportPermission(context, 'reports.finance', 'read', order)
+  )
+    return false
   if (isReportManager(context)) return true
   const assignedAuthor =
     isReportAuthor(context, report) &&
@@ -47,10 +55,8 @@ export const canAccessReportReconciliation = ({
     )
   return (
     assignedAuthor ||
-    fields.some(
-      (field) =>
-        String(field.reviewerStaffId || '') ===
-        String(context?.staff?._id || '')
+    fields.some((field) =>
+      canReviewReportField(context, { ...field, section: 'finance' }, order)
     )
   )
 }
@@ -162,6 +168,8 @@ export const updateReportReconciliation = ({
 }) => {
   const next = reconciliation.values.map((value) => ({ ...value }))
   if (action === 'save' || action === 'submit') {
+    if (!hasPartyReportPermission(context, 'reports.finance', 'edit'))
+      reportFailure('Нет права изменять финансовую часть отчёта', 403)
     if (String(context?.staff?._id || '') !== String(reconciliation.staffId))
       reportFailure('Изменять сверку может только автор отчёта', 403)
     if (!values || typeof values !== 'object' || Array.isArray(values))
@@ -221,9 +229,7 @@ export const updateReportReconciliation = ({
     if (
       !field ||
       !value ||
-      (!isReportManager(context) &&
-        String(field.reviewerStaffId || '') !==
-          String(context?.staff?._id || ''))
+      !canReviewReportField(context, { ...field, section: 'finance' })
     )
       reportFailure('Нет доступа к проверке финансового значения', 403)
     if (!['accepted', 'revision_requested'].includes(decision))
@@ -274,6 +280,11 @@ export const serializeReportReconciliation = ({
   order,
   context,
 }) => {
+  if (
+    !hasPartyReportPermission(context, 'reports', 'read', order) ||
+    !hasPartyReportPermission(context, 'reports.finance', 'read', order)
+  )
+    return null
   const assigned = (order.assignedStaff || []).some(
     (item) => String(item.staffId) === String(context.staff._id)
   )
@@ -283,7 +294,7 @@ export const serializeReportReconciliation = ({
     (field) =>
       management ||
       author ||
-      String(field.reviewerStaffId || '') === String(context.staff._id)
+      canReviewReportField(context, { ...field, section: 'finance' }, order)
   )
   if (!fields.length) return null
   const ids = new Set(fields.map((field) => field.fieldId))
@@ -304,9 +315,11 @@ export const serializeReportReconciliation = ({
       key: field.key,
       valueType: field.valueType,
       required: field.required,
-      canReview:
-        management ||
-        String(field.reviewerStaffId || '') === String(context.staff._id),
+      canReview: canReviewReportField(
+        context,
+        { ...field, section: 'finance' },
+        order
+      ),
     })),
     values: reconciliation.values
       .filter((value) => ids.has(value.fieldId))

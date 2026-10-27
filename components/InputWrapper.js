@@ -3,11 +3,13 @@ import { faBan } from '@fortawesome/free-solid-svg-icons/faBan'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import cn from 'classnames'
 import { forwardRef } from 'react'
+import FieldHelp from './FieldHelp'
 
 const InputWrapper = forwardRef(
   (
     {
       label,
+      help,
       labelClassName,
       value,
       className,
@@ -138,6 +140,10 @@ const InputWrapper = forwardRef(
               )}
             >
               {label}
+              <FieldHelp
+                text={help}
+                label={typeof label === 'string' ? label : 'поле'}
+              />
             </div>
           )}
         </div>

@@ -200,6 +200,7 @@ const sendPushToTenant = async ({
   userId = null,
   targetUserId = null,
   allowCrossTenantUserTarget = false,
+  authorizedTaskTarget = null,
 }) => {
   if (!tenantId || !payload || typeof payload !== 'object') {
     return { ok: false, sent: 0, failed: 0, deactivated: 0 }
@@ -218,6 +219,15 @@ const sendPushToTenant = async ({
       userId,
     })
     return { ok: false, sent: 0, failed: 0, deactivated: 0, reason: 'no_vapid' }
+  }
+
+  let verifiedTaskTarget = false
+  if (product === 'partycrm' && authorizedTaskTarget) {
+    const { authorizePartyTaskPushTarget } = await import('./partyTaskEffects')
+    const authorization = await authorizePartyTaskPushTarget({ tenantId, targetUserId, taskId: authorizedTaskTarget.taskId, event: authorizedTaskTarget.event })
+    if (!authorization.authorized) return { ok: true, sent: 0, failed: 0, deactivated: 0, reason: 'task_target_not_authorized' }
+    verifiedTaskTarget = true
+    if (authorization.generic) payload = { title: 'Задача отменена', body: 'Задача по заказу отменена', tag: `party-task-${authorizedTaskTarget.taskId}-canceled`, data: { type: 'party-task', url: '/performer/tasks', companyId: String(tenantId), taskId: String(authorizedTaskTarget.taskId) } }
   }
 
   let docs = await PushSubscriptions.find(
@@ -240,7 +250,7 @@ const sendPushToTenant = async ({
         $in: docs.map((doc) => String(doc.userId || '')).filter(Boolean),
       },
       status: 'active',
-      role: { $in: ['owner', 'admin', 'performer'] },
+      ...(!verifiedTaskTarget ? { role: { $in: ['owner', 'admin', 'performer'] } } : {}),
     })
       .select('authUserId')
       .lean()

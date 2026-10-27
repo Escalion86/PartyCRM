@@ -19,6 +19,8 @@ const Modal = ({
   unsavedChangesMessage = 'Есть несохранённые изменения. Закрыть окно без сохранения?',
 }) => {
   const overlayRef = useRef(null)
+  const dialogRef = useRef(null)
+  const dialogTitleId = useId()
   const previousFocusRef = useRef(null)
   const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
   const closeConfirmationTitleId = useId()
@@ -42,7 +44,7 @@ const Modal = ({
     if (!open) return
     previousFocusRef.current = document.activeElement
     // Focus the overlay or first focusable element inside
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       const focusable = overlayRef.current?.querySelector(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       )
@@ -50,6 +52,7 @@ const Modal = ({
       else overlayRef.current?.focus()
     }, 0)
     return () => {
+      clearTimeout(timer)
       if (previousFocusRef.current) previousFocusRef.current.focus?.()
     }
   }, [open])
@@ -59,11 +62,36 @@ const Modal = ({
     (e) => {
       if (e.key === 'Escape') {
         e.preventDefault()
+        e.stopPropagation()
         if (showCloseConfirmation) {
           setShowCloseConfirmation(false)
           return
         }
         requestClose()
+      }
+      if (e.key === 'Tab') {
+        e.stopPropagation()
+        const container = showCloseConfirmation
+          ? overlayRef.current?.querySelector('[role="alertdialog"]')
+          : dialogRef.current
+        const focusable = Array.from(container?.querySelectorAll(
+          'button, [href], input, select, textarea, summary, [tabindex]'
+        ) || []).filter((element) =>
+          element.tabIndex >= 0 && !element.disabled &&
+          !element.closest('[inert]') && element.getClientRects().length > 0
+        )
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (!first) {
+          e.preventDefault()
+          container?.focus()
+        } else if (e.shiftKey && (document.activeElement === first || !container.contains(document.activeElement))) {
+          e.preventDefault()
+          last.focus()
+        } else if (!e.shiftKey && (document.activeElement === last || !container.contains(document.activeElement))) {
+          e.preventDefault()
+          first.focus()
+        }
       }
     },
     [requestClose, showCloseConfirmation]
@@ -106,6 +134,11 @@ const Modal = ({
       tabIndex={-1}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? dialogTitleId : undefined}
+        tabIndex={-1}
         className={cn(
           'relative z-10 flex w-full flex-col bg-white shadow-xl',
           // Mobile-first: fullscreen on <768px, centered with border-radius on >=768px
@@ -120,19 +153,19 @@ const Modal = ({
         {title && (
           <div
             className={cn(
-              'relative flex items-center border-b px-4 py-3 text-lg font-semibold',
+              'relative flex min-h-16 shrink-0 items-center border-b py-3 pl-4 pr-16 text-lg font-semibold',
               isParty
                 ? 'border-sky-100 text-sky-900'
                 : 'border-gray-200 text-gray-900'
             )}
           >
-            {title}
+            <div id={dialogTitleId} className="min-w-0 break-words">{title}</div>
             <button
               type="button"
               aria-label="Закрыть"
               onClick={requestClose}
               className={cn(
-                'absolute right-2 grid h-8 w-8 place-items-center rounded-md transition-colors',
+                'absolute right-2 grid h-11 w-11 cursor-pointer place-items-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500',
                 isParty
                   ? 'text-sky-500 hover:bg-sky-50 hover:text-sky-700'
                   : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
@@ -144,13 +177,13 @@ const Modal = ({
         )}
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-4 py-3">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3">{children}</div>
 
         {/* Footer */}
         {footerContent && (
           <div
             className={cn(
-              'flex items-center justify-end gap-2 border-t px-4 py-3',
+              'flex shrink-0 items-center justify-end gap-2 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] [&_button]:min-h-11',
               isParty ? 'border-sky-100' : 'border-gray-200'
             )}
           >

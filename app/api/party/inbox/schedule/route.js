@@ -12,7 +12,7 @@ const response = (company) => NextResponse.json({ success: true, data: {
 } }, { headers: { 'Cache-Control': 'private, no-store' } })
 
 export async function GET(req) {
-  const { context, error } = await getPartyRequestContext({ req, managementOnly: true })
+  const { context, error } = await getPartyRequestContext({ req, managementOnly: true, permissionAware: true })
   if (error) return error
   try {
     const Companies = await getPartyCompanyModel()

@@ -1,3 +1,5 @@
+import { buildPartyOrderContacts } from './partyOrderContacts.js'
+
 export const sanitizePartyOrderForPerformer = ({
   order,
   membership,
@@ -5,6 +7,8 @@ export const sanitizePartyOrderForPerformer = ({
   clientsById,
   servicesById = new Map(),
   staffById = new Map(),
+  canViewContacts = true,
+  contactFieldAccess = {},
 }) => {
   const staffId = String(membership.staffId)
   const assignment = (order.assignedStaff ?? []).find(
@@ -14,17 +18,75 @@ export const sanitizePartyOrderForPerformer = ({
     ? `${String(order.tenantId)}:${String(order.locationId)}`
     : ''
   const location = locationKey ? locationsById.get(locationKey) : null
-  const client = order.clientId
+  const clientCandidate = order.clientId
     ? clientsById.get(`${String(order.tenantId)}:${String(order.clientId)}`)
     : null
-  const onsiteCandidate = order.contactRoles?.onsiteClientId
-    ? clientsById.get(`${String(order.tenantId)}:${String(order.contactRoles.onsiteClientId)}`)
-    : null
-  const onsite = onsiteCandidate &&
-    String(onsiteCandidate.tenantId) === String(order.tenantId) &&
-    onsiteCandidate.status !== 'archived'
-    ? onsiteCandidate
-    : null
+  const validClient = (person) =>
+    person &&
+    String(person.tenantId) === String(order.tenantId) &&
+    person.status !== 'archived'
+  const showName = canViewContacts && contactFieldAccess.name !== false
+  const showPhone = canViewContacts && contactFieldAccess.phone !== false
+  const showEmail = canViewContacts && contactFieldAccess.email !== false
+  const showChannels =
+    canViewContacts &&
+    (contactFieldAccess.channels ?? contactFieldAccess.phone) !== false
+  const contactRows = buildPartyOrderContacts(order)
+  const primaryAllowed =
+    canViewContacts &&
+    (contactRows.find((item) => item.isPrimary)?.performerCanContact ??
+      !order.clientId)
+  const client =
+    primaryAllowed && validClient(clientCandidate) ? clientCandidate : null
+  const snapshot = primaryAllowed && !clientCandidate ? order.client : null
+  const projectContact = (person, fallback) => ({
+    _id: person?._id ? String(person._id) : '',
+    firstName: showName ? person?.firstName || fallback?.name || '' : '',
+    secondName: showName ? person?.secondName || '' : '',
+    thirdName: showName ? person?.thirdName || '' : '',
+    name: showName
+      ? [person?.firstName, person?.secondName, person?.thirdName]
+          .filter(Boolean)
+          .join(' ') ||
+        fallback?.name ||
+        ''
+      : '',
+    phone: showPhone ? person?.phone || fallback?.phone || '' : '',
+    whatsapp: showChannels ? person?.whatsapp || '' : '',
+    viber: showChannels ? person?.viber || '' : '',
+    telegram: showChannels ? person?.telegram || '' : '',
+    instagram: showChannels ? person?.instagram || '' : '',
+    vk: showChannels ? person?.vk || '' : '',
+    max: showChannels ? person?.max || '' : '',
+    email: showEmail ? person?.email || fallback?.email || '' : '',
+  })
+  const performerContacts = canViewContacts
+    ? contactRows.flatMap((item) => {
+        if (!item.performerCanContact) return []
+        const person = clientsById.get(
+          `${String(order.tenantId)}:${item.clientId}`
+        )
+        if (!validClient(person)) return []
+        return [
+          {
+            ...projectContact(person),
+            _id: item.clientId,
+            label: showName
+              ? item.comments.join('; ') ||
+                (item.isPrimary
+                  ? 'Заказчик'
+                  : item.systemRoles.includes('onsiteClientId')
+                    ? 'Контакт на месте'
+                    : 'Контакт')
+              : '',
+            allowedContactMethods: item.allowedContactMethods,
+          },
+        ]
+      })
+    : []
+  const onsite = performerContacts.find(
+    (item) => item._id === String(order.contactRoles?.onsiteClientId || '')
+  )
   const responsibleStaffKey = order.responsibleStaffId
     ? `${String(order.tenantId)}:${String(order.responsibleStaffId)}`
     : ''
@@ -65,19 +127,29 @@ export const sanitizePartyOrderForPerformer = ({
     performerComment: order.performerComment || '',
     onsiteContact: onsite
       ? {
-          name: [onsite.firstName, onsite.secondName, onsite.thirdName].filter(Boolean).join(' '),
+          name: [onsite.firstName, onsite.secondName, onsite.thirdName]
+            .filter(Boolean)
+            .join(' '),
           phone: onsite.phone || '',
           email: onsite.email || '',
         }
       : null,
     communicationInstructions: {
-      representAs: order.contactRoles?.representAs || '',
-      communicationNotes: order.contactRoles?.communicationNotes || '',
-      allowedContactMethods: Array.isArray(order.contactRoles?.allowedContactMethods)
-        ? order.contactRoles.allowedContactMethods.filter((method) =>
-            ['phone', 'telegram', 'whatsapp', 'sms', 'email'].includes(method)
-          )
-        : [],
+      representAs:
+        canViewContacts && contactFieldAccess.instructions !== false
+          ? order.contactRoles?.representAs || ''
+          : '',
+      communicationNotes:
+        canViewContacts && contactFieldAccess.instructions !== false
+          ? order.contactRoles?.communicationNotes || ''
+          : '',
+      allowedContactMethods:
+        canViewContacts &&
+        Array.isArray(order.contactRoles?.allowedContactMethods)
+          ? order.contactRoles.allowedContactMethods.filter((method) =>
+              ['phone', 'telegram', 'whatsapp', 'sms', 'email'].includes(method)
+            )
+          : [],
     },
     responsibleStaff: responsibleStaff
       ? {
@@ -96,25 +168,8 @@ export const sanitizePartyOrderForPerformer = ({
           role: responsibleStaff.role || 'admin',
         }
       : null,
-    client: {
-      _id: client?._id ? String(client._id) : '',
-      firstName: client?.firstName || order.client?.name || '',
-      secondName: client?.secondName || '',
-      thirdName: client?.thirdName || '',
-      name:
-        [client?.firstName, client?.secondName, client?.thirdName]
-          .filter(Boolean)
-          .join(' ') ||
-        order.client?.name ||
-        '',
-      phone: client?.phone || order.client?.phone || '',
-      whatsapp: client?.whatsapp || '',
-      viber: client?.viber || '',
-      telegram: client?.telegram || '',
-      instagram: client?.instagram || '',
-      vk: client?.vk || '',
-      email: client?.email || order.client?.email || '',
-    },
+    client: projectContact(client, snapshot),
+    performerContacts,
     assignment: assignment
       ? {
           role: assignment.role,

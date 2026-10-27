@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { normalizeMaxContactInput, isValidMaxContact } from '@helpers/maxContact'
 import { getPartyClientModel } from '@server/partyModels'
 import {
   getPartyRequestContext,
@@ -22,6 +23,7 @@ const normalizeClientPayload = (body) => ({
   whatsapp: normalizePhone(body.whatsapp),
   viber: normalizePhone(body.viber),
   telegram: normalizeString(body.telegram),
+  max: normalizeMaxContactInput(body.max),
   instagram: normalizeString(body.instagram),
   vk: normalizeString(body.vk),
   preferredContactChannel: ['phone', 'telegram', 'whatsapp', 'max', 'vk', 'other', ''].includes(
@@ -90,6 +92,7 @@ export async function POST(req) {
   if (error) return error
 
   const body = await parseJsonBody(req)
+  if (!isValidMaxContact(body.max)) return partyError(400, 'invalid_max', 'Укажите телефон или ссылку max.ru для MAX', 'validation')
   const payload = normalizeClientPayload(body)
 
   if (!payload.firstName) {

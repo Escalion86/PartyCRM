@@ -87,6 +87,7 @@ const transcribeBlobWithOpenAiCompatible = async ({
 
   const response = await fetch(provider.apiUrl, {
     method: 'POST',
+    signal: AbortSignal.timeout(60000),
     headers: {
       Authorization: `Bearer ${provider.apiKey}`,
     },

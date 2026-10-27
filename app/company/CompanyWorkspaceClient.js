@@ -54,6 +54,9 @@ import PartyStatisticsDashboard from '@components/party/statistics/PartyStatisti
 import PartyAuditLog from '@components/party/audit/PartyAuditLog'
 import InventoryWarnings from '@components/party/inventory/InventoryWarnings'
 import { getPartyOrderPreparationReadiness } from '@helpers/partyOrderPreparation'
+import { readPartyLegacyOrderLink, loadPartyLegacyLinkedOrder } from '@helpers/partyLegacyOrderLink'
+import { isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
+import { publishPartyActiveCompanyId } from '@helpers/partyActiveCompany'
 
 const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
 
@@ -88,7 +91,7 @@ const getOrderTransactionTotal = (order, type) =>
     .reduce((sum, transaction) => sum + Number(transaction.amount || 0), 0)
 
 const hasOpenAdditionalEvents = (order) =>
-  (order.additionalEvents ?? []).some((item) => !item.done)
+  order.taskSummary ? Number(order.taskSummary.openCount || 0) > 0 : (order.additionalEvents ?? []).some((item) => !item.done)
 
 const getOrderDurationMinutes = (order) => {
   const explicit = Number(order?.durationMinutes)
@@ -358,7 +361,7 @@ const OrderFilterDropdown = ({
       trigger={
         <button
           type="button"
-          className="inline-flex min-h-10 w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-sky-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50 sm:w-auto"
+          className="inline-flex min-h-11 w-full cursor-pointer items-center justify-between gap-2 rounded-md border border-sky-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50 sm:w-auto"
           aria-label="Выбрать фильтр заказов"
         >
           <span className="inline-flex min-w-0 items-center gap-2">
@@ -429,6 +432,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [activeCompanyId, setActiveCompanyId] = useState('')
   const workspaceLoadToken = useRef(null)
   const relatedOrdersLoadToken = useRef(null)
+  const linkedOrderLoadToken = useRef(null)
   const [locations, setLocations] = useState([])
   const [archivedLocations, setArchivedLocations] = useState([])
   const [clients, setClients] = useState([])
@@ -468,6 +472,22 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const canManage = ['owner', 'admin'].includes(context?.role)
   const canUseStatistics = companyAccess?.allowStatistics !== false
   const currentStaffId = context?.staff?._id ? String(context.staff._id) : ''
+  useEffect(() => {
+    if (loading || !canManage) return
+    const create = () => {
+      setEditingOrderId('')
+      setOrderDraft(createEmptyOrderDraft(companySettings, locations, currentStaffId))
+      setActiveModal('order')
+    }
+    window.addEventListener('partycrm:create-order', create)
+    const url = new URL(window.location.href)
+    if (section === 'orders' && url.searchParams.get('create') === 'order' && !url.searchParams.has('order')) {
+      url.searchParams.delete('create')
+      window.history.replaceState(window.history.state, '', url)
+      create()
+    }
+    return () => window.removeEventListener('partycrm:create-order', create)
+  }, [loading, canManage, companySettings, locations, currentStaffId, section])
 
   // Load workspace data
   const loadWorkspace = useCallback(
@@ -505,28 +525,33 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           typeof window !== 'undefined'
             ? window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
             : ''
-        const requestedCompanyId = preferredCompanyId || storedCompanyId
+        const canUseLegacyWorkspace = (membership) => membership.isAdmin && membership.status === 'active' && !isPartyRestrictedManagementContext(membership)
+        let linkedCompanyId = ''
+        try {
+          const link = readPartyLegacyOrderLink(window.location.href)
+          if (link?.companyId && availableMemberships.some((membership) => String(membership.tenantId) === link.companyId && canUseLegacyWorkspace(membership))) linkedCompanyId = link.companyId
+        } catch {} // The link error is shown only after the normal workspace is ready.
+        const requestedCompanyId = preferredCompanyId || linkedCompanyId || storedCompanyId
         const selectedMembership =
           availableMemberships.find(
-            (membership) => membership.tenantId === requestedCompanyId
+            (membership) => membership.tenantId === requestedCompanyId && canUseLegacyWorkspace(membership)
           ) ||
-          availableMemberships.find((membership) => membership.isAdmin) ||
+          availableMemberships.find(canUseLegacyWorkspace) ||
           availableMemberships[0]
         const selectedCompanyId = selectedMembership.tenantId
         token.companyId = selectedCompanyId
 
-        setActiveCompanyId(selectedCompanyId)
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem(
-            ACTIVE_COMPANY_STORAGE_KEY,
-            selectedCompanyId
-          )
+          if (publishPartyActiveCompanyId(selectedCompanyId) === false) { token.companyId = storedCompanyId; return }
         }
+        setActiveCompanyId(selectedCompanyId)
         setContext({
           tenantId: selectedMembership.tenantId,
           role: selectedMembership.role,
           staff: selectedMembership.staff,
           company: selectedMembership.company,
+          position: selectedMembership.position,
+          access: selectedMembership.access,
         })
         setAccessStatus('ready')
 
@@ -620,6 +645,39 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     return () => { workspaceLoadToken.current = null }
   }, [loadWorkspace])
 
+  useEffect(() => {
+    // An explicit user action always wins over a pending deep-link fetch.
+    if (activeModal) linkedOrderLoadToken.current = null
+  }, [activeModal])
+  useEffect(() => {
+    if (loading || !canManage || !activeCompanyId || !['orders', 'orders-past'].includes(section)) return
+    const url = new URL(window.location.href)
+    if (!url.searchParams.has('order')) return
+    let link
+    try { link = readPartyLegacyOrderLink(url.href) }
+    catch (cause) { setError(cause.message) }
+    url.searchParams.delete('order')
+    url.searchParams.delete('company')
+    url.searchParams.delete('create')
+    window.history.replaceState(window.history.state, '', url)
+    if (!link || activeModal) return
+    const token = {}
+    linkedOrderLoadToken.current = token
+    const workspaceToken = workspaceLoadToken.current
+    loadPartyLegacyLinkedOrder({ link, companyId: activeCompanyId, orders, loadOrder: async (id) => {
+      const response = await apiJson(`/api/party/orders/${id}`, buildCompanyRequestOptions(activeCompanyId, { cache: 'no-store' }))
+      return response.data
+    } }).then((order) => {
+      if (linkedOrderLoadToken.current !== token || workspaceLoadToken.current !== workspaceToken) return
+      setOrderDraft(normalizeOrderDraft(order))
+      setEditingOrderId(String(order._id))
+      setActiveModal('order-view')
+    }).catch((cause) => {
+      if (linkedOrderLoadToken.current === token && workspaceLoadToken.current === workspaceToken) setError(cause.message || 'Заказ по ссылке недоступен.')
+    })
+    return () => { if (linkedOrderLoadToken.current === token) linkedOrderLoadToken.current = null }
+  }, [activeCompanyId, activeModal, canManage, loading, orders, section])
+
   const reloadRelatedOrders = useCallback(async () => {
     const workspaceToken = workspaceLoadToken.current
     if (!activeCompanyId || workspaceToken?.companyId !== activeCompanyId) return
@@ -648,10 +706,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   }, [activeCompanyId])
 
   const switchCompany = (companyId) => {
+    if (typeof window !== 'undefined' && publishPartyActiveCompanyId(companyId) === false) return
     setActiveCompanyId(companyId)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(ACTIVE_COMPANY_STORAGE_KEY, companyId)
-    }
     loadWorkspace(companyId)
   }
 
@@ -1839,13 +1895,33 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             <div className="mb-4 md:mb-6">
               <div className="flex flex-col gap-2">
                 {/* Top row: title + actions */}
-                <div className="flex flex-col items-center gap-2">
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold">
                     {section === 'orders-past'
                       ? 'Прошедшие заказы'
                       : 'Предстоящие заказы'}
                   </h2>
-                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="min-h-11 shrink-0 cursor-pointer rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                        onClick={() => {
+                          setOrderDraft(
+                            createEmptyOrderDraft(
+                              companySettings,
+                              locations,
+                              currentStaffId
+                            )
+                          )
+                          setActiveModal('order')
+                        }}
+                      >
+                        + Новый заказ
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:flex-wrap">
                     <OrderFilterDropdown
                       orderFilters={orderFilters}
                       orderFilter={orderFilter}
@@ -1853,12 +1929,13 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                     />
                     <button
                       type="button"
-                      className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-sky-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50"
+                      className="inline-flex min-h-11 min-w-11 justify-center cursor-pointer items-center gap-2 rounded-md border border-sky-100 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-sky-200 hover:bg-sky-50"
                       onClick={() =>
                         setOrderViewMode((current) =>
                           current === 'list' ? 'month' : 'list'
                         )
                       }
+                      aria-label={orderViewMode === 'list' ? 'Показать календарь' : 'Показать список'}
                       title={
                         orderViewMode === 'list'
                           ? 'Показать календарь'
@@ -1875,7 +1952,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       <button
                         type="button"
                         onClick={() => setActiveModal('upcoming-events')}
-                        className="cursor-pointer rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
+                        className="min-h-11 cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-100"
                       >
                         Ближайшие
                       </button>
@@ -1884,32 +1961,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       <button
                         type="button"
                         onClick={closePastOrders}
-                        className="cursor-pointer rounded-md border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-700 transition hover:bg-sky-50"
+                        className="col-span-2 min-h-11 cursor-pointer rounded-lg border border-transparent bg-white px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
                       >
                         Закрыть прошедшие
-                        <span className="ml-2 text-sky-400">
+                        <span className="ml-2 tabular-nums text-slate-500">
                           {closePastCount}
                         </span>
                       </button>
                     )}
-                    {canManage && (
-                      <button
-                        type="button"
-                        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700"
-                        onClick={() => {
-                          setOrderDraft(
-                            createEmptyOrderDraft(
-                              companySettings,
-                              locations,
-                              currentStaffId
-                            )
-                          )
-                          setActiveModal('order')
-                        }}
-                      >
-                        + Новый заказ
-                      </button>
-                    )}
+
                   </div>
                 </div>
               </div>
@@ -1917,7 +1977,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
             {orderViewMode === 'list' ? (
               <OrdersList
-                orders={filteredOrders}
+                orders={scopedOrders}
                 filteredOrders={filteredOrders}
                 clients={clients}
                 clientsById={clientsById}
@@ -2331,6 +2391,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         <OrderAdditionalEventsModal
           open={true}
           order={orderDraft}
+          activeCompanyId={activeCompanyId}
           staff={staff}
           canManage={canManage}
           saving={saving}
@@ -2363,6 +2424,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
       {activeModal === 'order' && (
         <OrderModal
+          aiAvailable={companyAccess?.allowAi === true}
           open={true}
           orderDraft={orderDraft}
           setOrderDraft={setOrderDraft}
@@ -2402,6 +2464,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
       {activeModal === 'order-edit' && (
         <OrderModal
+          aiAvailable={companyAccess?.allowAi === true}
           open={true}
           title="Редактировать заказ"
           orderDraft={orderDraft}

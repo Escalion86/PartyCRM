@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { canPartyOperationalPermission } from '@helpers/partyOperationalPermissions'
+import { canPartyAccess, buildPartyOrderAccessFilter, filterPartyOrderForAccess } from '@helpers/partyRolePermissions'
 import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
 import { getInitialPartyAssignmentConfirmationStatus } from '@helpers/partyOrderAssignments'
 import { getPartyRequestContext, isValidObjectId, partyError } from './partyApi'
@@ -19,25 +20,29 @@ const safeOrder = (order) => ({ _id: String(order._id), title: order.title || ''
 export const getPartyOrderTeamVersion = (order) => createHash('sha256').update(JSON.stringify(order)).digest('hex')
 
 export const partyOrderTeamRoute = (handler) => async (req, params) => {
-  const { context, error } = await getPartyRequestContext({ req })
+  const { context, error } = await getPartyRequestContext({ req, allowLocationOwner: true })
   if (error) return error
   if (!canPartyOperationalPermission(context, 'orders.assignments')) return partyError(403, 'partycrm_forbidden', 'Недостаточно прав для назначения исполнителей', 'permission')
   try { return NextResponse.json({ success: true, data: await handler(req, context, params) }) }
   catch (error) { return partyError(error.status || 500, error.status ? error.code : 'partycrm_order_team_failed', error.status ? error.message : 'Не удалось обработать состав команды') }
 }
 
-export const listPartyOrderTeam = async ({ tenantId, cursor = '' }) => {
+const configuredPosition = (context) => Boolean(context?.staff?.positionId || Number(context?.position?.revision || 0) > 0)
+const accessibleOrder = (context, order) => configuredPosition(context) ? filterPartyOrderForAccess(context, order) : order
+
+export const listPartyOrderTeam = async ({ tenantId, cursor = '', context = null }) => {
   if (cursor && !isValidObjectId(cursor)) fail(400, 'partycrm_invalid_cursor', 'Некорректный указатель страницы')
   const Orders = await getPartyOrderModel()
-  const orders = await Orders.find({ tenantId, status: { $in: openStatuses }, ...(cursor ? { _id: { $lt: cursor } } : {}) }).select('_id title serviceTitle eventDate dateEnd status').sort({ _id: -1 }).limit(51).lean()
-  return { orders: orders.slice(0, 50).map(safeOrder), nextCursor: orders.length > 50 ? String(orders[49]._id) : null }
+  const orders = await Orders.find({ ...(configuredPosition(context) ? buildPartyOrderAccessFilter(context) : { tenantId }), status: { $in: openStatuses }, ...(cursor ? { _id: { $lt: cursor } } : {}) }).sort({ _id: -1 }).limit(51).lean()
+  return { orders: orders.slice(0, 50).map((order) => safeOrder(accessibleOrder(context, order))), nextCursor: orders.length > 50 ? String(orders[49]._id) : null }
 }
 
-const loadOrder = async ({ tenantId, orderId }) => {
+const loadOrder = async ({ tenantId, orderId, context = null }) => {
   if (!isValidObjectId(orderId)) fail(400, 'partycrm_invalid_order_id', 'Некорректный id заказа')
   const Orders = await getPartyOrderModel()
   const order = await Orders.findOne({ _id: orderId, tenantId }).lean()
   if (!order) fail(404, 'partycrm_order_not_found', 'Заказ не найден')
+  if (configuredPosition(context) && !canPartyAccess(context, { resource: 'orders.assignedStaff', action: 'edit', order })) fail(404, 'partycrm_order_not_found', 'Заказ не найден')
   if (!openStatuses.includes(order.status)) fail(409, 'partycrm_order_team_closed', 'Состав можно менять только у открытого заказа')
   return { Orders, order }
 }
@@ -45,20 +50,20 @@ const loadStaff = async (tenantId, order) => {
   const Staff = await getPartyStaffModel()
   return Staff.find({ tenantId, $or: [{ status: 'active' }, { _id: { $in: (order.assignedStaff || []).map((a) => a.staffId) } }] }).select('_id firstName secondName status authUserId linkedAuthUserId').lean()
 }
-const detail = (order, staff) => ({
-  ...safeOrder(order), expectedVersion: getPartyOrderTeamVersion(order),
+const detail = (order, staff, context = null) => ({
+  ...safeOrder(accessibleOrder(context, order)), expectedVersion: getPartyOrderTeamVersion(order),
   assignedStaff: (order.assignedStaff || []).map((a) => ({ staffId: String(a.staffId), role: a.role || 'performer', confirmationStatus: a.confirmationStatus || 'pending', title: titleOf(staff.find((s) => String(s._id) === String(a.staffId))) })),
   candidates: staff.filter((s) => s.status === 'active').map((s) => ({ _id: String(s._id), title: titleOf(s) })),
 })
 export const getPartyOrderTeam = async (args) => {
   const { order } = await loadOrder(args)
-  return detail(order, await loadStaff(args.tenantId, order))
+  return detail(order, await loadStaff(args.tenantId, order), args.context)
 }
 
 export const updatePartyOrderTeam = async ({ context, orderId, body }) => {
   if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => !['assignedStaff', 'expectedVersion'].includes(key)) || typeof body.expectedVersion !== 'string' || !/^[a-f0-9]{64}$/.test(body.expectedVersion) || !Array.isArray(body.assignedStaff) || body.assignedStaff.length > 100 || body.assignedStaff.some((a) => !a || typeof a !== 'object' || Array.isArray(a) || Object.keys(a).some((key) => !['staffId', 'role'].includes(key)) || typeof a.staffId !== 'string' || !/^[a-f0-9]{24}$/.test(a.staffId) || !['performer', 'admin', 'assistant'].includes(a.role)) || new Set(body.assignedStaff.map((a) => a.staffId)).size !== body.assignedStaff.length)
     fail(400, 'partycrm_invalid_team', 'Укажите исполнителей, их роли и текущую версию заказа')
-  const { Orders, order } = await loadOrder({ tenantId: context.tenantId, orderId })
+  const { Orders, order } = await loadOrder({ tenantId: context.tenantId, orderId, context })
   if (getPartyOrderTeamVersion(order) !== body.expectedVersion) conflict()
   const staff = await loadStaff(context.tenantId, order)
   const previous = order.assignedStaff || []
@@ -69,7 +74,7 @@ export const updatePartyOrderTeam = async ({ context, orderId, body }) => {
     if (!member) fail(400, 'partycrm_staff_unavailable', 'Можно назначить только активного сотрудника этой компании')
     return { staffId: a.staffId, role: a.role, payoutAmount: 0, payoutStatus: 'planned', confirmationStatus: getInitialPartyAssignmentConfirmationStatus(member), report: { status: 'draft', text: '', files: [] } }
   })
-  if (JSON.stringify(previous) === JSON.stringify(assignedStaff)) return detail(order, staff)
+  if (JSON.stringify(previous) === JSON.stringify(assignedStaff)) return detail(order, staff, context)
   // Reports and financial records can be created concurrently without touching the order.
   // This narrow permission therefore never removes a persisted assignment.
   if (previous.some((a) => !assignedStaff.some((next) => String(next.staffId) === String(a.staffId))))
@@ -92,5 +97,5 @@ export const updatePartyOrderTeam = async ({ context, orderId, body }) => {
   let refreshed = saved
   try { refreshed = await Orders.findOne({ _id: orderId, tenantId: context.tenantId }).lean() || saved }
   catch { warnings.push('Состав сохранён. Обновите заказ перед следующим изменением.') }
-  return { ...detail(refreshed, staff), warnings }
+  return { ...detail(refreshed, staff, context), warnings }
 }
