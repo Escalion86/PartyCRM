@@ -738,7 +738,7 @@ export default function PartyTasks({
               className={button}
               disabled={busy || uploading}
               onClick={() => {
-                if (window.confirm('Закрыть редактор без сохранения?')) {
+                if (!dirty || window.confirm('Закрыть редактор без сохранения?')) {
                   setDraft(null)
                   setEditing(null)
                 }

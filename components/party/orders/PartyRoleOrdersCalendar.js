@@ -39,7 +39,7 @@ export default function PartyRoleOrdersCalendar({
   busy,
   error,
   onReload,
-  undatedCount = 0,
+  undatedCount,
   onOpenUndated,
 }) {
   const [selectedDay, setSelectedDay] = useState('')
@@ -121,13 +121,15 @@ export default function PartyRoleOrdersCalendar({
             ? 'Загрузка заказов месяца…'
             : `Заказов в месяце: ${monthCount}`}
         </span>
-        {undatedCount > 0 && (
+        {onOpenUndated && (
           <button
             type="button"
             className="min-h-10 cursor-pointer text-sky-700 underline underline-offset-2"
             onClick={onOpenUndated}
           >
-            Без даты в списке: {undatedCount}
+            {Number.isFinite(undatedCount)
+              ? `Без даты в списке: ${undatedCount}`
+              : 'Заказы без даты'}
           </button>
         )}
       </div>

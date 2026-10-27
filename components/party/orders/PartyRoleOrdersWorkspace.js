@@ -1,7 +1,15 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { apiJson } from '@helpers/apiClient'
 import usePartyUnsavedChanges, {
   requestPartyLeave,
@@ -37,6 +45,7 @@ import PartyRoleOrderClientEditor from './PartyRoleOrderClientEditor'
 import PartyRoleNewClient from './PartyRoleNewClient'
 import PartyRoleOrderPayments from './PartyRoleOrderPayments'
 import usePartyOrderCalendar from './usePartyOrderCalendar'
+import usePartyOrderList from './usePartyOrderList'
 import { toPartyOrderCalendarMonthStart } from './partyOrderCalendarViewModel'
 
 const PartyRoleOrdersCalendar = dynamic(
@@ -370,7 +379,11 @@ function RoleOrderEditor({
     >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-3 sm:p-4">
         <div className="min-w-0">
-          <h2 className="text-lg font-bold break-words text-sky-950">
+          <h2
+            id={`party-role-editor-heading-${companyId}`}
+            tabIndex={-1}
+            className="rounded text-lg font-bold break-words text-sky-950 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+          >
             {existing ? order.title || 'Заказ' : 'Новый заказ'}
           </h2>
           {existing &&
@@ -1139,7 +1152,6 @@ function RoleOrderEditor({
 
 function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   const [data, setData] = useState({
-    orders: [],
     options: emptyOptions,
     workflow: DEFAULT_PARTY_WORKFLOW,
   })
@@ -1166,6 +1178,35 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   const openingGeneration = useRef(0)
   const selectedId = useRef('')
   const dirtyRef = useRef(false)
+  const opener = useRef(null)
+  const focusRequested = useRef(false)
+  const returnFocusRequested = useRef(false)
+  const focusEditor = useCallback(() => {
+    focusRequested.current = true
+  }, [])
+  useLayoutEffect(() => {
+    if (focusRequested.current && selected && !openingId && !busy) {
+      const heading = document.getElementById(
+        `party-role-editor-heading-${companyId}`
+      )
+      if (!heading) return
+      heading.focus({ preventScroll: true })
+      heading.scrollIntoView({ block: 'start' })
+      focusRequested.current = false
+    } else if (returnFocusRequested.current && !selected) {
+      const previous = opener.current
+      const target =
+        previous?.isConnected &&
+        previous !== document.body &&
+        previous.getClientRects().length
+          ? previous
+          : document.getElementById(`party-role-search-${companyId}`) ||
+            document.getElementById(`party-role-overview-heading-${companyId}`)
+      target?.focus({ preventScroll: true })
+      target?.scrollIntoView({ block: 'nearest' })
+      returnFocusRequested.current = false
+    }
+  }, [selected, openingId, busy, editorRevision, companyId])
   const dirtyChanged = useCallback((value) => {
     dirtyRef.current = value
     setDirty(value)
@@ -1178,14 +1219,12 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
       setError('')
       try {
         const headers = { 'x-partycrm-company-id': companyId }
-        const [orders, options, workflow] = await Promise.all([
-          apiJson('/api/party/orders', { headers, cache: 'no-store' }),
+        const [options, workflow] = await Promise.all([
           apiJson('/api/party/order-options', { headers, cache: 'no-store' }),
           apiJson('/api/party/workflow', { headers, cache: 'no-store' }),
         ])
         if (current !== generation.current) return
         setData({
-          orders: orders.data || [],
           options: { ...emptyOptions, ...options.data },
           workflow: workflow.data || DEFAULT_PARTY_WORKFLOW,
         })
@@ -1228,12 +1267,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
         }
       } catch (cause) {
         if (current === generation.current) {
-          setData({
-            orders: [],
-            options: emptyOptions,
-            workflow: DEFAULT_PARTY_WORKFLOW,
-          })
-          setError(cause.message || 'Не удалось загрузить заказы')
+          setError(cause.message || 'Не удалось загрузить справочники заказов')
         }
       } finally {
         if (current === generation.current) setBusy(false)
@@ -1253,11 +1287,48 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     canPartyAccess(context, { resource, action })
   const canCalendar = can('orders.eventDate')
   const effectiveView = view === 'calendar' && canCalendar ? 'calendar' : 'list'
+  const accessKey = `${context?.role || ''}:${context?.staff?._id || ''}:${context?.position?._id || ''}:${context?.position?.revision || 0}`
+  const effectiveQuickFilter =
+    (quickFilter === 'tasks' && !can('tasks')) ||
+    (['today', 'undated'].includes(quickFilter) && !canCalendar)
+      ? 'all'
+      : quickFilter
+  const effectiveStageFilter =
+    can('orders.workflowStageId') &&
+    data.workflow.stages.some((stage) => stage.id === stageFilter)
+      ? stageFilter
+      : ''
+  const searchable = [
+    'orders.title',
+    'orders.client.name',
+    'orders.serviceTitle',
+  ].some((resource) => can(resource))
+  const effectiveSearch = searchable ? search : ''
+  const now = new Date()
+  const list = usePartyOrderList({
+    companyId,
+    enabled: Boolean(context) && can('orders'),
+    accessKey,
+    search: effectiveSearch,
+    stageId: effectiveStageFilter,
+    quick: effectiveQuickFilter,
+    todayFrom: new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    ).toISOString(),
+    todayTo: new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + 1
+    ).toISOString(),
+    refreshKey: calendarRevision,
+  })
   const calendar = usePartyOrderCalendar({
     companyId,
     enabled: calendarEnabled && canCalendar,
     month: calendarMonth,
-    accessKey: `${context?.role || ''}:${context?.position?._id || ''}:${context?.position?.revision || 0}`,
+    accessKey,
     refreshKey: calendarRevision,
   })
   const calendarAccess = useMemo(
@@ -1280,6 +1351,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
       if (!canPartyAccess(context, { resource: 'orders', action: 'create' }))
         return
       if (!requestPartyLeave({ kind: 'record', target: 'new' })) return
+      opener.current = document.activeElement
       dirtyChanged(false)
       openingGeneration.current += 1
       setOpeningId('')
@@ -1289,6 +1361,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
       setEditorRevision((value) => value + 1)
       setOverviewVisible(false)
       setNotice('')
+      focusEditor()
     }
     window.addEventListener('partycrm:create-order', requestCreate)
     const url = new URL(window.location.href)
@@ -1299,11 +1372,12 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     } else if (context && pendingCreate.current) requestCreate()
     return () =>
       window.removeEventListener('partycrm:create-order', requestCreate)
-  }, [context, data.options, dirtyChanged])
+  }, [context, data.options, dirtyChanged, focusEditor])
   const leave = (target) => requestPartyLeave({ kind: 'record', target })
   const open = async (order) => {
     if (busy || openingId) return
     if (!leave(String(order._id || 'new'))) return
+    opener.current = document.activeElement
     const current = ++openingGeneration.current
     if (!order._id) {
       selectedId.current = ''
@@ -1312,6 +1386,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
       setSelected(order)
       setEditorRevision((value) => value + 1)
       setOverviewVisible(false)
+      focusEditor()
       return
     }
     setOpeningId(String(order._id))
@@ -1336,11 +1411,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
       setEditorRevision((value) => value + 1)
       setOverviewVisible(false)
       setNotice('')
-      requestAnimationFrame(() =>
-        document
-          .getElementById(`party-role-editor-${companyId}`)
-          ?.scrollIntoView({ block: 'start' })
-      )
+      focusEditor()
     } catch (cause) {
       if (current === openingGeneration.current)
         setError(cause.message || 'Не удалось открыть заказ')
@@ -1350,6 +1421,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   }
   const close = () => {
     if (!leave('list')) return
+    returnFocusRequested.current = true
     dirtyChanged(false)
     selectedId.current = ''
     openingGeneration.current += 1
@@ -1357,7 +1429,6 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     setSelected(null)
     setSelectedOptions(null)
     setOverviewVisible(false)
-    load()
   }
   const saved = (order, accessChanged) => {
     dirtyChanged(false)
@@ -1377,26 +1448,37 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   }
   const today = new Date().toDateString()
   const matchesQuickFilter = (order) =>
-    quickFilter === 'all' ||
-    (quickFilter === 'today' &&
+    effectiveQuickFilter === 'all' ||
+    (effectiveQuickFilter === 'today' &&
       order.eventDate &&
       new Date(order.eventDate).toDateString() === today) ||
-    (quickFilter === 'tasks' &&
+    (effectiveQuickFilter === 'tasks' &&
       Number(order.taskSummary?.openCount || 0) > 0) ||
-    (quickFilter === 'undated' &&
+    (effectiveQuickFilter === 'undated' &&
       (!order.eventDate || !Number.isFinite(+new Date(order.eventDate))))
-  const sourceOrders =
-    effectiveView === 'calendar' ? calendar.orders : data.orders
-  const orders = sourceOrders.filter((order) => {
-    if (!matchesQuickFilter(order)) return false
-    if (stageFilter && getPartyOrderStage(order, data.workflow) !== stageFilter)
-      return false
-    const haystack = [order.title, order.client?.name, order.serviceTitle]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-    return !search.trim() || haystack.includes(search.trim().toLowerCase())
-  })
+  const orders =
+    effectiveView === 'list'
+      ? list.orders
+      : calendar.orders.filter((order) => {
+          if (!matchesQuickFilter(order)) return false
+          if (
+            effectiveStageFilter &&
+            getPartyOrderStage(order, data.workflow) !== effectiveStageFilter
+          )
+            return false
+          const haystack = [
+            can('orders.title') && order.title,
+            can('orders.client.name') && order.client?.name,
+            can('orders.serviceTitle') && order.serviceTitle,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+          return (
+            !effectiveSearch.trim() ||
+            haystack.includes(effectiveSearch.trim().toLowerCase())
+          )
+        })
   const chooseView = (next) => {
     setView(next)
     if (next === 'calendar') setCalendarEnabled(true)
@@ -1415,11 +1497,12 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
           ' flex-wrap items-center justify-between gap-3'
         }
       >
-        <h1 className="text-xl font-bold text-sky-950">
-          Заказы{' '}
-          <span className="ml-1 text-sm font-normal text-slate-500">
-            {sourceOrders.length}
-          </span>
+        <h1
+          id={`party-role-overview-heading-${companyId}`}
+          tabIndex={-1}
+          className="rounded text-xl font-bold text-sky-950 focus-visible:outline-2 focus-visible:outline-sky-600"
+        >
+          Заказы
         </h1>
         <div className="flex flex-wrap gap-2">
           {can('orders', 'create') ? (
@@ -1514,6 +1597,16 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
           className="rounded-lg bg-red-50 p-3 text-sm text-red-800"
         >
           {error}
+          {!context ? (
+            <button
+              type="button"
+              className={button + ' ml-2'}
+              onClick={() => load()}
+              disabled={busy}
+            >
+              Повторить загрузку
+            </button>
+          ) : null}
         </p>
       ) : null}
       {notice ? (
@@ -1550,33 +1643,38 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                 : 'min-w-0 space-y-3'
             }
           >
-            <label className="block text-sm text-slate-600">
-              Поиск заказов
-              <input
-                type="search"
-                placeholder="Название или клиент"
-                className={control}
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
-            </label>
+            {searchable ? (
+              <label className="block text-sm text-slate-600">
+                Поиск заказов
+                <input
+                  id={`party-role-search-${companyId}`}
+                  type="search"
+                  placeholder={[
+                    can('orders.title') && 'Название',
+                    can('orders.client.name') && 'Клиент',
+                    can('orders.serviceTitle') && 'Услуга',
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                  maxLength={160}
+                  className={control}
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </label>
+            ) : null}
             <div
               className="flex flex-wrap gap-2"
               role="group"
               aria-label="Быстрые фильтры заказов"
             >
               {[
-                { id: 'all', title: 'Все', count: sourceOrders.length },
+                { id: 'all', title: 'Все' },
                 ...(can('orders.eventDate')
                   ? [
                       {
                         id: 'today',
                         title: 'Сегодня',
-                        count: sourceOrders.filter(
-                          (order) =>
-                            order.eventDate &&
-                            new Date(order.eventDate).toDateString() === today
-                        ).length,
                       },
                     ]
                   : []),
@@ -1585,10 +1683,6 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                       {
                         id: 'tasks',
                         title: 'С задачами',
-                        count: sourceOrders.filter(
-                          (order) =>
-                            Number(order.taskSummary?.openCount || 0) > 0
-                        ).length,
                       },
                     ]
                   : []),
@@ -1597,11 +1691,6 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                       {
                         id: 'undated',
                         title: 'Без даты',
-                        count: data.orders.filter(
-                          (order) =>
-                            !order.eventDate ||
-                            !Number.isFinite(+new Date(order.eventDate))
-                        ).length,
                       },
                     ]
                   : []),
@@ -1609,17 +1698,16 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                 <button
                   type="button"
                   key={item.id}
-                  aria-pressed={quickFilter === item.id}
+                  aria-pressed={effectiveQuickFilter === item.id}
                   onClick={() => setQuickFilter(item.id)}
                   className={
                     'min-h-10 cursor-pointer rounded-lg border px-3 py-2 text-sm ' +
-                    (quickFilter === item.id
+                    (effectiveQuickFilter === item.id
                       ? 'border-sky-300 bg-sky-50 font-semibold text-sky-800'
                       : 'border-slate-200 bg-white text-slate-600')
                   }
                 >
-                  {item.title}{' '}
-                  <span className="ml-1 text-xs">{item.count}</span>
+                  {item.title}
                 </button>
               ))}
             </div>
@@ -1628,7 +1716,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                 Рабочий этап
                 <select
                   className={control + ' cursor-pointer'}
-                  value={stageFilter}
+                  value={effectiveStageFilter}
                   onChange={(event) => setStageFilter(event.target.value)}
                 >
                   <option value="">Все доступные этапы</option>
@@ -1640,26 +1728,54 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                 </select>
               </label>
             ) : null}
-            {!orders.length && effectiveView === 'list' ? (
+            {search || stageFilter || quickFilter !== 'all' ? (
+              <button
+                type="button"
+                className={button}
+                onClick={() => {
+                  setSearch('')
+                  setStageFilter('')
+                  setQuickFilter('all')
+                }}
+              >
+                Сбросить фильтры
+              </button>
+            ) : null}
+            {effectiveView === 'list' ? (
+              <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
+                <span>Сначала новые</span>
+                {!list.busy && !list.error ? (
+                  <span>Загружено: {list.orders.length}</span>
+                ) : null}
+              </div>
+            ) : null}
+            {effectiveView === 'list' && list.busy ? (
+              <p role="status" className="p-3 text-sm text-slate-500">
+                Ищем заказы…
+              </p>
+            ) : null}
+            {effectiveView === 'list' && list.error ? (
+              <p
+                role="alert"
+                className="rounded-lg bg-red-50 p-3 text-sm text-red-800"
+              >
+                {list.error}{' '}
+                <button type="button" className={button} onClick={list.reload}>
+                  Повторить поиск
+                </button>
+              </p>
+            ) : null}
+            {!list.busy &&
+            !list.error &&
+            !list.orders.length &&
+            !list.nextCursor &&
+            effectiveView === 'list' ? (
               <div className="space-y-2 rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">
                 <p>
                   {search || stageFilter || quickFilter !== 'all'
                     ? 'По выбранным условиям заказов нет.'
                     : 'Доступных заказов пока нет.'}
                 </p>
-                {search || stageFilter || quickFilter !== 'all' ? (
-                  <button
-                    type="button"
-                    className={button}
-                    onClick={() => {
-                      setSearch('')
-                      setStageFilter('')
-                      setQuickFilter('all')
-                    }}
-                  >
-                    Сбросить фильтры
-                  </button>
-                ) : null}
               </div>
             ) : null}
             <div
@@ -1670,7 +1786,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                   : 'grid gap-3 md:grid-cols-2 xl:grid-cols-3'
               }
             >
-              {orders.map((order) => (
+              {list.orders.map((order) => (
                 <button
                   type="button"
                   key={order._id}
@@ -1743,13 +1859,6 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                   busy={calendar.busy}
                   error={calendar.error}
                   onReload={calendar.reload}
-                  undatedCount={
-                    data.orders.filter(
-                      (order) =>
-                        !order.eventDate ||
-                        !Number.isFinite(+new Date(order.eventDate))
-                    ).length
-                  }
                   onOpenUndated={() => {
                     setQuickFilter('undated')
                     chooseView('list')
@@ -1757,10 +1866,33 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                 />
               </div>
             ) : null}
-            {data.orders.length >= 120 && effectiveView === 'list' ? (
-              <p className="text-xs text-slate-500">
-                Показано до 120 заказов. Фильтры применяются к этому списку.
-              </p>
+            {effectiveView === 'list' && !list.busy && list.nextCursor ? (
+              <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                {!list.orders.length && !list.errorMore ? (
+                  <p className="text-sm text-slate-600">
+                    Совпадений пока нет. Можно проверить следующие заказы.
+                  </p>
+                ) : null}
+                {list.errorMore ? (
+                  <p role="alert" className="text-sm text-red-800">
+                    {list.errorMore}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className={button + ' w-full'}
+                  disabled={list.busyMore}
+                  onClick={list.loadMore}
+                >
+                  {list.busyMore
+                    ? 'Загружаем…'
+                    : list.errorMore
+                      ? 'Повторить загрузку'
+                      : list.orders.length
+                        ? 'Показать ещё'
+                        : 'Продолжить поиск'}
+                </button>
+              </div>
             ) : null}
           </div>
           {selected ? (

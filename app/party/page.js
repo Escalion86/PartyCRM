@@ -519,6 +519,9 @@ export default function PartyCrmLandingPage() {
             <Link href="/terms" className="cursor-pointer hover:text-[#0b8fd0]" target="_blank" rel="noreferrer">
               Пользовательское соглашение
             </Link>
+            <Link href="/personal-data-consent" className="cursor-pointer hover:text-[#0b8fd0]" target="_blank" rel="noreferrer">
+              Согласие на обработку данных
+            </Link>
             <Link href="/payment" className="cursor-pointer hover:text-[#0b8fd0]" target="_blank" rel="noreferrer">
               Оплата и возвраты
             </Link>

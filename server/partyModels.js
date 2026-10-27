@@ -165,6 +165,7 @@ export const getPartyOrderModel = () =>
     schemaDefinition: partyOrdersSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
+      schema.index({ tenantId: 1, _id: -1 })
       schema.index({ tenantId: 1, eventDate: -1 })
       schema.index({ tenantId: 1, status: 1, eventDate: -1 })
       schema.index({ tenantId: 1, locationId: 1, eventDate: 1 })

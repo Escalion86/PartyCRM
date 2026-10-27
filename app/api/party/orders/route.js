@@ -7,6 +7,8 @@ import { NextResponse } from 'next/server'
 import { withPartyOrderReportSummaries } from '@server/partyOrderReportSummaries'
 import { withPartyOrderTaskSummaries } from '@server/partyOrderTaskSummaries'
 import { hasPartyOrderCalendarQuery, parsePartyOrderCalendarQuery, buildPartyOrderCalendarInterval } from '@helpers/partyOrderCalendarQuery'
+import { parsePartyOrderListQuery } from '@helpers/partyOrderListQuery'
+import { loadPartyOrderListPage } from '@server/partyOrderListPage'
 import { syncPartyOrderInventory } from '@server/partyInventory'
 import {
   getPartyClientModel,
@@ -479,6 +481,12 @@ export async function GET(req) {
   if (!canPartyAccess(context, { resource: 'orders' })) return partyError(403, 'partycrm_forbidden', 'Нет доступа к заказам')
 
   const searchParams = new URL(req.url).searchParams
+  let list
+  if (searchParams.has('view')) {
+    if (searchParams.get('view') !== 'list') return partyError(400, 'partycrm_invalid_order_list_query', 'Неизвестный вид списка заказов', 'validation')
+    try { list = parsePartyOrderListQuery(searchParams, context) }
+    catch (cause) { return partyError(cause.status || 400, cause.code || 'partycrm_invalid_order_list_query', cause.message, 'validation') }
+  }
   if (hasPartyOrderCalendarQuery(searchParams) && !canPartyAccess(context, { resource: 'orders.eventDate' })) return partyError(403, 'partycrm_calendar_forbidden', 'Календарь недоступен без права просмотра даты заказа')
   let calendar
   try { calendar = parsePartyOrderCalendarQuery(searchParams) }
@@ -491,7 +499,8 @@ export async function GET(req) {
     status: { $ne: 'canceled' },
     ...(preparationFilter === 'open' ? buildPartyOpenPreparationFilter() : {}),
   }
-  const fetchedOrders = await PartyOrders.find(calendar ? { $and: [
+  const listPage = list ? await loadPartyOrderListPage({ context, list, accessFilter, findOrders: (filter, sort, limit) => PartyOrders.find(filter).sort(sort).limit(limit).lean() }) : null
+  const fetchedOrders = listPage ? listPage.orders : await PartyOrders.find(calendar ? { $and: [
     accessFilter,
     buildPartyOrderCalendarInterval(calendar, canPartyAccess(context, { resource: 'orders.dateEnd' })),
     ...(calendar.cursor ? [{ _id: { $gt: calendar.cursor } }] : []),
@@ -569,8 +578,8 @@ export async function GET(req) {
   })
 
   const withReports = await withPartyOrderReportSummaries({ context, orders: ordersWithTransactions })
-  const withTasks = await withPartyOrderTaskSummaries({ context, orders: withReports })
-  return NextResponse.json({ success: true, data: withTasks.map((order) => filterPartyOrderForAccess(context, order)).filter(Boolean), ...(calendar ? { meta: { nextCursor, dateFrom: calendar.dateFrom.toISOString(), dateTo: calendar.dateTo.toISOString() } } : {}) })
+  const withTasks = list?.quick === 'tasks' ? withReports : await withPartyOrderTaskSummaries({ context, orders: withReports })
+  return NextResponse.json({ success: true, data: withTasks.map((order) => filterPartyOrderForAccess(context, order)).filter(Boolean), ...(listPage ? { meta: listPage.meta } : calendar ? { meta: { nextCursor, dateFrom: calendar.dateFrom.toISOString(), dateTo: calendar.dateTo.toISOString() } } : {}) })
 }
 
 export const applyPartyAssignmentAccountDefaults = async ({
