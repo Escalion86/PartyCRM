@@ -11,6 +11,7 @@ import {
   buildPartyVkWebhookUrl,
 } from '@helpers/partyIntegrationWebhooks'
 import PartyGoogleCalendarSettings from '@components/party/settings/PartyGoogleCalendarSettings'
+import PartyTicketProvidersSettings from '@components/party/settings/PartyTicketProvidersSettings'
 import { isGoogleCalendarLocked } from '@components/party/settings/PartyGoogleCalendarSettingsState'
 import useCompanySettings from '../useCompanySettings'
 import { getCompanyIntegrationIndicatorState } from './companyIntegrationState'
@@ -658,6 +659,8 @@ export default function CompanySettingsIntegrationsContent({
           draftSyncVersion={googleCalendarDraftSyncVersion}
         />
       </CompanyIntegrationCard>
+
+      <PartyTicketProvidersSettings key={activeCompanyId} activeCompanyId={activeCompanyId} />
 
       <CompanyIntegrationCard
         title="Входящие заявки API / Tilda"

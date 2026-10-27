@@ -10,6 +10,7 @@ import {
   getPartyTelegramConversationModel,
   getPartyTelegramMessageModel,
 } from '@server/partyModels'
+import { getPartyTicketSaleModel } from './partyTicketModels'
 
 export const buildPartyClientSnapshot = (client = {}) => ({
   name: [client.firstName, client.secondName, client.thirdName]
@@ -137,6 +138,11 @@ export const mergePartyClients = async ({
     { $set: { status: 'archived' } },
     { returnDocument: 'after' }
   ).lean()
+  const TicketSales = await getPartyTicketSaleModel()
+  const ticketSales = await TicketSales.updateMany(
+    { tenantId, clientId: sourceClientId },
+    { $set: { clientId: targetClientId } }
+  )
 
   return {
     ok: true,
@@ -152,6 +158,7 @@ export const mergePartyClients = async ({
       avitoMessages: avitoMessages.modifiedCount || 0,
       telegramConversations: telegramConversations.modifiedCount || 0,
       telegramMessages: telegramMessages.modifiedCount || 0,
+      ticketSales: ticketSales.modifiedCount || 0,
     },
   }
 }

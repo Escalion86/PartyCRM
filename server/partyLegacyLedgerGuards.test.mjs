@@ -33,6 +33,7 @@ const setup = async ({ order = { _id: id, status: 'active', transactions: [] }, 
     ...base, normalizePartyTransactionPayload: body => body, serializePartyTransaction: value => value,
     validatePartyPayoutTransactionStaff: () => ({ error: staffError }),
     withPartyFinancialTransaction: async (tenantId, callback) => { assert.equal(tenantId, 'trusted'); calls.push('lock'); if (fail) throw Error('secret'); const result = await callback(session); calls.push('commit'); return result },
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => ({
       findOne: filter => { assert.deepEqual(filter, { _id: id, tenantId: 'trusted' }); return q(order) },
       updateOne: async (filter, update, options) => { assert.equal(filter.tenantId, 'trusted'); assert.equal(options.session, session); assert.equal(update.$inc.sharedLocationRevision, 1); calls.push('touch') },
@@ -72,6 +73,7 @@ test('stale order editor cannot restore migrated embedded payments', async () =>
   let written
   const PATCH = await load('../app/api/party/orders/[id]/route.js', {
     ...base, getPartyOrderWriteGuard, preservePartyOrderContactSettings, normalizeOrderPayload: body => body,
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => ({ findOne: () => q(current), findOneAndUpdate: (filter, update) => { assert.equal(filter.tenantId, 'trusted'); written = update.$set; return q({ ...current, ...written }) } }),
     validateOrderReferences: async () => null,
     applyPartyAssignmentAccountDefaults: async ({ payload }) => payload,
@@ -93,6 +95,7 @@ for (const migrated of [false, true]) test(`transaction relocation ${migrated ? 
     validatePartyTransactionOrder: async ({ orderId }) => ({ order: orderId === targetId ? target : { _id: id, status: 'active' } }),
     validatePartyPayoutTransactionStaff: () => ({}),
     withPartyFinancialTransaction: async (tenant, callback) => { assert.equal(tenant, 'trusted'); const result = await callback(session); calls.push('commit'); return result },
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => ({
       findOne: filter => { assert.equal(filter.tenantId, 'trusted'); return q(filter._id === targetId ? target : { _id: id, status: 'active' }) },
       updateMany: async (filter, update, opts) => { assert.equal(filter.tenantId, 'trusted'); assert.equal(opts.session, session); assert.deepEqual(filter._id.$in, [id, targetId]); assert.equal(update.$inc.sharedLocationRevision, 1); calls.push('touch') },

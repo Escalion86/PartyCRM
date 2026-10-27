@@ -43,6 +43,9 @@ export default function PartyRoleOrdersCalendar({
   onOpenUndated,
 }) {
   const [selectedDay, setSelectedDay] = useState('')
+  const hasSessions = orders.some(
+    (order) => order.calendarEntityType === 'ticket_session'
+  )
   const calendarId = useId()
   const days = useMemo(() => buildPartyOrderCalendarGrid(month), [month])
   const byDay = useMemo(
@@ -119,7 +122,7 @@ export default function PartyRoleOrdersCalendar({
         <span>
           {busy
             ? 'Загрузка заказов месяца…'
-            : `Заказов в месяце: ${monthCount}`}
+            : `${hasSessions ? 'Заказов и сеансов' : 'Заказов'} в месяце: ${monthCount}`}
         </span>
         {onOpenUndated && (
           <button
@@ -165,7 +168,7 @@ export default function PartyRoleOrdersCalendar({
                 key={day.key}
                 id={`${calendarId}-${day.key}`}
                 tabIndex={day.key === activeKey ? 0 : -1}
-                aria-label={`${day.date.toLocaleDateString('ru-RU')}, заказов: ${items.length}`}
+                aria-label={`${day.date.toLocaleDateString('ru-RU')}, ${hasSessions ? 'записей' : 'заказов'}: ${items.length}`}
                 aria-pressed={day.key === activeKey}
                 onClick={() => setSelectedDay(day.key)}
                 onKeyDown={(event) => {
@@ -218,7 +221,14 @@ export default function PartyRoleOrdersCalendar({
           })}
         </div>
       </div>
-      <div className="space-y-2" aria-label="Заказы выбранного дня">
+      <div
+        className="space-y-2"
+        aria-label={
+          hasSessions
+            ? 'Заказы и сеансы выбранного дня'
+            : 'Заказы выбранного дня'
+        }
+      >
         <h3 className="text-sm font-semibold text-slate-700">
           {activeDay?.date.toLocaleDateString('ru-RU', {
             weekday: 'long',
@@ -228,7 +238,9 @@ export default function PartyRoleOrdersCalendar({
         </h3>
         {!busy && !error && !activeItems.length && (
           <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
-            На этот день заказов по выбранным условиям нет.
+            {hasSessions
+              ? 'На этот день заказов и сеансов по выбранным условиям нет.'
+              : 'На этот день заказов по выбранным условиям нет.'}
           </p>
         )}
         {activeItems.map((item) => (

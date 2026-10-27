@@ -37,6 +37,7 @@ function setup({ context = actor(), orderPatch = {}, transactions = [] } = {}) {
     NextResponse: { json: (body, options) => ({ status: options?.status || 200, body }) },
     getPartyRequestContext: async () => ({ context }), isValidObjectId: (id) => /^[a-f\d]{24}$/i.test(String(id)), parseJsonBody: async (req) => req.body,
     partyError: (status, code, message, _kind, extra) => ({ status, body: { code, message, ...extra } }),
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => Orders,
     getPartyStaffModel: async () => ({ find: () => q([]), countDocuments: async () => 1 }),
     getPartyClientModel: async () => ({ countDocuments: async () => 1 }),
@@ -125,7 +126,8 @@ test('read-only order team options are scoped and staff phones require an explic
     const q = (rows) => ({ select() { return this }, sort() { return this }, limit() { return this }, lean: async () => rows })
     const deps = {
       ...permissions, NextResponse: { json: (body) => ({ status: 200, body }) }, getPartyRequestContext: async () => ({ context }), partyError: (status) => ({ status }),
-      getPartyOrderModel: async () => ({ find: (filter) => { assert.equal(filter.tenantId, tenantId); assert.equal(JSON.stringify(filter).includes(locationId), true); return q([{ assignedStaff: [{ staffId: personId }] }]) } }),
+      withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
+    getPartyOrderModel: async () => ({ find: (filter) => { assert.equal(filter.tenantId, tenantId); assert.equal(JSON.stringify(filter).includes(locationId), true); return q([{ assignedStaff: [{ staffId: personId }] }]) } }),
       getPartyStaffModel: async () => ({ find: (filter) => { seen.push(filter); return q([{ _id: personId, firstName: 'Коллега', role: 'performer', phone: '79130000001' }]) } }),
       getPartyClientModel: async () => ({}), getPartyServiceModel: async () => ({ find: () => q([]) }), getPartyLocationModel: async () => ({}),
     }

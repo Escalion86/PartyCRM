@@ -166,6 +166,7 @@ export const getPartyOrderModel = () =>
     schemaOptions: { timestamps: true },
     configureSchema: (schema) => {
       schema.index({ tenantId: 1, _id: -1 })
+      schema.index({ tenantId: 1, createRequestActorId: 1, createRequestKey: 1 }, { unique: true, name: 'party_order_create_request', partialFilterExpression: { createRequestActorId: { $type: 'string' }, createRequestKey: { $type: 'string' } } })
       schema.index({ tenantId: 1, eventDate: -1 })
       schema.index({ tenantId: 1, status: 1, eventDate: -1 })
       schema.index({ tenantId: 1, locationId: 1, eventDate: 1 })

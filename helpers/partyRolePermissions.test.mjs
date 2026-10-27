@@ -13,6 +13,25 @@ test('hidden contacts and financial values are absent from order responses, not 
   assert.equal(safe.title, 'Праздник')
 })
 
+test('brief snapshots never reveal hidden service IDs through active or retired conditions', () => {
+  const context = member()
+  context.position.permissions['orders.eventBrief'] = 'read'
+  const snapshot = { revision: 3, fields: [{ id: 'a', label: 'Вопрос', serviceIds: ['hidden-service'] }], retiredFields: [{ id: 'old', label: 'Прежний', serviceIds: ['hidden-service'] }], applicableFieldIds: ['a'], applicabilityFrozen: true }
+  const archived = { field: { id: 'archived', label: 'Архивный вопрос', type: 'text', serviceIds: ['hidden-service'] }, value: 'Архивный ответ' }
+  const original = order({ servicesIds: ['hidden-service'], eventBrief: { templateSnapshot: snapshot, customAnswers: { a: 'Ответ' }, archivedAnswers: [archived] } })
+  const safe = filterPartyOrderForAccess(context, original)
+  assert.equal(JSON.stringify(safe).includes('hidden-service'), false)
+  assert.deepEqual(safe.eventBrief.templateSnapshot.applicableFieldIds, ['a'])
+  assert.equal(safe.eventBrief.customAnswers.a, 'Ответ')
+  assert.deepEqual(safe.eventBrief.archivedAnswers[0], { field: { id: 'archived', label: 'Архивный вопрос', type: 'text' }, value: 'Архивный ответ' })
+  assert.deepEqual(original.eventBrief.templateSnapshot.fields[0].serviceIds, ['hidden-service'])
+  assert.deepEqual(original.eventBrief.archivedAnswers[0].field.serviceIds, ['hidden-service'])
+  assert.equal(JSON.stringify(filterPartyOrderForAccess(context, order({ eventBrief: { archivedAnswers: [archived] } }))).includes('hidden-service'), false)
+  context.position.permissions['orders.servicesIds'] = 'read'
+  assert.deepEqual(filterPartyOrderForAccess(context, original).eventBrief.templateSnapshot.fields[0].serviceIds, ['hidden-service'])
+  assert.deepEqual(filterPartyOrderForAccess(context, original).eventBrief.archivedAnswers[0].field.serviceIds, ['hidden-service'])
+})
+
 test('all scope conditions apply together and orders from other tenants never pass', () => {
   assert.equal(canPartyAccess(member(), { resource: 'orders', order: order() }), true)
   for (const change of [{ tenantId: 'company-b' }, { status: 'draft' }, { workflowStageId: 'new' }, { locationId: 'location-b' }, { locationId: null }]) assert.equal(filterPartyOrderForAccess(member(), order(change)), null)

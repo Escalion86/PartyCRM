@@ -44,6 +44,7 @@ import { PartyEventBriefEditor, PartyEventBriefView } from './PartyEventBrief'
 import PartyRoleOrderClientEditor from './PartyRoleOrderClientEditor'
 import PartyRoleNewClient from './PartyRoleNewClient'
 import PartyRoleOrderPayments from './PartyRoleOrderPayments'
+import PartyOrderFulfillment from './PartyOrderFulfillment'
 import usePartyOrderCalendar from './usePartyOrderCalendar'
 import usePartyOrderList from './usePartyOrderList'
 import { toPartyOrderCalendarMonthStart } from './partyOrderCalendarViewModel'
@@ -128,6 +129,17 @@ function RoleOrderEditor({
   const [taskDirty, setTaskDirty] = useState(false)
   const [newClientDirty, setNewClientDirty] = useState(false)
   const [createdClients, setCreatedClients] = useState([])
+  const [initialPayment, setInitialPayment] = useState({
+    amount: '',
+    paymentMethod: 'transfer',
+  })
+  const [initialPaymentInvalid, setInitialPaymentInvalid] = useState(false)
+  const initialPaymentInput = useRef(null)
+  const [contractAmountInvalid, setContractAmountInvalid] = useState(false)
+  const contractAmountInput = useRef(null)
+  const [unresolvedCreate, setUnresolvedCreate] = useState(false)
+  const createAttempt = useRef(null)
+  const saving = useRef(false)
   const childDirty =
     taskDirty || newClientDirty || Object.values(reportDirty).some(Boolean)
   const clientOptions = [
@@ -143,6 +155,7 @@ function RoleOrderEditor({
   const can = (resource, action = 'read') =>
     canPartyAccess(context, { resource, action })
   const editable = (field) =>
+    !unresolvedCreate &&
     !reportDirty.client &&
     !reportDirty.payments &&
     !['closed', 'canceled'].includes(order.status) &&
@@ -155,7 +168,14 @@ function RoleOrderEditor({
     setError('')
   }
   const changes = buildPartyRoleOrderPatch({ order, draft, context })
-  const dirty = changes.dirty || childDirty
+  const initialPaymentDirty =
+    !existing && (initialPayment.amount !== '' || initialPaymentInvalid)
+  const dirty =
+    changes.dirty ||
+    contractAmountInvalid ||
+    childDirty ||
+    initialPaymentDirty ||
+    unresolvedCreate
   usePartyUnsavedChanges(dirty, {
     label: 'заказ',
     scope: companyId,
@@ -208,7 +228,7 @@ function RoleOrderEditor({
     return () => onDirtyChange(false)
   }, [dirty, onDirtyChange])
   const save = async () => {
-    if (busy) return
+    if (busy || saving.current) return
     if (childDirty) {
       setError('Сначала сохраните или отмените изменения во вложенном разделе.')
       return
@@ -219,7 +239,41 @@ function RoleOrderEditor({
       )
       return
     }
-    if (!changes.dirty) return
+    if (
+      !unresolvedCreate &&
+      (contractAmountInvalid ||
+        (Object.hasOwn(changes.patch, 'contractAmount') &&
+          contractAmountInput.current?.validity.valid === false))
+    ) {
+      setError(
+        'Укажите неотрицательную стоимость с точностью до копеек или очистите поле.'
+      )
+      return
+    }
+    if (!changes.dirty && !initialPaymentDirty && !unresolvedCreate) return
+    let requestBody = {
+      ...changes.patch,
+      ...(existing
+        ? { commercialRevision: order.commercialRevision || 0 }
+        : {}),
+      ...(initialPaymentDirty ? { initialPayment } : {}),
+    }
+    if (
+      initialPaymentDirty &&
+      !unresolvedCreate &&
+      (initialPaymentInput.current?.validity.valid === false ||
+        !Number.isFinite(Number(initialPayment.amount)) ||
+        Number(initialPayment.amount) <= 0)
+    ) {
+      setError(
+        'Укажите положительную сумму полученного аванса с точностью до копеек или очистите поле.'
+      )
+      return
+    }
+    if (!existing && initialPaymentDirty && !createAttempt.current)
+      createAttempt.current = { key: crypto.randomUUID(), body: requestBody }
+    if (unresolvedCreate) requestBody = createAttempt.current.body
+    saving.current = true
     setBusy(true)
     setError('')
     try {
@@ -227,19 +281,29 @@ function RoleOrderEditor({
         existing ? `/api/party/orders/${order._id}` : '/api/party/orders',
         {
           method: existing ? 'PATCH' : 'POST',
-          headers: { 'x-partycrm-company-id': companyId },
-          body: JSON.stringify({
-            ...changes.patch,
-            ...(existing
-              ? { commercialRevision: order.commercialRevision || 0 }
+          headers: {
+            'x-partycrm-company-id': companyId,
+            ...(!existing && createAttempt.current
+              ? { 'Idempotency-Key': createAttempt.current.key }
               : {}),
-          }),
+          },
+          body: JSON.stringify(requestBody),
         }
       )
       onSaved(result.data, result.accessChanged || !result.data)
     } catch (cause) {
+      const knownAbort = ['partycrm_initial_payment_transaction_required', 'partycrm_venue_transaction_required', 'partycrm_venue_topology_unavailable', 'partycrm_venue_lock_required'].includes(cause.payload?.error?.code)
+      if (
+        !existing &&
+        createAttempt.current &&
+        !knownAbort &&
+        (!cause.status || cause.status >= 500)
+      )
+        setUnresolvedCreate(true)
+      else if (!unresolvedCreate) createAttempt.current = null
       setError(cause.message || 'Не удалось сохранить заказ')
     } finally {
+      saving.current = false
       setBusy(false)
     }
   }
@@ -335,6 +399,20 @@ function RoleOrderEditor({
     visible(field) ? (
       <OrderField label={label} key={field}>
         <input
+          {...(field === 'contractAmount'
+            ? {
+                ref: contractAmountInput,
+                min: 0,
+                step: 0.01,
+                inputMode: 'decimal',
+                'aria-invalid': contractAmountInvalid || undefined,
+                onInput: (event) => {
+                  contractAmountInput.current = event.currentTarget
+                  setContractAmountInvalid(!event.currentTarget.validity.valid)
+                  setError('')
+                },
+              }
+            : {})}
           aria-label={label}
           type={type}
           disabled={busy || !editable(field)}
@@ -494,7 +572,79 @@ function RoleOrderEditor({
           >
             {item.id === 'main' ? (
               <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                {existing && can('orders.fulfillment') ? (
+                  <PartyOrderFulfillment
+                    order={order}
+                    context={context}
+                    companyId={companyId}
+                    disabled={busy || dirty}
+                    onSaved={onSaved}
+                  />
+                ) : null}
                 {textField('title', 'Название заказа')}
+                {!existing && can('finance.payments', 'edit') ? (
+                  <fieldset
+                    className="space-y-3 rounded-lg border border-slate-200 p-3 sm:col-span-2"
+                    disabled={busy || unresolvedCreate}
+                  >
+                    <legend className="px-1 text-sm font-semibold text-slate-800">
+                      Стоимость и полученный аванс
+                    </legend>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      {textField(
+                        'contractAmount',
+                        'Стоимость для клиента, ₽',
+                        'number'
+                      )}
+                      <OrderField label="Аванс при создании, ₽">
+                        <input
+                          ref={initialPaymentInput}
+                          aria-label="Аванс при создании, ₽"
+                          aria-invalid={initialPaymentInvalid || undefined}
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          inputMode="decimal"
+                          className={control}
+                          value={initialPayment.amount}
+                          onInput={(event) => {
+                            setInitialPaymentInvalid(
+                              !event.currentTarget.validity.valid
+                            )
+                            setError('')
+                          }}
+                          onChange={(event) =>
+                            setInitialPayment((previous) => ({
+                              ...previous,
+                              amount: event.target.value,
+                            }))
+                          }
+                        />
+                      </OrderField>
+                      <OrderField label="Как получен аванс">
+                        <select
+                          className={control}
+                          value={initialPayment.paymentMethod}
+                          onChange={(event) =>
+                            setInitialPayment((previous) => ({
+                              ...previous,
+                              paymentMethod: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="transfer">Перевод</option>
+                          <option value="cash">Наличные</option>
+                          <option value="account">На расчётный счёт</option>
+                        </select>
+                      </OrderField>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Заполняйте аванс, только если деньги уже получены. Заказ,
+                      бронь и ручная запись оплаты сохранятся вместе. Поле можно
+                      оставить пустым.
+                    </p>
+                  </fieldset>
+                ) : null}
                 {clientPicker ? (
                   <div className="min-w-0 space-y-1">
                     {clientPicker}
@@ -564,6 +714,7 @@ function RoleOrderEditor({
                   disabled={
                     busy ||
                     changes.dirty ||
+                    contractAmountInvalid ||
                     taskDirty ||
                     Object.entries(reportDirty).some(
                       ([key, value]) => key !== 'client' && value
@@ -772,6 +923,9 @@ function RoleOrderEditor({
                   orderId={order._id}
                   orderStatus={order.status || 'draft'}
                   value={draft.eventBrief || {}}
+                  servicesIds={
+                    can('orders.servicesIds') ? draft.servicesIds : undefined
+                  }
                   disabled={busy}
                   onChange={(value) => change('eventBrief', value)}
                 />
@@ -781,6 +935,7 @@ function RoleOrderEditor({
                   orderId={order._id}
                   orderStatus={order.status || 'draft'}
                   value={order.eventBrief || {}}
+                  servicesIds={order.servicesIds}
                 />
               )
             ) : null}
@@ -968,6 +1123,7 @@ function RoleOrderEditor({
                   disabled={
                     busy ||
                     changes.dirty ||
+                    contractAmountInvalid ||
                     taskDirty ||
                     newClientDirty ||
                     Object.entries(reportDirty).some(
@@ -1109,7 +1265,7 @@ function RoleOrderEditor({
           role="region"
           aria-label="Сохранение заказа"
           className={
-            (childDirty || (existing && !changes.dirty)
+            (childDirty || (existing && !changes.dirty && !contractAmountInvalid)
               ? ''
               : 'sticky bottom-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] z-20 md:bottom-0 ') +
             'flex flex-wrap items-center justify-end gap-2 rounded-b-2xl border-t border-sky-100 bg-white p-3 shadow-[0_-4px_14px_rgb(15_23_42_/_0.04)] sm:p-4'
@@ -1123,10 +1279,20 @@ function RoleOrderEditor({
               {error}
             </p>
           ) : null}
+          {unresolvedCreate ? (
+            <p
+              role="status"
+              className="w-full rounded-lg bg-amber-50 p-3 text-sm text-amber-900"
+            >
+              Связь прервалась: заказ мог сохраниться. Повторите проверку этой
+              же операции. Данные временно заблокированы, чтобы не записать
+              второй заказ или аванс.
+            </p>
+          ) : null}
           <span role="status" className="mr-auto text-xs text-slate-500">
             {busy
               ? 'Сохранение…'
-              : changes.dirty
+              : changes.dirty || contractAmountInvalid
                 ? 'Есть несохранённые изменения заказа'
                 : childDirty
                   ? 'Есть несохранённые изменения в разделе'
@@ -1134,14 +1300,27 @@ function RoleOrderEditor({
                     ? 'Изменения сохранены'
                     : 'Заполните клиента или услугу, затем создайте заказ'}
           </span>
-          {changes.dirty || !existing ? (
+          {changes.dirty || contractAmountInvalid || !existing ? (
             <button
               type="button"
               className={button + ' bg-sky-600 text-white hover:bg-sky-700'}
-              disabled={busy || !changes.dirty || childDirty}
+              disabled={
+                busy ||
+                (!changes.dirty &&
+                  !contractAmountInvalid &&
+                  !initialPaymentDirty &&
+                  !unresolvedCreate) ||
+                childDirty
+              }
               onClick={save}
             >
-              {existing ? 'Сохранить заказ' : 'Создать заказ'}
+              {existing
+                ? 'Сохранить заказ'
+                : unresolvedCreate
+                  ? 'Проверить и повторить сохранение'
+                  : initialPaymentDirty
+                    ? 'Создать заказ и записать аванс'
+                    : 'Создать заказ'}
             </button>
           ) : null}
         </div>
@@ -1330,6 +1509,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     month: calendarMonth,
     accessKey,
     refreshKey: calendarRevision,
+    ticketsEnabled: can('tickets'),
   })
   const calendarAccess = useMemo(
     () => ({
@@ -1338,6 +1518,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
       clientName: canPartyAccess(context, { resource: 'orders.client.name' }),
       status: canPartyAccess(context, { resource: 'orders.status' }),
       end: canPartyAccess(context, { resource: 'orders.dateEnd' }),
+      tickets: canPartyAccess(context, { resource: 'tickets' }),
     }),
     [context]
   )
@@ -1376,6 +1557,12 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   const leave = (target) => requestPartyLeave({ kind: 'record', target })
   const open = async (order) => {
     if (busy || openingId) return
+    if (order.calendarEntityType === 'ticket_session') {
+      const href = `${window.location.pathname.startsWith('/performer') ? '/performer' : '/company'}/ticketing?${new URLSearchParams({ sessionId: order.ticketSessionId, companyId })}`
+      if (!requestPartyLeave({ kind: 'route', target: href })) return
+      window.location.assign(href)
+      return
+    }
     if (!leave(String(order._id || 'new'))) return
     opener.current = document.activeElement
     const current = ++openingGeneration.current
@@ -1460,6 +1647,17 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     effectiveView === 'list'
       ? list.orders
       : calendar.orders.filter((order) => {
+          if (order.calendarEntityType === 'ticket_session')
+            return (
+              !effectiveStageFilter &&
+              effectiveQuickFilter !== 'tasks' &&
+              (!effectiveSearch.trim() ||
+                String(order.title || '')
+                  .toLowerCase()
+                  .includes(effectiveSearch.trim().toLowerCase())) &&
+              (effectiveQuickFilter !== 'today' ||
+                new Date(order.eventDate).toDateString() === today)
+            )
           if (!matchesQuickFilter(order)) return false
           if (
             effectiveStageFilter &&

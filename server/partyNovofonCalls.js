@@ -1,15 +1,19 @@
+import { withPartyOrderVenueWrite } from './partyVenueBookings.js'
+
 const cleanText = (value, maxLength = 4000) => {
   const text = String(value ?? '').trim()
   return text ? text.slice(0, maxLength) : ''
 }
 
-const normalizePhoneDigits = (phone) => String(phone ?? '').replace(/[^\d]/g, '')
+const normalizePhoneDigits = (phone) =>
+  String(phone ?? '').replace(/[^\d]/g, '')
 
 export const normalizePartyCallPhone = (phone) => {
   const digits = normalizePhoneDigits(phone)
   if (!digits) return ''
   if (digits.length === 10) return `7${digits}`
-  if (digits.length === 11 && digits.startsWith('8')) return `7${digits.slice(1)}`
+  if (digits.length === 11 && digits.startsWith('8'))
+    return `7${digits.slice(1)}`
   return digits
 }
 
@@ -46,10 +50,7 @@ export const findPartyClientByCallPhone = async ({
   return Client.findOne({
     tenantId,
     status: { $ne: 'archived' },
-    $or: [
-      { phone: { $in: variants } },
-      { whatsapp: { $in: variants } },
-    ],
+    $or: [{ phone: { $in: variants } }, { whatsapp: { $in: variants } }],
   }).lean()
 }
 
@@ -87,7 +88,10 @@ export const buildPartyOrderDraftFromCall = ({ call, client }) => {
     clientId: client?._id || null,
     client: {
       name: [client?.firstName, client?.secondName].filter(Boolean).join(' '),
-      phone: cleanText(client?.phone || call?.normalizedPhone || call?.phone, 40),
+      phone: cleanText(
+        client?.phone || call?.normalizedPhone || call?.phone,
+        40
+      ),
       email: cleanText(client?.email, 160),
     },
     eventDate: normalizeDate(fields.eventDate),
@@ -119,6 +123,7 @@ export const createPartyOrderFromCallDraft = async ({
   callId,
   now = new Date(),
   prepareOrderPayload = null,
+  withOrderVenueWrite = withPartyOrderVenueWrite,
 }) => {
   if (!models?.Call || !models?.Order || !tenantId || !callId) {
     return {
@@ -203,20 +208,56 @@ export const createPartyOrderFromCallDraft = async ({
     }
   }
 
-  const order = asPlainObject(
-    await models.Order.create({ ...(prepared?.payload ?? orderPayload), tenantId })
-  )
-  const orderId = order?._id || null
-  const update = {
-    $set: {
-      linkedOrderId: orderId,
-      status: 'linked',
-      eventDecision: 'created',
-      eventDecisionAt: now,
-    },
+  let order, update
+  try {
+    const payload = { ...(prepared?.payload ?? orderPayload), tenantId }
+    order = asPlainObject(
+      await withOrderVenueWrite({
+        tenantId,
+        nextOrder: payload,
+        work: async ({ session }) => {
+          const created = session
+            ? (await models.Order.create([payload], { session }))[0]
+            : await models.Order.create(payload)
+          update = {
+            $set: {
+              linkedOrderId: created?._id || null,
+              status: 'linked',
+              eventDecision: 'created',
+              eventDecisionAt: now,
+            },
+          }
+          const linked = await models.Call.updateOne(
+            {
+              _id: call._id,
+              tenantId,
+              ...(session ? { linkedOrderId: call.linkedOrderId || null } : {}),
+            },
+            update,
+            session ? { session } : {}
+          )
+          if (session && linked.matchedCount !== 1)
+            throw Object.assign(new Error('По этому звонку уже создан заказ'), {
+              status: 409,
+              code: 'partycrm_call_order_already_created',
+            })
+          return created
+        },
+      })
+    )
+  } catch (cause) {
+    return {
+      error: {
+        status: cause.status || 500,
+        code: cause.code || 'partycrm_call_order_failed',
+        message: cause.status
+          ? cause.message
+          : 'Не удалось создать заказ из звонка',
+      },
+      order: null,
+      call,
+    }
   }
-
-  await models.Call.updateOne({ _id: call._id, tenantId }, update)
 
   return {
     error: null,
@@ -231,7 +272,9 @@ export const createPartyOrderFromCallDraft = async ({
 const normalizeCallStatus = ({ normalized, hasTranscript, hasAi }) => {
   if (hasTranscript || hasAi) return 'ready'
   const status = cleanText(normalized.status, 40)
-  return ['new', 'processing', 'ready', 'linked', 'ignored', 'failed'].includes(status)
+  return ['new', 'processing', 'ready', 'linked', 'ignored', 'failed'].includes(
+    status
+  )
     ? status
     : 'new'
 }
@@ -335,7 +378,20 @@ export const savePartyNovofonCall = async ({
   if (call?._id && call.orderDraft?.leadMeta) {
     call.orderDraft.leadMeta.sourceCallId = call._id
   }
-  if (call?._id && callSet.direction === 'incoming' && typeof registerInboxIncoming === 'function') await registerInboxIncoming({ tenantId, channel: 'novofon', sourceId: call._id, token: call._id, at: startedAt, text: transcript || callSet.aiSummary, call: true })
+  if (
+    call?._id &&
+    callSet.direction === 'incoming' &&
+    typeof registerInboxIncoming === 'function'
+  )
+    await registerInboxIncoming({
+      tenantId,
+      channel: 'novofon',
+      sourceId: call._id,
+      token: call._id,
+      at: startedAt,
+      text: transcript || callSet.aiSummary,
+      call: true,
+    })
 
   return { call, client, orderDraft: call?.orderDraft ?? orderDraft }
 }

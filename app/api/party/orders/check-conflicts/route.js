@@ -8,6 +8,7 @@ import {
 } from '@server/partyApi'
 import { findPartyOrderConflicts } from '@server/partyOrderConflicts'
 import { getPartySharedLocationOrderIds } from '@server/partyRelatedOrders'
+import { checkPartyVenueAvailability } from '@server/partyVenueBookings'
 import { normalizeOrderPayload, validateOrderReferences } from '../route'
 
 export async function POST(req) {
@@ -36,8 +37,19 @@ export async function POST(req) {
 
   const PartyOrders = await getPartyOrderModel()
   const orderId = body?.orderId || null
-  if (orderId && !isValidObjectId(orderId)) return partyError(400, 'partycrm_invalid_order_id', 'Некорректный id заказа')
-  if (orderId && !await PartyOrders.findOne({ _id: orderId, tenantId: context.tenantId }).lean()) {
+  if (orderId && !isValidObjectId(orderId))
+    return partyError(
+      400,
+      'partycrm_invalid_order_id',
+      'Некорректный id заказа'
+    )
+  if (
+    orderId &&
+    !(await PartyOrders.findOne({
+      _id: orderId,
+      tenantId: context.tenantId,
+    }).lean())
+  ) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
   const conflicts = await findPartyOrderConflicts({
@@ -46,9 +58,35 @@ export async function POST(req) {
     payload,
     excludeOrderId: orderId,
     sharedLocationOrderIds: orderId
-      ? await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId })
+      ? await getPartySharedLocationOrderIds({
+          tenantId: context.tenantId,
+          orderId,
+        })
       : [],
+    checkLocation: false,
   })
+  if (payload.placeType === 'company_location' && payload.locationId) {
+    try {
+      await checkPartyVenueAvailability({
+        tenantId: context.tenantId,
+        sourceId: orderId,
+        locationId: payload.locationId,
+        startsAt: payload.eventDate,
+        endsAt: payload.dateEnd,
+      })
+    } catch (cause) {
+      if (cause.code === 'partycrm_venue_conflict')
+        conflicts.locationConflicts = [{ message: cause.message }]
+      else
+        return partyError(
+          cause.status || 503,
+          cause.code || 'partycrm_venue_preview_failed',
+          cause.status
+            ? cause.message
+            : 'Не удалось проверить занятость площадки'
+        )
+    }
+  }
 
   return NextResponse.json({
     success: true,

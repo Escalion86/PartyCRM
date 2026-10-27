@@ -50,6 +50,7 @@ async function setup(currentRoles, currentExtras = {}) {
       assert.deepEqual(filter.status, { $ne: 'archived' })
       return filter._id.$in.filter((value) => value === clientId).length
     } }),
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => ({
       findOne: () => q(current), countDocuments: async () => 0,
       create: async (doc) => { writes++; current = { ...doc, _id: id }; return { ...current, toObject: () => ({ ...current }) } },
@@ -112,6 +113,7 @@ test('legacy PATCH preserves roles and explicit replacement clears omitted roles
 test('delete protection counts any contact role in same tenant', async () => {
   const empty = async () => ({ countDocuments: async () => 0 })
   const { getPartyClientDeleteRelations, hasPartyClientDeleteRelations } = await load('./partyClientDeleteCheck.js', {
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => ({ countDocuments: async (filter) => {
       assert.equal(filter.tenantId, tenantId)
       for (const key of roles.PARTY_ORDER_CONTACT_ROLE_KEYS) assert.ok(filter.$or.some((part) => part[`contactRoles.${key}`] === clientId))
@@ -119,6 +121,7 @@ test('delete protection counts any contact role in same tenant', async () => {
     } }),
     getPartyTransactionModel: empty, getPartyCallModel: empty,
     getPartyVkConversationModel: empty, getPartyAvitoConversationModel: empty,
+    getPartyTicketSaleModel: empty,
   }, 'getPartyClientDeleteRelations, hasPartyClientDeleteRelations')
   assert.equal(hasPartyClientDeleteRelations(await getPartyClientDeleteRelations({ tenantId, clientId })), true)
 })
@@ -129,9 +132,11 @@ test('merge remaps all roles within tenant before archiving source', async () =>
   const { mergePartyClients } = await load('./partyClientMerge.js', {
     getPartyClientModel: async () => ({ findOne: (filter) => { assert.equal(filter.tenantId, tenantId); return q({ _id: filter._id }) },
       findOneAndUpdate: () => { assert.equal(updates.length, 6); return q({}) } }),
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => ({ updateMany: async (filter, update) => { updates.push({ filter, update }); return { modifiedCount: 1 } } }),
     getPartyTransactionModel: empty, getPartyCallModel: empty, getPartyVkConversationModel: empty, getPartyVkMessageModel: empty,
     getPartyAvitoConversationModel: empty, getPartyAvitoMessageModel: empty, getPartyTelegramConversationModel: empty, getPartyTelegramMessageModel: empty,
+    getPartyTicketSaleModel: empty,
   }, 'mergePartyClients')
   assert.equal((await mergePartyClients({ tenantId, sourceClientId: clientId, targetClientId: id })).ok, true)
   for (const key of roles.PARTY_ORDER_CONTACT_ROLE_KEYS) {

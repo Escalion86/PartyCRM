@@ -20,19 +20,22 @@ export const getPartyRoleCalendarRange = (days) => {
 // Calendar labels are an explicit projection, including when a test/API fixture
 // accidentally carries metadata that the current position cannot read.
 export const projectPartyRoleCalendarOrder = (order, access = {}) => {
+  const ticket = order.calendarEntityType === 'ticket_session'
+  if (ticket && !access.tickets) return null
   const start = validDate(order.eventDate)
   if (!start) return null
-  const end = access.end ? validDate(order.dateEnd) : null
+  const end = ticket || access.end ? validDate(order.dateEnd) : null
   return {
     id: String(order._id),
     start,
     end: end && end >= start ? end : null,
     title:
+      (ticket && `Сеанс: ${order.title || 'Билетная программа'}`) ||
       (access.title && order.title) ||
       (access.service && order.serviceTitle) ||
       'Заказ',
-    clientName: access.clientName ? order.client?.name || '' : '',
-    status: access.status ? order.status || '' : '',
+    clientName: !ticket && access.clientName ? order.client?.name || '' : '',
+    status: ticket || access.status ? order.status || '' : '',
   }
 }
 

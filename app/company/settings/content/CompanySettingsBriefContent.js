@@ -11,6 +11,88 @@ const control =
 const button =
   'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-medium text-sky-800 disabled:cursor-not-allowed disabled:opacity-50'
 
+function BriefServiceCondition({ field, services, onChange, disabled }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const selected = field.serviceIds || []
+  const available = [
+    ...services,
+    ...selected
+      .filter((id) => !services.some((service) => String(service._id) === id))
+      .map((id) => ({ _id: id, title: 'Сохранённая услуга' })),
+  ]
+  const filtered = available.filter(
+    (service) =>
+      !search.trim() ||
+      service.title
+        .toLocaleLowerCase('ru')
+        .includes(search.trim().toLocaleLowerCase('ru'))
+  )
+  return (
+    <details
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+      className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+    >
+      <summary className="min-h-8 cursor-pointer text-sm font-semibold text-slate-700">
+        {selected.length
+          ? `Показывать для выбранных услуг · ${selected.length}`
+          : 'Показывать для любых услуг'}
+      </summary>
+      {open ? (
+        <fieldset
+          className="mt-3 space-y-2"
+          disabled={disabled}
+          aria-label={`Услуги вопроса ${field.label || 'без названия'}`}
+        >
+          <p className="text-xs text-slate-500">
+            Без выбора услуг вопрос общий. Если выбраны несколько, достаточно
+            любой из них в заказе.
+          </p>
+          {available.length > 8 ? (
+            <label className="block text-sm">
+              Поиск услуг
+              <input
+                className={control}
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </label>
+          ) : null}
+          <div className="max-h-64 overflow-auto">
+            {filtered.map((service) => (
+              <label
+                key={String(service._id)}
+                className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(String(service._id))}
+                  onChange={(event) =>
+                    onChange(
+                      event.target.checked
+                        ? [...selected, String(service._id)]
+                        : selected.filter((id) => id !== String(service._id))
+                    )
+                  }
+                />
+                {service.title}
+                {service.status === 'archived' ? ' · архив' : ''}
+              </label>
+            ))}
+          </div>
+          {!available.length ? (
+            <p className="text-xs text-slate-500">
+              Услуги компании пока не добавлены.
+            </p>
+          ) : null}
+        </fieldset>
+      ) : null}
+    </details>
+  )
+}
+
 export default function CompanySettingsBriefContent({ activeCompanyId }) {
   const [draft, setDraft] = useState(null)
   const [savedDraft, setSavedDraft] = useState('')
@@ -22,6 +104,8 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [services, setServices] = useState([])
+  const [previewServices, setPreviewServices] = useState([])
   const draftKey = draft
     ? JSON.stringify({ title: draft.title, fields: draft.fields })
     : ''
@@ -40,6 +124,7 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
       .then((result) => {
         if (alive) {
           setDraft(result.data)
+          setServices(result.data.serviceOptions || [])
           setSavedDraft(
             JSON.stringify({
               title: result.data.title,
@@ -145,8 +230,9 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
   return (
     <div className="space-y-4">
       <p className="text-sm leading-6 text-slate-600">
-        Одна форма брифа для компании. Все вопросы обязательны при переходе
-        заказа на следующий этап. Незавершённый бриф можно сохранить в новой
+        Одна форма брифа для компании. Вопрос можно показывать для любых услуг
+        или только выбранных. При передаче с проверкой брифа учитываются обязательные
+        вопросы, подходящие услугам заказа. Незавершённый бриф можно сохранить в
         заявке.
       </p>
       {error && (
@@ -177,11 +263,14 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
               maxLength={180}
               className={control}
               value={draft.title}
-              disabled={busy}
+              disabled={busy || draft.canManage === false}
               onChange={(event) => edit({ title: event.target.value })}
             />
           </label>
-          <fieldset disabled={busy} className="space-y-3">
+          <fieldset
+            disabled={busy || draft.canManage === false}
+            className="space-y-3"
+          >
             <legend className="mb-2 text-sm font-semibold">
               Вопросы · {draft.fields.length}
             </legend>
@@ -245,6 +334,12 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
                     />
                   </label>
                 )}
+                <BriefServiceCondition
+                  field={field}
+                  services={services}
+                  disabled={busy || draft.canManage === false}
+                  onChange={(serviceIds) => editField(field.id, { serviceIds })}
+                />
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -289,6 +384,7 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
                       options: [],
                       legacyKey: null,
                       required: true,
+                      serviceIds: [],
                     },
                   ],
                 })
@@ -332,6 +428,7 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
             className={button}
             disabled={
               busy ||
+              draft.canManage === false ||
               !draft.title.trim() ||
               !decisionsMade ||
               draft.fields.some((field) => !field.label.trim())
@@ -349,14 +446,50 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
                 {preview.archivedAnswerCount}. Закрытые заказы сохранят свою
                 форму.
               </p>
+              {services.length ? (
+                <details className="rounded-lg border border-sky-200 bg-white p-3">
+                  <summary className="min-h-8 cursor-pointer text-sm font-semibold">
+                    Услуги заказа для предпросмотра · {previewServices.length}
+                  </summary>
+                  <p className="mb-2 text-xs text-slate-500">
+                    Без выбора услуг видны только общие вопросы.
+                  </p>
+                  <div className="grid max-h-56 gap-1 overflow-auto sm:grid-cols-2">
+                    {services.map((service) => (
+                      <label
+                        key={String(service._id)}
+                        className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={previewServices.includes(
+                            String(service._id)
+                          )}
+                          onChange={(event) =>
+                            setPreviewServices((previous) =>
+                              event.target.checked
+                                ? [...previous, String(service._id)]
+                                : previous.filter(
+                                    (id) => id !== String(service._id)
+                                  )
+                            )
+                          }
+                        />
+                        {service.title}
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
               <PartyEventBriefEditor
                 template={preview}
                 value={previewAnswers}
                 onChange={setPreviewAnswers}
+                servicesIds={previewServices}
               />
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || draft.canManage === false}
                 className="min-h-11 cursor-pointer rounded-lg bg-sky-600 px-4 py-2 font-semibold text-white disabled:opacity-50"
                 onClick={() => submit(false)}
               >

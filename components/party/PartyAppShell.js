@@ -18,6 +18,7 @@ import {
   faUserGroup,
   faUserTie,
   faClockRotateLeft,
+  faTicket,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
@@ -34,12 +35,19 @@ import cn from 'classnames'
 import Link from 'next/link'
 import PartyMobileNav from './PartyMobileNav'
 import PartyUnsavedChangesBootstrap from './navigation/PartyUnsavedChangesBootstrap'
-import { requestPartyLeave, allowPartyNavigation } from './navigation/partyUnsavedChangesRuntime'
+import {
+  requestPartyLeave,
+  allowPartyNavigation,
+} from './navigation/partyUnsavedChangesRuntime'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { canPartyOperationalPermission } from '@helpers/partyOperationalPermissions'
-import { canPartyAccess, isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
+import {
+  canPartyAccess,
+  isPartyRestrictedManagementContext,
+} from '@helpers/partyRolePermissions'
 import { getPartyMobileNavItems } from '@helpers/partyMobileNavigation'
+import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
 import {
   PARTY_ACTIVE_COMPANY_STORAGE_KEY as ACTIVE_COMPANY_STORAGE_KEY,
   PARTY_ACTIVE_COMPANY_EVENT,
@@ -48,8 +56,25 @@ import {
 
 const companyMenu = [
   { href: '/company', label: 'Обзор', icon: faHome },
-  { href: '/company/tasks', label: 'Задачи', icon: faCalendarCheck, resource: 'tasks' },
-  { href: '/company/work', label: 'Заказы', icon: faBriefcase, resource: 'orders' },
+  {
+    href: '/company/tasks',
+    label: 'Задачи',
+    icon: faCalendarCheck,
+    resource: 'tasks',
+  },
+  {
+    href: '/company/work',
+    label: 'Заказы',
+    icon: faBriefcase,
+    resource: 'orders',
+  },
+  {
+    href: '/company/ticketing',
+    label: 'Билеты и посещения',
+    icon: faTicket,
+    resource: 'tickets',
+    ticketing: true,
+  },
   { href: '/company/calls', label: 'Звонки', icon: faPhone },
   {
     href: '/company/inbox',
@@ -98,15 +123,37 @@ const ordersSubMenu = [
 ]
 
 const performerMenu = [
-  { href: '/performer/tasks', label: 'Задачи', icon: faCalendarCheck, resource: 'tasks' },
-  { href: '/performer/work', label: 'Заказы', icon: faBriefcase, resource: 'orders' },
+  {
+    href: '/performer/tasks',
+    label: 'Задачи',
+    icon: faCalendarCheck,
+    resource: 'tasks',
+  },
+  {
+    href: '/performer/work',
+    label: 'Заказы',
+    icon: faBriefcase,
+    resource: 'orders',
+  },
+  {
+    href: '/performer/ticketing',
+    label: 'Билеты и посещения',
+    icon: faTicket,
+    resource: 'tickets',
+    ticketing: true,
+  },
   {
     href: '/performer/reports',
     label: 'Проверка отчётов',
     icon: faCalendarCheck,
     resource: 'reports',
   },
-  { href: '/performer/library', label: 'Опыт команды', icon: faStar, resource: 'reports.creative' },
+  {
+    href: '/performer/library',
+    label: 'Опыт команды',
+    icon: faStar,
+    resource: 'reports.creative',
+  },
   {
     href: '/performer/inventory',
     label: 'Выдача реквизита',
@@ -126,18 +173,45 @@ const performerMenu = [
     permission: 'orders.assignments',
   },
   { href: '/performer/settings', label: 'Настройки кабинета', icon: faGear },
-  { href: '/company/settings', label: 'Настройки компании', icon: faGear, managementOnly: true },
+  {
+    href: '/company/settings',
+    label: 'Настройки компании',
+    icon: faGear,
+    managementOnly: true,
+  },
 ]
 
 const locationOwnerMenu = [
   { href: '/company/my-locations', label: 'Мои площадки', icon: faLocationDot },
-  { href: '/company/tasks', label: 'Задачи', icon: faCalendarCheck, resource: 'tasks' },
-  { href: '/company/work', label: 'Заказы', icon: faBriefcase, resource: 'orders' },
+  {
+    href: '/company/tasks',
+    label: 'Задачи',
+    icon: faCalendarCheck,
+    resource: 'tasks',
+  },
+  {
+    href: '/company/work',
+    label: 'Заказы',
+    icon: faBriefcase,
+    resource: 'orders',
+  },
+  {
+    href: '/company/ticketing',
+    label: 'Билеты и посещения',
+    icon: faTicket,
+    resource: 'tickets',
+    ticketing: true,
+  },
 ]
 
 const secondaryMenu = [
   { href: '/company', label: 'Кабинет компании', icon: faBriefcase },
-  { href: '/performer', label: 'Мои назначения', icon: faUserTie, performerOnly: true },
+  {
+    href: '/performer',
+    label: 'Мои назначения',
+    icon: faUserTie,
+    performerOnly: true,
+  },
   { href: '/party/settings', label: 'Настройки', icon: faGear, always: true },
 ]
 
@@ -259,25 +333,72 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const canUseSiteSettings = canAccessPartySiteSettings(partyUser?.role)
   const isCompanyVariant =
     effectiveVariant === 'company' || effectiveVariant === 'company-settings'
-  const mobileCompany = isCompanyVariant || (effectiveVariant === 'settings' && canUseCompany)
-  const legacyCompanyAllowed = activeMembership?.status === 'active' && activeMembership?.isAdmin && !isPartyRestrictedManagementContext(activeMembership)
+  const mobileCompany =
+    isCompanyVariant || (effectiveVariant === 'settings' && canUseCompany)
+  const legacyCompanyAllowed =
+    activeMembership?.status === 'active' &&
+    activeMembership?.isAdmin &&
+    !isPartyRestrictedManagementContext(activeMembership)
   const visibleCompanyMenu = companyMenu.filter(
-    (item) => (legacyCompanyAllowed || ['/company/work', '/company/tasks'].includes(item.href) || (item.href === '/company/settings' && activeMembership?.status === 'active' && activeMembership?.isAdmin)) && (!item.managementOnly || activeMembership?.isAdmin) && (!item.resource || (activeMembership && canPartyAccess({ ...activeMembership, staff: activeMembership.staff, position: activeMembership.position }, { resource: item.resource })))
+    (item) =>
+      (legacyCompanyAllowed ||
+        ['/company/work', '/company/tasks', '/company/ticketing'].includes(
+          item.href
+        ) ||
+        (item.href === '/company/settings' &&
+          activeMembership?.status === 'active' &&
+          activeMembership?.isAdmin)) &&
+      (!item.ticketing || isPartyTicketingEnabled(activeMembership?.company)) &&
+      (!item.managementOnly || activeMembership?.isAdmin) &&
+      (!item.resource ||
+        (activeMembership &&
+          canPartyAccess(
+            {
+              ...activeMembership,
+              staff: activeMembership.staff,
+              position: activeMembership.position,
+            },
+            { resource: item.resource }
+          )))
   )
   const visiblePerformerMenu = performerMenu.filter(
     (item) =>
       (item.href !== '/performer' || canUsePerformer) &&
-      (!item.managementOnly || memberships.some((membership) => membership.status === 'active' && membership.isAdmin)) &&
-      (!item.resource || memberships.some((membership) => canPartyAccess({ ...membership, staff: membership.staff, position: membership.position }, { resource: item.resource }))) && (
-      !item.permission ||
-      memberships.some((membership) =>
-        canPartyOperationalPermission(membership, item.permission)
-      ))
+      (!item.ticketing ||
+        (isPartyTicketingEnabled(activeMembership?.company) &&
+          activeMembership &&
+          canPartyAccess(activeMembership, { resource: 'tickets' }))) &&
+      (!item.managementOnly ||
+        memberships.some(
+          (membership) => membership.status === 'active' && membership.isAdmin
+        )) &&
+      (!item.resource ||
+        memberships.some((membership) =>
+          canPartyAccess(
+            {
+              ...membership,
+              staff: membership.staff,
+              position: membership.position,
+            },
+            { resource: item.resource }
+          )
+        )) &&
+      (!item.permission ||
+        memberships.some((membership) =>
+          canPartyOperationalPermission(membership, item.permission)
+        ))
   )
   const primaryMenu =
     (activeMembership?.role === 'location_owner' && isCompanyVariant) ||
     pathname === '/company/my-locations'
-      ? locationOwnerMenu.filter((item) => !item.resource || (activeMembership && canPartyAccess(activeMembership, { resource: item.resource })))
+      ? locationOwnerMenu.filter(
+          (item) =>
+            (!item.ticketing ||
+              isPartyTicketingEnabled(activeMembership?.company)) &&
+            (!item.resource ||
+              (activeMembership &&
+                canPartyAccess(activeMembership, { resource: item.resource })))
+        )
       : effectiveVariant === 'performer'
         ? visiblePerformerMenu
         : effectiveVariant === 'settings'
@@ -292,8 +413,18 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const mobileNavItems = getPartyMobileNavItems({
     menu: primaryMenu,
     company: mobileCompany,
-    preferWork: ['/company/work', '/performer/work', '/company/tasks', '/performer/tasks'].includes(pathname) || !legacyCompanyAllowed && !canUsePerformer,
-    canCreate: Boolean(activeMembership && canPartyAccess(activeMembership, { resource: 'orders', action: 'create' })),
+    preferWork:
+      [
+        '/company/work',
+        '/performer/work',
+        '/company/tasks',
+        '/performer/tasks',
+      ].includes(pathname) ||
+      (!legacyCompanyAllowed && !canUsePerformer),
+    canCreate: Boolean(
+      activeMembership &&
+      canPartyAccess(activeMembership, { resource: 'orders', action: 'create' })
+    ),
   })
   const visibleSecondaryMenu = secondaryMenu.filter((item) => {
     if (item.always) return true
@@ -307,7 +438,9 @@ export default function PartyAppShell({ variant = 'company', children }) {
     if (variant === 'performer') {
       const performerName = getDisplayName(partyUser)
       const positionTitle = activeMembership?.position?.title || 'Сотрудник'
-      return performerName ? `${positionTitle}: ${performerName}` : positionTitle
+      return performerName
+        ? `${positionTitle}: ${performerName}`
+        : positionTitle
     }
 
     if (effectiveVariant === 'settings') return 'Настройки'
@@ -320,8 +453,15 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   useEffect(() => {
     const syncCompany = (event) => {
-      const companyId = String(event?.detail?.companyId || readPartyActiveCompanyId(memberships))
-      if (memberships.some((membership) => String(membership.tenantId) === companyId)) setActiveCompanyId(companyId)
+      const companyId = String(
+        event?.detail?.companyId || readPartyActiveCompanyId(memberships)
+      )
+      if (
+        memberships.some(
+          (membership) => String(membership.tenantId) === companyId
+        )
+      )
+        setActiveCompanyId(companyId)
     }
     const syncStoredCompany = (event) => {
       if (event.key === ACTIVE_COMPANY_STORAGE_KEY) syncCompany()
@@ -381,7 +521,17 @@ export default function PartyAppShell({ variant = 'company', children }) {
   useEffect(() => {
     if (!profileLoaded) return
     // Task pages verify the active membership themselves and work in either UI mode.
-    if (['/company/tasks', '/performer/tasks', '/company/work', '/performer/work'].includes(pathname)) return
+    if (
+      [
+        '/company/tasks',
+        '/performer/tasks',
+        '/company/work',
+        '/performer/work',
+        '/company/ticketing',
+        '/performer/ticketing',
+      ].includes(pathname)
+    )
+      return
     if (
       activeMembership?.role === 'location_owner' &&
       isCompanyVariant &&
@@ -433,7 +583,13 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   const isActive = (href) => {
     const [path, hash] = href.split('#')
-    if (href === '/company/work' && ['/company/work', '/company/orders', '/company/orders-past'].includes(pathname)) return true
+    if (
+      href === '/company/work' &&
+      ['/company/work', '/company/orders', '/company/orders-past'].includes(
+        pathname
+      )
+    )
+      return true
     if (href === '/company/settings') {
       if (pathname === '/company/settings') return true
       if (pathname?.startsWith('/company/settings/')) return true
@@ -460,356 +616,381 @@ export default function PartyAppShell({ variant = 'company', children }) {
   }
 
   return (
-    <><PartyUnsavedChangesBootstrap /><main style={{ '--party-mobile-nav-height': profileLoaded && primaryMenu.length > 0 ? '4rem' : '0px' }} className="grid h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#eaf6ff] text-slate-950 md:grid-cols-[248px_1fr]">
-      <aside className="hidden min-h-0 flex-col bg-slate-950 text-white md:flex">
-        <div className="flex h-16 items-center border-b border-white/10 px-5">
-          <Link href="/party" className="text-lg font-semibold text-sky-200">
-            PartyCRM
-          </Link>
-        </div>
-
-        <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
-          <div className="grid gap-1">
-            {primaryMenu.map((item) => {
-              const isOrdersGroup =
-                isCompanyVariant && item.href === '/company/orders'
-              const isSettingsGroup =
-                isCompanyVariant && item.href === '/company/settings'
-              const isPerformerSettingsGroup =
-                effectiveVariant === 'performer' &&
-                item.href === '/performer/settings'
-
-              return (
-                <div key={item.href} className="grid gap-1">
-                  {isOrdersGroup ? (
-                    <MenuGroupButton
-                      item={item}
-                      active={ordersActive}
-                      open={ordersOpen}
-                      onClick={() => setOrdersExpanded(!ordersOpen)}
-                    />
-                  ) : isSettingsGroup ? (
-                    <MenuGroupButton
-                      item={item}
-                      active={companySettingsActive}
-                      open={companySettingsOpen}
-                      onClick={() =>
-                        setCompanySettingsExpanded(!companySettingsOpen)
-                      }
-                    />
-                  ) : isPerformerSettingsGroup ? (
-                    <MenuGroupButton
-                      item={item}
-                      active={performerSettingsActive}
-                      open={performerSettingsOpen}
-                      onClick={() =>
-                        setPerformerSettingsExpanded(!performerSettingsOpen)
-                      }
-                    />
-                  ) : (
-                    <MenuLink item={item} active={isActive(item.href)} />
-                  )}
-                  {isOrdersGroup && ordersOpen ? (
-                    <div className="mt-1">
-                      <div className="grid gap-1">
-                        {ordersSubMenu.map((subItem) => (
-                          <SubMenuLink
-                            key={subItem.href}
-                            item={subItem}
-                            active={pathname === subItem.href}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  {isSettingsGroup && companySettingsOpen ? (
-                    <div className="mt-1">
-                      <div className="grid gap-1">
-                        {visibleCompanySettingsMenu.map((subItem) => (
-                          <SubMenuLink
-                            key={subItem.href}
-                            item={subItem}
-                            active={pathname === subItem.href}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                  {isPerformerSettingsGroup && performerSettingsOpen ? (
-                    <div className="mt-1">
-                      <div className="grid gap-1">
-                        {PERFORMER_SETTINGS_TABS.map((subItem) => (
-                          <SubMenuLink
-                            key={subItem.href}
-                            item={subItem}
-                            active={pathname === subItem.href}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
+    <>
+      <PartyUnsavedChangesBootstrap />
+      <main
+        style={{
+          '--party-mobile-nav-height':
+            profileLoaded && primaryMenu.length > 0 ? '4rem' : '0px',
+        }}
+        className="grid h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#eaf6ff] text-slate-950 md:grid-cols-[248px_1fr]"
+      >
+        <aside className="hidden min-h-0 flex-col bg-slate-950 text-white md:flex">
+          <div className="flex h-16 items-center border-b border-white/10 px-5">
+            <Link href="/party" className="text-lg font-semibold text-sky-200">
+              PartyCRM
+            </Link>
           </div>
 
-          <div className="mt-auto grid gap-1 border-t border-white/10 pt-4">
-            {visibleSecondaryMenu.map((item) => (
-              <MenuLink
-                key={item.href}
-                item={item}
-                active={isActive(item.href)}
-              />
-            ))}
-            {canUseSiteSettings ? (
-              <div className="grid gap-1">
-                <MenuGroupButton
-                  item={{
-                    href: '/party/site-settings/tariffs',
-                    label: 'Настройка сайта',
-                    icon: faGear,
-                  }}
-                  active={siteSettingsActive}
-                  open={siteSettingsOpen}
-                  onClick={() => setSiteSettingsExpanded(!siteSettingsOpen)}
-                />
-                {siteSettingsOpen ? (
-                  <div className="grid gap-1">
-                    {PARTY_SITE_SETTINGS_TABS.map((subItem) => (
-                      <SubMenuLink
-                        key={subItem.href}
-                        item={{
-                          ...subItem,
-                          access: COMPANY_SETTINGS_ACCESS.DEV,
-                        }}
-                        active={pathname === subItem.href}
+          <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
+            <div className="grid gap-1">
+              {primaryMenu.map((item) => {
+                const isOrdersGroup =
+                  isCompanyVariant && item.href === '/company/orders'
+                const isSettingsGroup =
+                  isCompanyVariant && item.href === '/company/settings'
+                const isPerformerSettingsGroup =
+                  effectiveVariant === 'performer' &&
+                  item.href === '/performer/settings'
+
+                return (
+                  <div key={item.href} className="grid gap-1">
+                    {isOrdersGroup ? (
+                      <MenuGroupButton
+                        item={item}
+                        active={ordersActive}
+                        open={ordersOpen}
+                        onClick={() => setOrdersExpanded(!ordersOpen)}
                       />
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            <button
-              type="button"
-              onClick={logout}
-              className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-            >
-              <FontAwesomeIcon
-                icon={faRightFromBracket}
-                className="h-4 w-4 min-w-4"
-              />
-              <span>Выйти</span>
-            </button>
-          </div>
-        </nav>
-      </aside>
-
-      <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
-        <div>
-          <header className="relative z-20 flex h-16 items-center justify-between gap-3 border-b border-sky-100 bg-white px-4 md:bg-slate-950 md:text-white">
-            <div className="flex min-w-0 items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setMobileMenuOpen((value) => !value)}
-                className="grid h-10 w-10 place-items-center rounded-md border border-sky-100 text-sky-700 md:hidden"
-                aria-label="Открыть меню"
-              >
-                <span className="grid gap-1">
-                  <span className="block h-0.5 w-5 bg-current" />
-                  <span className="block h-0.5 w-5 bg-current" />
-                  <span className="block h-0.5 w-5 bg-current" />
-                </span>
-              </button>
-              <div className="min-w-0">
-                <h1 className="truncate text-base font-semibold">{title}</h1>
-              </div>
-            </div>
-          </header>
-
-          {mobileMenuOpen && (
-            <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] top-16 z-30 overflow-y-auto border-b border-sky-100 bg-slate-950 px-3 py-3 md:hidden">
-              <nav className="grid gap-1">
-                {primaryMenu.map((item) => {
-                  const isOrdersGroup =
-                    isCompanyVariant && item.href === '/company/orders'
-                  const isSettingsGroup =
-                    isCompanyVariant && item.href === '/company/settings'
-                  const isPerformerSettingsGroup =
-                    effectiveVariant === 'performer' &&
-                    item.href === '/performer/settings'
-
-                  return (
-                    <div key={item.href} className="grid gap-1">
-                      {isOrdersGroup ? (
-                        <MenuGroupButton
-                          item={item}
-                          active={ordersActive}
-                          open={ordersOpen}
-                          onClick={() => setOrdersExpanded(!ordersOpen)}
-                        />
-                      ) : isSettingsGroup ? (
-                        <MenuGroupButton
-                          item={item}
-                          active={companySettingsActive}
-                          open={companySettingsOpen}
-                          onClick={() =>
-                            setCompanySettingsExpanded(!companySettingsOpen)
-                          }
-                        />
-                      ) : isPerformerSettingsGroup ? (
-                        <MenuGroupButton
-                          item={item}
-                          active={performerSettingsActive}
-                          open={performerSettingsOpen}
-                          onClick={() =>
-                            setPerformerSettingsExpanded(!performerSettingsOpen)
-                          }
-                        />
-                      ) : (
-                        <MenuLink
-                          item={item}
-                          active={isActive(item.href)}
-                          onClick={() => {
-                            setCurrentHash(
-                              item.href.includes('#')
-                                ? `#${item.href.split('#')[1]}`
-                                : ''
-                            )
-                            setMobileMenuOpen(false)
-                          }}
-                        />
-                      )}
-                      {isOrdersGroup && ordersOpen ? (
-                        <div className="mt-1">
-                          <div className="grid gap-1">
-                            {ordersSubMenu.map((subItem) => (
-                              <SubMenuLink
-                                key={subItem.href}
-                                item={subItem}
-                                active={pathname === subItem.href}
-                                onClick={() => {
-                                  setCurrentHash('')
-                                  setMobileMenuOpen(false)
-                                }}
-                              />
-                            ))}
-                          </div>
+                    ) : isSettingsGroup ? (
+                      <MenuGroupButton
+                        item={item}
+                        active={companySettingsActive}
+                        open={companySettingsOpen}
+                        onClick={() =>
+                          setCompanySettingsExpanded(!companySettingsOpen)
+                        }
+                      />
+                    ) : isPerformerSettingsGroup ? (
+                      <MenuGroupButton
+                        item={item}
+                        active={performerSettingsActive}
+                        open={performerSettingsOpen}
+                        onClick={() =>
+                          setPerformerSettingsExpanded(!performerSettingsOpen)
+                        }
+                      />
+                    ) : (
+                      <MenuLink item={item} active={isActive(item.href)} />
+                    )}
+                    {isOrdersGroup && ordersOpen ? (
+                      <div className="mt-1">
+                        <div className="grid gap-1">
+                          {ordersSubMenu.map((subItem) => (
+                            <SubMenuLink
+                              key={subItem.href}
+                              item={subItem}
+                              active={pathname === subItem.href}
+                            />
+                          ))}
                         </div>
-                      ) : null}
-                      {isSettingsGroup && companySettingsOpen ? (
-                        <div className="mt-1">
-                          <div className="grid gap-1">
-                            {visibleCompanySettingsMenu.map((subItem) => (
-                              <SubMenuLink
-                                key={subItem.href}
-                                item={subItem}
-                                active={pathname === subItem.href}
-                                onClick={() => {
-                                  setCurrentHash('')
-                                  setMobileMenuOpen(false)
-                                }}
-                              />
-                            ))}
-                          </div>
+                      </div>
+                    ) : null}
+                    {isSettingsGroup && companySettingsOpen ? (
+                      <div className="mt-1">
+                        <div className="grid gap-1">
+                          {visibleCompanySettingsMenu.map((subItem) => (
+                            <SubMenuLink
+                              key={subItem.href}
+                              item={subItem}
+                              active={pathname === subItem.href}
+                            />
+                          ))}
                         </div>
-                      ) : null}
-                      {isPerformerSettingsGroup && performerSettingsOpen ? (
-                        <div className="mt-1">
-                          <div className="grid gap-1">
-                            {PERFORMER_SETTINGS_TABS.map((subItem) => (
-                              <SubMenuLink
-                                key={subItem.href}
-                                item={subItem}
-                                active={pathname === subItem.href}
-                                onClick={() => {
-                                  setCurrentHash('')
-                                  setMobileMenuOpen(false)
-                                }}
-                              />
-                            ))}
-                          </div>
+                      </div>
+                    ) : null}
+                    {isPerformerSettingsGroup && performerSettingsOpen ? (
+                      <div className="mt-1">
+                        <div className="grid gap-1">
+                          {PERFORMER_SETTINGS_TABS.map((subItem) => (
+                            <SubMenuLink
+                              key={subItem.href}
+                              item={subItem}
+                              active={pathname === subItem.href}
+                            />
+                          ))}
                         </div>
-                      ) : null}
-                    </div>
-                  )
-                })}
-                {visibleSecondaryMenu.map((item) => (
-                  <MenuLink
-                    key={item.href}
-                    item={item}
-                    active={isActive(item.href)}
-                    onClick={() => {
-                      setCurrentHash(
-                        item.href.includes('#')
-                          ? `#${item.href.split('#')[1]}`
-                          : ''
-                      )
-                      setMobileMenuOpen(false)
-                    }}
-                  />
-                ))}
-                {canUseSiteSettings ? (
-                  <div className="grid gap-1">
-                    <MenuGroupButton
-                      item={{
-                        href: '/party/site-settings/tariffs',
-                        label: 'Настройка сайта',
-                        icon: faGear,
-                      }}
-                      active={siteSettingsActive}
-                      open={siteSettingsOpen}
-                      onClick={() => setSiteSettingsExpanded(!siteSettingsOpen)}
-                    />
-                    {siteSettingsOpen ? (
-                      <div className="grid gap-1">
-                        {PARTY_SITE_SETTINGS_TABS.map((subItem) => (
-                          <SubMenuLink
-                            key={subItem.href}
-                            item={{
-                              ...subItem,
-                              access: COMPANY_SETTINGS_ACCESS.DEV,
-                            }}
-                            active={pathname === subItem.href}
-                            onClick={() => {
-                              setCurrentHash('')
-                              setMobileMenuOpen(false)
-                            }}
-                          />
-                        ))}
                       </div>
                     ) : null}
                   </div>
-                ) : null}
+                )
+              })}
+            </div>
+
+            <div className="mt-auto grid gap-1 border-t border-white/10 pt-4">
+              {visibleSecondaryMenu.map((item) => (
+                <MenuLink
+                  key={item.href}
+                  item={item}
+                  active={isActive(item.href)}
+                />
+              ))}
+              {canUseSiteSettings ? (
+                <div className="grid gap-1">
+                  <MenuGroupButton
+                    item={{
+                      href: '/party/site-settings/tariffs',
+                      label: 'Настройка сайта',
+                      icon: faGear,
+                    }}
+                    active={siteSettingsActive}
+                    open={siteSettingsOpen}
+                    onClick={() => setSiteSettingsExpanded(!siteSettingsOpen)}
+                  />
+                  {siteSettingsOpen ? (
+                    <div className="grid gap-1">
+                      {PARTY_SITE_SETTINGS_TABS.map((subItem) => (
+                        <SubMenuLink
+                          key={subItem.href}
+                          item={{
+                            ...subItem,
+                            access: COMPANY_SETTINGS_ACCESS.DEV,
+                          }}
+                          active={pathname === subItem.href}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={logout}
+                className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                <FontAwesomeIcon
+                  icon={faRightFromBracket}
+                  className="h-4 w-4 min-w-4"
+                />
+                <span>Выйти</span>
+              </button>
+            </div>
+          </nav>
+        </aside>
+
+        <section className="grid min-h-0 min-w-0 grid-rows-[auto_1fr]">
+          <div>
+            <header className="relative z-20 flex h-16 items-center justify-between gap-3 border-b border-sky-100 bg-white px-4 md:bg-slate-950 md:text-white">
+              <div className="flex min-w-0 items-center gap-3">
                 <button
                   type="button"
-                  onClick={logout}
-                  className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-white/80"
+                  onClick={() => setMobileMenuOpen((value) => !value)}
+                  className="grid h-10 w-10 place-items-center rounded-md border border-sky-100 text-sky-700 md:hidden"
+                  aria-label="Открыть меню"
                 >
-                  <FontAwesomeIcon
-                    icon={faRightFromBracket}
-                    className="h-4 w-4 min-w-4"
-                  />
-                  <span>Выйти</span>
+                  <span className="grid gap-1">
+                    <span className="block h-0.5 w-5 bg-current" />
+                    <span className="block h-0.5 w-5 bg-current" />
+                    <span className="block h-0.5 w-5 bg-current" />
+                  </span>
                 </button>
-              </nav>
-            </div>
-          )}
-        </div>
+                <div className="min-w-0">
+                  <h1 className="truncate text-base font-semibold">{title}</h1>
+                </div>
+              </div>
+            </header>
 
-        <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pb-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] md:pb-0">
-          {children}
-        </div>
-      </section>
-      {profileLoaded && primaryMenu.length > 0 && (
-        <PartyMobileNav pathname={pathname} items={mobileNavItems}
-          menuOpen={mobileMenuOpen} onMenu={setMobileMenuOpen}
-          onCreate={(href) => {
-            if (pathname !== href && !requestPartyLeave({ kind: 'route', target: `${href}?create=order` })) return
-            setMobileMenuOpen(false)
-            if (pathname === href) window.dispatchEvent(new Event('partycrm:create-order'))
-            else router.push(`${href}?create=order`)
-          }} />
-      )}
-    </main></>
+            {mobileMenuOpen && (
+              <div className="fixed inset-x-0 top-16 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 overflow-y-auto border-b border-sky-100 bg-slate-950 px-3 py-3 md:hidden">
+                <nav className="grid gap-1">
+                  {primaryMenu.map((item) => {
+                    const isOrdersGroup =
+                      isCompanyVariant && item.href === '/company/orders'
+                    const isSettingsGroup =
+                      isCompanyVariant && item.href === '/company/settings'
+                    const isPerformerSettingsGroup =
+                      effectiveVariant === 'performer' &&
+                      item.href === '/performer/settings'
+
+                    return (
+                      <div key={item.href} className="grid gap-1">
+                        {isOrdersGroup ? (
+                          <MenuGroupButton
+                            item={item}
+                            active={ordersActive}
+                            open={ordersOpen}
+                            onClick={() => setOrdersExpanded(!ordersOpen)}
+                          />
+                        ) : isSettingsGroup ? (
+                          <MenuGroupButton
+                            item={item}
+                            active={companySettingsActive}
+                            open={companySettingsOpen}
+                            onClick={() =>
+                              setCompanySettingsExpanded(!companySettingsOpen)
+                            }
+                          />
+                        ) : isPerformerSettingsGroup ? (
+                          <MenuGroupButton
+                            item={item}
+                            active={performerSettingsActive}
+                            open={performerSettingsOpen}
+                            onClick={() =>
+                              setPerformerSettingsExpanded(
+                                !performerSettingsOpen
+                              )
+                            }
+                          />
+                        ) : (
+                          <MenuLink
+                            item={item}
+                            active={isActive(item.href)}
+                            onClick={() => {
+                              setCurrentHash(
+                                item.href.includes('#')
+                                  ? `#${item.href.split('#')[1]}`
+                                  : ''
+                              )
+                              setMobileMenuOpen(false)
+                            }}
+                          />
+                        )}
+                        {isOrdersGroup && ordersOpen ? (
+                          <div className="mt-1">
+                            <div className="grid gap-1">
+                              {ordersSubMenu.map((subItem) => (
+                                <SubMenuLink
+                                  key={subItem.href}
+                                  item={subItem}
+                                  active={pathname === subItem.href}
+                                  onClick={() => {
+                                    setCurrentHash('')
+                                    setMobileMenuOpen(false)
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {isSettingsGroup && companySettingsOpen ? (
+                          <div className="mt-1">
+                            <div className="grid gap-1">
+                              {visibleCompanySettingsMenu.map((subItem) => (
+                                <SubMenuLink
+                                  key={subItem.href}
+                                  item={subItem}
+                                  active={pathname === subItem.href}
+                                  onClick={() => {
+                                    setCurrentHash('')
+                                    setMobileMenuOpen(false)
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                        {isPerformerSettingsGroup && performerSettingsOpen ? (
+                          <div className="mt-1">
+                            <div className="grid gap-1">
+                              {PERFORMER_SETTINGS_TABS.map((subItem) => (
+                                <SubMenuLink
+                                  key={subItem.href}
+                                  item={subItem}
+                                  active={pathname === subItem.href}
+                                  onClick={() => {
+                                    setCurrentHash('')
+                                    setMobileMenuOpen(false)
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    )
+                  })}
+                  {visibleSecondaryMenu.map((item) => (
+                    <MenuLink
+                      key={item.href}
+                      item={item}
+                      active={isActive(item.href)}
+                      onClick={() => {
+                        setCurrentHash(
+                          item.href.includes('#')
+                            ? `#${item.href.split('#')[1]}`
+                            : ''
+                        )
+                        setMobileMenuOpen(false)
+                      }}
+                    />
+                  ))}
+                  {canUseSiteSettings ? (
+                    <div className="grid gap-1">
+                      <MenuGroupButton
+                        item={{
+                          href: '/party/site-settings/tariffs',
+                          label: 'Настройка сайта',
+                          icon: faGear,
+                        }}
+                        active={siteSettingsActive}
+                        open={siteSettingsOpen}
+                        onClick={() =>
+                          setSiteSettingsExpanded(!siteSettingsOpen)
+                        }
+                      />
+                      {siteSettingsOpen ? (
+                        <div className="grid gap-1">
+                          {PARTY_SITE_SETTINGS_TABS.map((subItem) => (
+                            <SubMenuLink
+                              key={subItem.href}
+                              item={{
+                                ...subItem,
+                                access: COMPANY_SETTINGS_ACCESS.DEV,
+                              }}
+                              active={pathname === subItem.href}
+                              onClick={() => {
+                                setCurrentHash('')
+                                setMobileMenuOpen(false)
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-white/80"
+                  >
+                    <FontAwesomeIcon
+                      icon={faRightFromBracket}
+                      className="h-4 w-4 min-w-4"
+                    />
+                    <span>Выйти</span>
+                  </button>
+                </nav>
+              </div>
+            )}
+          </div>
+
+          <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pb-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] md:pb-0">
+            {children}
+          </div>
+        </section>
+        {profileLoaded && primaryMenu.length > 0 && (
+          <PartyMobileNav
+            pathname={pathname}
+            items={mobileNavItems}
+            menuOpen={mobileMenuOpen}
+            onMenu={setMobileMenuOpen}
+            onCreate={(href) => {
+              if (
+                pathname !== href &&
+                !requestPartyLeave({
+                  kind: 'route',
+                  target: `${href}?create=order`,
+                })
+              )
+                return
+              setMobileMenuOpen(false)
+              if (pathname === href)
+                window.dispatchEvent(new Event('partycrm:create-order'))
+              else router.push(`${href}?create=order`)
+            }}
+          />
+        )}
+      </main>
+    </>
   )
 }

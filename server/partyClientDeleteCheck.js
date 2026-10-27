@@ -5,6 +5,7 @@ import {
   getPartyTransactionModel,
   getPartyVkConversationModel,
 } from '@server/partyModels'
+import { getPartyTicketSaleModel } from './partyTicketModels'
 
 export const getPartyClientDeleteRelations = async ({ tenantId, clientId }) => {
   const [
@@ -21,7 +22,8 @@ export const getPartyClientDeleteRelations = async ({ tenantId, clientId }) => {
     getPartyAvitoConversationModel(),
   ])
 
-  const [orders, transactions, calls, vkConversations, avitoConversations] =
+  const TicketSales = await getPartyTicketSaleModel()
+  const [orders, transactions, calls, vkConversations, avitoConversations, ticketSales] =
     await Promise.all([
       PartyOrders.countDocuments({ tenantId, $or: [
         { clientId },
@@ -34,6 +36,7 @@ export const getPartyClientDeleteRelations = async ({ tenantId, clientId }) => {
       PartyCalls.countDocuments({ tenantId, linkedClientId: clientId }),
       PartyVkConversations.countDocuments({ tenantId, clientId }),
       PartyAvitoConversations.countDocuments({ tenantId, clientId }),
+      TicketSales.countDocuments({ tenantId, clientId }),
     ])
 
   return {
@@ -42,6 +45,7 @@ export const getPartyClientDeleteRelations = async ({ tenantId, clientId }) => {
     calls,
     vkConversations,
     avitoConversations,
+    ticketSales,
   }
 }
 

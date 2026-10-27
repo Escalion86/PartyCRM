@@ -7,6 +7,7 @@ import {
 } from '@server/partyModels'
 import { sendPartyOrderScopedPush } from './partyOrderPermissionPush'
 import { syncPartyOrderInventory } from './partyInventory'
+import { withPartyOrderVenueWrite } from './partyVenueBookings'
 import {
   buildPartyPublicLeadOrderPayload,
   normalizePartyPublicLeadApiKeys,
@@ -16,7 +17,7 @@ import {
 
 const buildPublicLeadPushPayload = ({ companyId, order, normalized }) => ({
   title: 'PartyCRM',
-  body: `Новая заявка: ${normalized.serviceTitle || normalized.clientName || 'без названия'}`,
+  body: `Новая заявка${order?.leadMeta?.bookingNeedsReview ? ' — согласуйте время' : ''}: ${normalized.serviceTitle || normalized.clientName || 'без названия'}`,
   tag: `party-lead-${String(order?._id || Date.now())}`,
   data: {
     type: 'party_public_lead',
@@ -61,7 +62,9 @@ export const resolvePartyPublicLeadCompany = async (apiKey) => {
 export const upsertPartyPublicLeadClient = async ({ tenantId, normalized }) => {
   const PartyClients = await getPartyClientModel()
   const phone = normalizePartyPhone(normalized.phone)
-  const email = String(normalized.email || '').trim().toLowerCase()
+  const email = String(normalized.email || '')
+    .trim()
+    .toLowerCase()
   const query = phone
     ? { tenantId, phone, status: { $ne: 'archived' } }
     : email
@@ -151,11 +154,74 @@ export const createPartyPublicLeadOrder = async ({
     apiKeyData,
     routing,
   })
-  const order = await PartyOrders.create({
+  const payload = {
     ...orderPayload,
     workflowStageId: company?.settings?.workflow?.initialStageId || 'new',
     tenantId,
-  })
+  }
+  const saveOrder = (nextPayload) =>
+    withPartyOrderVenueWrite({
+      tenantId,
+      nextOrder: nextPayload,
+      work: async ({ session }) =>
+        session
+          ? (await PartyOrders.create([nextPayload], { session }))[0]
+          : PartyOrders.create({ ...nextPayload, tenantId }),
+    })
+  let order,
+    bookingNeedsReview = false
+  try {
+    order = await saveOrder(payload)
+  } catch (cause) {
+    const unavailableCodes = [
+      'partycrm_venue_transaction_required',
+      'partycrm_venue_topology_unavailable',
+      'partycrm_venue_lock_required',
+    ]
+    const reason =
+      cause.code === 'partycrm_venue_conflict'
+        ? 'occupied'
+        : cause.status === 503 && unavailableCodes.includes(cause.code)
+          ? 'storage_unavailable'
+          : ''
+    if (!reason) throw cause
+    const requestedBooking = {
+      eventDate: payload.eventDate,
+      dateEnd: payload.dateEnd,
+      locationId: payload.locationId,
+      reason,
+      originalAdminComment: payload.adminComment || '',
+    }
+    const requestedDate = (value) => {
+      if (!value) return 'не указано'
+      try {
+        return new Date(value).toLocaleString('ru-RU', {
+          timeZone: company.settings?.timeZone || 'Asia/Krasnoyarsk',
+        })
+      } catch {
+        return new Date(value).toISOString()
+      }
+    }
+    const note = `Запрошено: ${requestedDate(payload.eventDate)} — ${requestedDate(payload.dateEnd)}. ${reason === 'occupied' ? 'Помещение занято, согласуйте время с клиентом.' : 'Не удалось проверить занятость площадки по технической причине; согласуйте время после восстановления проверки.'} Время не забронировано.`
+    const fallback = {
+      ...payload,
+      status: 'draft',
+      eventDate: null,
+      dateEnd: null,
+      adminComment: `${note}\n\n${payload.adminComment || ''}`
+        .trim()
+        .slice(0, 2000),
+      leadMeta: {
+        ...payload.leadMeta,
+        bookingNeedsReview: true,
+        requestedBooking,
+      },
+    }
+    // An inquiry with no event interval creates no venue reservation. Keep the
+    // original request intact for a later ordinary, guarded scheduling PATCH.
+    order = await saveOrder(fallback)
+    bookingNeedsReview = true
+  }
 
   // Keep shortage details inside the company: public lead responses expose
   // only their own order identifier, never other customers or reservations.
@@ -176,5 +242,5 @@ export const createPartyPublicLeadOrder = async ({
     })
   }
 
-  return { client, order }
+  return { client, order, bookingNeedsReview }
 }

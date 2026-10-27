@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useId, useMemo } from 'react'
 import Modal from '@components/Modal'
 import Input from '@components/Input'
 import TownPicker from '@components/TownPicker'
@@ -11,6 +11,7 @@ import {
   normalizeTownList,
 } from '@helpers/addressPool'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
+import FieldHelp from '@components/FieldHelp'
 
 export default function LocationModal({
   open,
@@ -26,6 +27,7 @@ export default function LocationModal({
   onCompanySettingsChange,
 }) {
   const hasUnsavedChanges = useUnsavedChanges(locationDraft, open)
+  const venueFieldsId = useId()
   const handleChange = (field) => (value) => {
     if (field.includes('.')) {
       const [parent, child] = field.split('.')
@@ -148,6 +150,85 @@ export default function LocationModal({
           rows={2}
           placeholder="Например: вход со двора, домофон 12, парковка у шлагбаума"
         />
+        <fieldset
+          className="mt-3 space-y-3 rounded-xl border border-sky-100 p-3"
+          disabled={saving}
+        >
+          <legend className="px-1 text-sm font-semibold text-slate-800">
+            Занятость площадки
+          </legend>
+          <label className="block text-sm text-slate-700">
+            Режим использования
+            <select
+              className="mt-1 min-h-11 w-full cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2"
+              value={locationDraft.usageMode || 'exclusive'}
+              onChange={(event) =>
+                handleChange('usageMode')(event.target.value)
+              }
+            >
+              <option value="exclusive">Одно мероприятие одновременно</option>
+              <option value="shared">Совместные билетные сеансы</option>
+            </select>
+          </label>
+          <p className="text-xs text-slate-500">
+            Частный заказ занимает площадку целиком. Для совместных сеансов
+            суммарная вместимость не может превышать вместимость площадки.
+          </p>
+          <div>
+            <div className="flex items-center gap-1 text-sm text-slate-700">
+              <label htmlFor={`${venueFieldsId}-capacity`}>
+                Вместимость площадки
+              </label>
+              <FieldHelp
+                label="Вместимость площадки"
+                text="Если вместимость не указана, нельзя планировать одновременные билетные сеансы. Для совместных сеансов укажите общую вместимость площадки."
+              />
+            </div>
+            <input
+              id={`${venueFieldsId}-capacity`}
+              className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2"
+              type="number"
+              min={0}
+              step={1}
+              value={locationDraft.capacity ?? ''}
+              onChange={(event) => handleChange('capacity')(event.target.value)}
+            />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-slate-700">
+              Подготовка до начала, минут
+              <input
+                className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2"
+                type="number"
+                min={0}
+                max={1440}
+                step={1}
+                value={locationDraft.preparationMinutes ?? 0}
+                onChange={(event) =>
+                  handleChange('preparationMinutes')(event.target.value)
+                }
+              />
+            </label>
+            <label className="block text-sm text-slate-700">
+              Уборка после окончания, минут
+              <input
+                className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2"
+                type="number"
+                min={0}
+                max={1440}
+                step={1}
+                value={locationDraft.cleanupMinutes ?? 0}
+                onChange={(event) =>
+                  handleChange('cleanupMinutes')(event.target.value)
+                }
+              />
+            </label>
+          </div>
+          <p className="text-xs text-slate-500">
+            Время подготовки и уборки также учитывается при проверке
+            пересечений.
+          </p>
+        </fieldset>
       </div>
     </Modal>
   )

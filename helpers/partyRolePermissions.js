@@ -6,9 +6,10 @@ export const PARTY_ROLE_PERMISSION_GROUPS = Object.freeze([
   { key: 'finance', label: 'Финансы' },
   { key: 'operations', label: 'Работа команды' },
   { key: 'company', label: 'Разделы компании' },
+  { key: 'ticketing', label: 'Билеты и посещения' },
 ])
 
-const permission = (key, label, group = 'orders', actionOnly = false) => ({ key, label, group, actionOnly })
+const permission = (key, label, group = 'orders', actionOnly = false, optional = false) => ({ key, label, group, actionOnly, ...(optional ? { optional: true } : {}) })
 export const PARTY_ROLE_PERMISSIONS = Object.freeze([
   permission('orders', 'Список и просмотр заказов'),
   permission('orders.create', 'Создание заказа', 'orders', true),
@@ -71,9 +72,20 @@ export const PARTY_ROLE_PERMISSIONS = Object.freeze([
   permission('history', 'История действий', 'company'),
   permission('roles.manage', 'Управление должностями', 'company', true),
   permission('brief.manage', 'Настройка формы брифа', 'company', true),
+  permission('orders.fulfillment', 'Проведение мероприятия', 'orders', false, true),
+  permission('tickets', 'Просмотр билетов и посещений', 'ticketing', false, true),
+  permission('tickets.manage', 'Настройка программ и сеансов', 'ticketing', true, true),
+  permission('tickets.sell', 'Продажа и бронирование билетов', 'ticketing', true, true),
+  permission('tickets.payments', 'Запись оплаты билетов', 'ticketing', true, true),
+  permission('tickets.refund', 'Возвраты билетов', 'ticketing', true, true),
+  permission('tickets.checkin', 'Регистрация посещений', 'ticketing', true, true),
+  permission('tickets.contacts', 'Контакты покупателей билетов', 'ticketing', false, true),
+  permission('tickets.finance', 'Финансовая история и аналитика билетов', 'ticketing', false, true),
+  permission('tickets.discounts', 'Ручные скидки на билеты', 'ticketing', true, true),
 ])
 
 const keys = new Set(PARTY_ROLE_PERMISSIONS.map(({ key }) => key))
+const legacyPermissionKeys = new Set(PARTY_ROLE_PERMISSIONS.filter(({ optional }) => !optional).map(({ key }) => key))
 const levels = new Set(['hidden', 'read', 'edit'])
 const manager = (context) => context?.role === 'owner' || (context?.role === 'admin' && !context?.position)
 const id = (value) => value == null ? '' : String(value)
@@ -104,6 +116,7 @@ export const isPartyRestrictedManagementContext = (context) => {
   const baseline = getPartyDefaultRolePermissions('admin')
   const rank = { hidden: 0, read: 1, edit: 2 }
   if (Object.entries(baseline).some(([key, level]) => {
+    if (!legacyPermissionKeys.has(key)) return false
     const granted = context.position.permissions?.[key]
     return (levels.has(granted) ? rank[granted] : 0) < rank[level]
   })) return true
@@ -185,9 +198,16 @@ const orderFieldResource = (field) => {
 const operationalFields = ['_id', 'tenantId', 'createdAt', 'updatedAt', '__v', 'commercialRevision', 'reportCoordinatorRevision', 'sharedLocationRevision']
 export const filterPartyOrderForAccess = (context, order) => {
   if (!canPartyAccess(context, { resource: 'orders', order })) return null
-  if (manager(context)) return { ...order }
+  const internalFields = ['createRequestKey', 'createRequestActorId', 'createRequestFingerprint']
+  if (manager(context)) return Object.fromEntries(Object.entries(order).filter(([field]) => !internalFields.includes(field)))
   const output = {}
   for (const [field, value] of Object.entries(order)) {
+    if (internalFields.includes(field)) continue
+    if (field === 'fulfillment') {
+      if (canPartyAccess(context, { resource: 'orders.fulfillment', order }))
+        output.fulfillment = value ? { performedAt: value.performedAt, recordedAt: value.recordedAt, ...(canPartyAccess(context, { resource: 'finance.clientAmount', order }) ? { amountKopecks: value.amountKopecks } : {}) } : null
+      continue
+    }
     if (field === 'additionalEvents') continue // Canonical task API/summaries enforce each task's assignments.
     if (field === 'assignedStaff' && !canPartyAccess(context, { resource: 'orders.assignedStaff', order }) && canPartyAccess(context, { resource: 'finance.payouts', order })) {
       output.payoutRecipients = (value || []).map((assignment) => ({ staffId: assignment.staffId, payoutAmount: assignment.payoutAmount, payoutStatus: assignment.payoutStatus }))
@@ -212,6 +232,12 @@ export const filterPartyOrderForAccess = (context, order) => {
       continue
     }
     if (!canPartyAccess(context, { resource: orderFieldResource(field), order })) continue
+    if (field === 'eventBrief' && value && !canPartyAccess(context, { resource: 'orders.servicesIds', order })) {
+      const snapshot = value.templateSnapshot
+      const withoutConditions = (fields) => Array.isArray(fields) ? fields.map(({ serviceIds: _serviceIds, ...question }) => question) : fields
+      output.eventBrief = { ...value, ...(snapshot ? { templateSnapshot: { ...snapshot, fields: withoutConditions(snapshot.fields), retiredFields: withoutConditions(snapshot.retiredFields) } } : {}), ...(Array.isArray(value.archivedAnswers) ? { archivedAnswers: value.archivedAnswers.map((answer) => ({ ...answer, ...(answer.field ? { field: withoutConditions([answer.field])[0] } : {}) })) } : {}) }
+      continue
+    }
     if (field === 'assignedStaff') {
       output.assignedStaff = (value || []).map((assignment) => {
         const safe = { staffId: assignment.staffId, role: assignment.role, confirmationStatus: assignment.confirmationStatus }

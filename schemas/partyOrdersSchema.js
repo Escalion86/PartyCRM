@@ -272,6 +272,9 @@ const partyOrderAgreedProposalSchema = new Schema(
 )
 
 const partyOrdersSchema = {
+  createRequestKey: { type: String, maxlength: 128, default: undefined },
+  createRequestActorId: { type: String, maxlength: 128, default: undefined },
+  createRequestFingerprint: { type: String, maxlength: 64, default: undefined },
   sharedLocationRevision: { type: Number, default: 0, min: 0 },
   legacyLedgerMigrationId: { type: Schema.Types.ObjectId, default: null },
   legacyLedgerMigratedAt: { type: Date, default: null },
@@ -446,6 +449,12 @@ const partyOrdersSchema = {
       enum: ['none', 'wait_prepayment', 'prepaid', 'paid'],
       default: 'none',
     },
+  },
+  fulfillment: {
+    performedAt: { type: Date, default: null },
+    amountKopecks: { type: Number, default: 0, min: 0, validate: Number.isSafeInteger },
+    recordedAt: { type: Date, default: null },
+    recordedByStaffId: { type: Schema.Types.ObjectId, default: null },
   },
   assignedStaff: {
     type: [assignedStaffSchema],

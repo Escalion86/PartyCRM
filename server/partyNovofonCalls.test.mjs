@@ -7,7 +7,10 @@ import {
   savePartyNovofonCall,
 } from './partyNovofonCalls.js'
 
-const createFakeModels = ({ existingClient = null, existingCall = null } = {}) => {
+const createFakeModels = ({
+  existingClient = null,
+  existingCall = null,
+} = {}) => {
   const calls = {
     clientFind: [],
     clientCreate: [],
@@ -217,6 +220,8 @@ test('createPartyOrderFromCallDraft creates order and marks call as created', as
 
   const result = await createPartyOrderFromCallDraft({
     models,
+    withOrderVenueWrite: async ({ work }) =>
+      work({ session: null, legacy: true }),
     tenantId: 'company-1',
     callId: 'call-1',
     now,
@@ -252,6 +257,8 @@ test('createPartyOrderFromCallDraft rejects calls that already created an order'
 
   const result = await createPartyOrderFromCallDraft({
     models,
+    withOrderVenueWrite: async ({ work }) =>
+      work({ session: null, legacy: true }),
     tenantId: 'company-1',
     callId: 'call-1',
   })
@@ -265,15 +272,80 @@ test('createPartyOrderFromCallDraft rejects calls that already created an order'
 test('prepared call payload always keeps the authenticated tenant', async () => {
   for (const preparedTenant of [undefined, 'foreign-company']) {
     const models = createFakeOrderModels({
-      call: { _id: 'call-1', tenantId: 'company-1', orderDraft: { title: 'Заявка' } },
+      call: {
+        _id: 'call-1',
+        tenantId: 'company-1',
+        orderDraft: { title: 'Заявка' },
+      },
     })
     const result = await createPartyOrderFromCallDraft({
       models,
+      withOrderVenueWrite: async ({ work }) =>
+        work({ session: null, legacy: true }),
       tenantId: 'company-1',
       callId: 'call-1',
-      prepareOrderPayload: async () => ({ payload: { title: 'После нормализации', tenantId: preparedTenant } }),
+      prepareOrderPayload: async () => ({
+        payload: { title: 'После нормализации', tenantId: preparedTenant },
+      }),
     })
     assert.equal(result.error, null)
     assert.equal(models.calls.orderCreate[0].tenantId, 'company-1')
+  }
+})
+
+test('a call conversion writes the order and call link in the same venue transaction; conflict leaves no conversion', async () => {
+  for (const failBooking of [false, true]) {
+    const state = { orders: [], linked: null }
+    const session = { name: 'call-venue-tx' }
+    const call = {
+      _id: 'call-1',
+      linkedOrderId: null,
+      orderDraft: { title: 'Заказ', status: 'draft' },
+    }
+    const result = await createPartyOrderFromCallDraft({
+      tenantId: 'company-1',
+      callId: call._id,
+      models: {
+        Call: {
+          findOne: () => ({ lean: async () => call }),
+          updateOne: async (filter, update, options) => {
+            assert.equal(options.session, session)
+            assert.equal(filter.linkedOrderId, null)
+            state.linked = update.$set.linkedOrderId
+            return { matchedCount: 1 }
+          },
+        },
+        Order: {
+          create: async (rows, options) => {
+            assert.equal(options.session, session)
+            assert.ok(Array.isArray(rows))
+            const order = { _id: 'order-1', ...rows[0] }
+            state.orders.push(order)
+            return [order]
+          },
+        },
+      },
+      withOrderVenueWrite: async ({ work }) => {
+        const order = await work({ session, legacy: false })
+        if (failBooking) {
+          state.orders = []
+          state.linked = null
+          throw Object.assign(new Error('Площадка занята'), {
+            status: 409,
+            code: 'partycrm_venue_conflict',
+          })
+        }
+        return order
+      },
+    })
+    if (failBooking) {
+      assert.equal(result.error.code, 'partycrm_venue_conflict')
+      assert.equal(state.orders.length, 0)
+      assert.equal(state.linked, null)
+    } else {
+      assert.equal(result.error, null)
+      assert.equal(state.orders.length, 1)
+      assert.equal(state.linked, 'order-1')
+    }
   }
 })

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPartyLocationModel } from '@server/partyModels'
+import { normalizePartyVenueSettings } from '@helpers/partyVenueBooking'
+import { supportsPartyVenueTransactions } from '@server/partyVenueBookings'
 import {
   getPartyRequestContext,
   parseJsonBody,
@@ -9,12 +11,16 @@ import {
 const normalizeLocationPayload = (body) => ({
   title: typeof body.title === 'string' ? body.title.trim() : '',
   address: {
-    town: typeof body.address?.town === 'string' ? body.address.town.trim() : '',
+    town:
+      typeof body.address?.town === 'string' ? body.address.town.trim() : '',
     street:
-      typeof body.address?.street === 'string' ? body.address.street.trim() : '',
+      typeof body.address?.street === 'string'
+        ? body.address.street.trim()
+        : '',
     house:
       typeof body.address?.house === 'string' ? body.address.house.trim() : '',
-    room: typeof body.address?.room === 'string' ? body.address.room.trim() : '',
+    room:
+      typeof body.address?.room === 'string' ? body.address.room.trim() : '',
     comment:
       typeof body.address?.comment === 'string'
         ? body.address.comment.trim()
@@ -42,7 +48,9 @@ export async function GET(req) {
 
   const status = req.nextUrl.searchParams.get('status')
   const statusFilter =
-    status === 'archived' ? { status: 'archived' } : { status: { $ne: 'archived' } }
+    status === 'archived'
+      ? { status: 'archived' }
+      : { status: { $ne: 'archived' } }
 
   const PartyLocations = await getPartyLocationModel()
   const locations = await PartyLocations.find({
@@ -63,7 +71,22 @@ export async function POST(req) {
   if (error) return error
 
   const body = await parseJsonBody(req)
-  const payload = normalizeLocationPayload(body)
+  let payload
+  try {
+    const settings = normalizePartyVenueSettings(body)
+    payload = {
+      ...normalizeLocationPayload(body),
+      ...settings,
+      ...(settings.usageMode === 'shared' ? { venueBookingManaged: true } : {}),
+    }
+  } catch (cause) {
+    return partyError(
+      cause.status || 400,
+      cause.code,
+      cause.message,
+      'validation'
+    )
+  }
 
   if (!payload.title) {
     return partyError(
@@ -75,6 +98,23 @@ export async function POST(req) {
   }
 
   const PartyLocations = await getPartyLocationModel()
+  if (
+    payload.usageMode === 'shared' ||
+    payload.preparationMinutes ||
+    payload.cleanupMinutes
+  ) {
+    try {
+      if (!(await supportsPartyVenueTransactions(PartyLocations)))
+        return partyError(
+          503,
+          'partycrm_venue_transaction_required',
+          'Для совместного режима и времени подготовки настройте MongoDB replica set'
+        )
+      payload.venueBookingManaged = true
+    } catch (cause) {
+      return partyError(cause.status || 503, cause.code, cause.message)
+    }
+  }
   const location = await PartyLocations.create({
     ...payload,
     tenantId: context.tenantId,

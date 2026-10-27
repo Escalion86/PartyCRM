@@ -26,7 +26,7 @@ export async function PATCH(req, { params }) {
     if (body.expectedUpdatedAt !== new Date(order.updatedAt).toISOString()) return partyError(409, 'partycrm_order_changed', 'Заказ изменился. Обновите его перед передачей.')
     if (transition.requireBrief) {
       const validation = await validatePartyBriefForTransition({ tenantId: context.tenantId, order })
-      if (!validation.ok) return partyError(409, 'partycrm_brief_required', 'Заполните обязательные вопросы брифа перед передачей заказа.', 'validation', { missingFields: validation.missingFields })
+      if (!validation.ok) return partyError(409, 'partycrm_brief_required', 'Заполните обязательные вопросы брифа перед передачей заказа.', 'validation', canPartyAccess(context, { resource: 'orders.eventBrief', order }) ? { missingFields: validation.missingFields } : {})
     }
     const updated = await Orders.findOneAndUpdate({ _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(order) }, { $set: { workflowStageId: body.toStageId } }, { new: true }).lean()
     if (!updated) return partyError(409, 'partycrm_order_changed', 'Заказ изменился во время передачи. Обновите его.')

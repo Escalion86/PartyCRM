@@ -51,6 +51,7 @@ import {
 import { matchesPartyOrderFinanceFilter } from '@helpers/partyOrderFinanceFilters'
 import { getOrderNonPayoutExpenseTotal } from '@helpers/partyOrderTransactions'
 import PartyStatisticsDashboard from '@components/party/statistics/PartyStatisticsDashboard'
+import PartyFinancialOverview from '@components/party/finance/PartyFinancialOverview'
 import PartyAuditLog from '@components/party/audit/PartyAuditLog'
 import InventoryWarnings from '@components/party/inventory/InventoryWarnings'
 import { getPartyOrderPreparationReadiness } from '@helpers/partyOrderPreparation'
@@ -2104,6 +2105,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'finance' && canUseStatistics && (
           <div className="rounded-2xl bg-sky-50 p-6">
+            <div className="mb-6"><PartyFinancialOverview key={`${activeCompanyId}:${companySettings.timeZone || ''}`} companyId={activeCompanyId} timeZone={companySettings.timeZone || 'Asia/Krasnoyarsk'} /></div>
             <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <h2 className="text-xl font-semibold">Финансы</h2>
               <div className="flex flex-wrap items-end gap-2">
@@ -2372,6 +2374,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           services={services}
           canManage={canManage}
           activeCompanyId={activeCompanyId}
+          ticketContext={context}
           onClose={() => {
             setActiveModal('')
             setEditingOrderId('')
@@ -2565,6 +2568,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         <ClientViewModal
           open={true}
           client={clientDraft}
+          companyId={activeCompanyId}
+          ticketContext={context}
           canManage={canManage}
           onClose={() => {
             setActiveModal('')

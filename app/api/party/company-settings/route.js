@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getPartyCompanyModel } from '@server/partyModels'
-import { getPartyRequestContext, parseJsonBody } from '@server/partyApi'
+import { getPartyRequestContext, parseJsonBody, partyError } from '@server/partyApi'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
 import { isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
 import { serializePartyRestrictedCompanySettings } from '@server/partyMembershipResponse'
+import { supportsPartyVenueTransactions } from '@server/partyVenueBookings'
 import {
   preservePartyGoogleCalendarSettings,
   serializePartyCompanySettingsForResponse,
@@ -64,6 +65,13 @@ export async function PATCH(req) {
   if (error) return error
 
   const body = await parseJsonBody(req)
+  if (Object.hasOwn(body, 'modules') && (
+    !body.modules || typeof body.modules !== 'object' || Array.isArray(body.modules) ||
+    (Object.hasOwn(body.modules, 'ticketing') && (
+      !body.modules.ticketing || typeof body.modules.ticketing !== 'object' || Array.isArray(body.modules.ticketing) ||
+      (Object.hasOwn(body.modules.ticketing, 'enabled') && typeof body.modules.ticketing.enabled !== 'boolean')
+    ))
+  )) return partyError(400, 'partycrm_invalid_modules', 'Проверьте настройку билетного модуля', 'validation')
   const PartyCompanies = await getPartyCompanyModel()
   const company = await PartyCompanies.findById(context.tenantId)
     .select({
@@ -80,6 +88,14 @@ export async function PATCH(req) {
     company
   )
   const { company: companyPatch = null, ...rawSettingsPatch } = body
+  if (body.modules?.ticketing?.enabled === true && company?.settings?.modules?.ticketing?.enabled !== true) {
+    try {
+      if (!await supportsPartyVenueTransactions())
+        return partyError(503, 'partycrm_ticketing_storage_unavailable', 'Сервер пока не готов к безопасному бронированию. Обратитесь к администратору.')
+    } catch {
+      return partyError(503, 'partycrm_ticketing_storage_unavailable', 'Не удалось проверить готовность сервера. Настройка не изменена.')
+    }
+  }
   const isGenericSetting = (key) => !['inboxSchedule', 'inboxScheduleRevision', '__proto__', 'constructor', 'prototype'].includes(key)
     && !key.includes('.') && !key.startsWith('$')
   const settingsPatch = Object.fromEntries(
@@ -97,8 +113,9 @@ export async function PATCH(req) {
   // Keep schedule writes in their validated, revision-guarded endpoint. Dotted
   // updates also preserve a schedule changed since this settings read.
   const updateSet = Object.fromEntries(Object.entries(nextSettings)
-    .filter(([key]) => isGenericSetting(key))
+    .filter(([key]) => isGenericSetting(key) && key !== 'modules')
     .map(([key, value]) => [`settings.${key}`, value]))
+  if (Object.hasOwn(filteredBody.modules?.ticketing || {}, 'enabled')) updateSet['settings.modules.ticketing.enabled'] = nextSettings.modules.ticketing.enabled
   const companySet = {}
   for (const key of ['title', 'legalTitle', 'phone', 'email']) {
     if (!Object.hasOwn(nextCompany, key) || !Object.hasOwn(companyPatch ?? {}, key)) {

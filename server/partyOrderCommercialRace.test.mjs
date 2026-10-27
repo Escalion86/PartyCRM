@@ -46,6 +46,7 @@ function setup() {
     getPartyCompanyTariffAccessState: async () => ({ access: { allowDocuments: true } }),
     isValidObjectId: (value) => /^[a-f\d]{24}$/i.test(value),
     parseJsonBody: async (req) => req.body,
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => Orders,
     partyError: (status, code) => ({ status, code }),
     NextResponse: { json: (body) => ({ status: 200, body }) },

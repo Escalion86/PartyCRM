@@ -192,6 +192,7 @@ const PerformerOrderViewModal = ({ order, onClose }) => {
               companyId={order.companyId}
               orderId={String(order._id)}
               orderStatus={order.status}
+              servicesIds={order.servicesIds}
             />
           </DetailSection>
         )}

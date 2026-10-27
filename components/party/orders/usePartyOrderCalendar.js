@@ -13,6 +13,7 @@ export default function usePartyOrderCalendar({
   month,
   accessKey,
   refreshKey,
+  ticketsEnabled = false,
 }) {
   const [retry, setRetry] = useState(0)
   const [state, setState] = useState({
@@ -23,7 +24,7 @@ export default function usePartyOrderCalendar({
   })
   const generation = useRef(0)
   const monthKey = `${month.getFullYear()}-${month.getMonth()}`
-  const key = `${companyId}:${accessKey}:${monthKey}:${refreshKey}:${retry}`
+  const key = `${companyId}:${accessKey}:${monthKey}:${refreshKey}:${retry}:${ticketsEnabled}`
   const range = getPartyRoleCalendarRange(buildPartyOrderCalendarGrid(month))
   const dateFrom = range.dateFrom
   const dateTo = range.dateTo
@@ -34,36 +35,85 @@ export default function usePartyOrderCalendar({
     const load = async () => {
       setState({ key, orders: empty, busy: true, error: '' })
       try {
-        const records = new Map()
-        const cursors = new Set()
-        let cursor = ''
-        do {
-          const query = new URLSearchParams({ dateFrom, dateTo })
-          if (cursor) query.set('calendarCursor', cursor)
-          const result = await apiJson(`/api/party/orders?${query}`, {
-            headers: { 'x-partycrm-company-id': companyId },
-            cache: 'no-store',
-            signal: controller.signal,
-          })
-          if (current !== generation.current) return
-          if (
-            !Array.isArray(result?.data) ||
-            !result.meta ||
-            !Object.hasOwn(result.meta, 'nextCursor')
-          )
-            throw new Error(
-              'Не удалось получить полный календарь. Обновите страницу и повторите загрузку.'
+        const loadPages = async (tickets) => {
+          const records = new Map(),
+            cursors = new Set()
+          let cursor = ''
+          do {
+            const query = new URLSearchParams(
+              tickets
+                ? { section: 'sessions', from: dateFrom, to: dateTo }
+                : { dateFrom, dateTo }
             )
-          for (const order of result.data || [])
-            records.set(String(order._id), order)
-          cursor = result.meta?.nextCursor || ''
-          if (cursor && !/^[a-f\d]{24}$/i.test(cursor))
-            throw new Error('Не удалось получить весь календарь. Обновите его.')
-          if (cursor && cursors.has(cursor))
-            throw new Error('Не удалось получить весь календарь. Обновите его.')
-          if (cursor) cursors.add(cursor)
-        } while (cursor)
-        setState({ key, orders: [...records.values()], busy: false, error: '' })
+            if (cursor) query.set(tickets ? 'cursor' : 'calendarCursor', cursor)
+            const result = await apiJson(
+              `/api/party/${tickets ? 'ticketing' : 'orders'}?${query}`,
+              {
+                headers: { 'x-partycrm-company-id': companyId },
+                cache: 'no-store',
+                signal: controller.signal,
+              }
+            )
+            if (current !== generation.current) return
+            if (
+              !Array.isArray(result?.data) ||
+              !result.meta ||
+              !Object.hasOwn(result.meta, 'nextCursor')
+            )
+              throw new Error(
+                'Не удалось получить полный календарь. Обновите страницу и повторите загрузку.'
+              )
+            for (const row of result.data || []) {
+              const order = tickets
+                ? {
+                    _id: `ticket-session:${row._id}`,
+                    ticketSessionId: row._id,
+                    calendarEntityType: 'ticket_session',
+                    title: row.title,
+                    eventDate: row.startsAt,
+                    dateEnd: row.endsAt,
+                    locationId: row.locationId,
+                    status: {
+                      scheduled: 'active',
+                      completed: 'closed',
+                      canceled: 'canceled',
+                    }[row.status],
+                  }
+                : row
+              records.set(String(order._id), order)
+            }
+            cursor = result.meta?.nextCursor || ''
+            if (cursor && !/^[a-f\d]{24}$/i.test(cursor))
+              throw new Error(
+                'Не удалось получить весь календарь. Обновите его.'
+              )
+            if (
+              cursor &&
+              (cursors.has(cursor) ||
+                (cursors.size &&
+                  (tickets
+                    ? cursor.toLowerCase() >= [...cursors].at(-1).toLowerCase()
+                    : cursor.toLowerCase() <=
+                      [...cursors].at(-1).toLowerCase())))
+            )
+              throw new Error(
+                'Не удалось получить весь календарь. Обновите его.'
+              )
+            if (cursor) cursors.add(cursor)
+          } while (cursor)
+          return [...records.values()]
+        }
+        const [orders, sessions] = await Promise.all([
+          loadPages(false),
+          ticketsEnabled ? loadPages(true) : [],
+        ])
+        if (current !== generation.current) return
+        setState({
+          key,
+          orders: [...orders, ...sessions],
+          busy: false,
+          error: '',
+        })
       } catch (cause) {
         if (current === generation.current && cause.name !== 'AbortError')
           setState({
@@ -79,7 +129,7 @@ export default function usePartyOrderCalendar({
       generation.current += 1
       controller.abort()
     }
-  }, [companyId, dateFrom, dateTo, enabled, key])
+  }, [companyId, dateFrom, dateTo, enabled, key, ticketsEnabled])
   const reload = useCallback(() => setRetry((value) => value + 1), [])
   return {
     orders: state.key === key ? state.orders : empty,

@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getPartyLocationModel } from '@server/partyModels'
+import { normalizePartyVenueSettings } from '@helpers/partyVenueBooking'
+import {
+  supportsPartyVenueTransactions,
+  updatePartyVenueConfiguration,
+} from '@server/partyVenueBookings'
 import {
   getPartyRequestContext,
   isValidObjectId,
@@ -81,7 +86,22 @@ export async function PATCH(req, { params }) {
   }
 
   const body = await parseJsonBody(req)
-  const patch = pickLocationPatch(body)
+  let patch
+  try {
+    const settings = normalizePartyVenueSettings(body, { partial: true })
+    patch = {
+      ...pickLocationPatch(body),
+      ...settings,
+      ...(settings.usageMode === 'shared' ? { venueBookingManaged: true } : {}),
+    }
+  } catch (cause) {
+    return partyError(
+      cause.status || 400,
+      cause.code,
+      cause.message,
+      'validation'
+    )
+  }
 
   if (patch.title === '') {
     return partyError(
@@ -93,6 +113,50 @@ export async function PATCH(req, { params }) {
   }
 
   const PartyLocations = await getPartyLocationModel()
+  if (
+    ['usageMode', 'capacity', 'preparationMinutes', 'cleanupMinutes'].some(
+      (field) => Object.hasOwn(patch, field)
+    )
+  ) {
+    try {
+      const current = await PartyLocations.findOne({
+        _id: id,
+        tenantId: context.tenantId,
+      }).lean()
+      if (!current)
+        return partyError(
+          404,
+          'partycrm_location_not_found',
+          'Точка не найдена'
+        )
+      const capable = await supportsPartyVenueTransactions(PartyLocations)
+      if (capable) {
+        const location = await updatePartyVenueConfiguration({
+          tenantId: context.tenantId,
+          locationId: id,
+          patch,
+        })
+        return NextResponse.json({ success: true, data: location })
+      }
+      if (
+        current.venueBookingManaged ||
+        patch.usageMode === 'shared' ||
+        Number(patch.preparationMinutes) > 0 ||
+        Number(patch.cleanupMinutes) > 0
+      )
+        return partyError(
+          503,
+          'partycrm_venue_transaction_required',
+          'Для безопасного изменения занятости площадки настройте MongoDB replica set'
+        )
+    } catch (cause) {
+      return partyError(
+        cause.status || 500,
+        cause.code || 'partycrm_venue_configuration_failed',
+        cause.message
+      )
+    }
+  }
   const location = await PartyLocations.findOneAndUpdate(
     { _id: id, tenantId: context.tenantId },
     { $set: patch },

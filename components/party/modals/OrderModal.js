@@ -1004,6 +1004,7 @@ export default function OrderModal({
             companyId={activeCompanyId}
             orderId={orderDraft._id || ''}
             orderStatus={orderDraft.status || 'draft'}
+            servicesIds={orderDraft.servicesIds}
           />
         </TabPanel>
 

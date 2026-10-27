@@ -45,6 +45,8 @@ export const serializePartyMembershipCompany = (company, role, position = null) 
     status: text(company.status),
     settings: { timeZone: text(settings.timeZone) || 'Asia/Krasnoyarsk' },
   }
+  if (typeof settings.modules?.ticketing?.enabled === 'boolean')
+    safe.settings.modules = { ticketing: { enabled: settings.modules.ticketing.enabled } }
   if (!isManager(role) || isPartyRestrictedManagementContext({ role, position })) return safe
   Object.assign(safe, {
     legalTitle: text(company.legalTitle),
@@ -102,6 +104,8 @@ export const serializePartyRestrictedCompanySettings = (settings = {}) => {
     integrations: serializeIntegrationIndicators(settings.integrations),
     googleCalendar: { enabled: settings.googleCalendar?.enabled === true, connected: Boolean(settings.googleCalendar?.refreshToken || settings.googleCalendar?.accessToken) },
   }
+  if (typeof settings.modules?.ticketing?.enabled === 'boolean')
+    safe.modules = { ticketing: { enabled: settings.modules.ticketing.enabled } }
   for (const key of ['towns', 'orderTypes', 'eventTypes', 'serviceTypes', 'preparationStatuses', 'leadSources', 'paymentMethods', 'expenseCategories']) safe[key] = Array.isArray(settings[key]) ? settings[key].filter((value) => typeof value === 'string') : []
   return safe
 }

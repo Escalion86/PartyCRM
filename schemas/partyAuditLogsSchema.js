@@ -51,7 +51,7 @@ const partyAuditLogsSchema = {
   entityType: {
     type: String,
     required: true,
-    enum: ['order', 'role', 'task'],
+    enum: ['order', 'role', 'task', 'client'],
     default: 'order',
     index: true,
   },

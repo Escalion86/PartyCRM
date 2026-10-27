@@ -1,6 +1,9 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
+import { canPartyAccess } from '@helpers/partyRolePermissions'
+import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
 import { faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons/faMagnifyingGlass'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { apiJson } from '@helpers/apiClient'
@@ -20,6 +23,10 @@ import PartyAvitoConversationsPanel from '@components/party/integrations/PartyAv
 import PartyTelegramConversationsPanel from '@components/party/integrations/PartyTelegramConversationsPanel'
 import PartyVkConversationsPanel from '@components/party/integrations/PartyVkConversationsPanel'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
+
+const ClientTicketHistory = dynamic(
+  () => import('@components/party/ticketing/ClientTicketHistory')
+)
 
 const similarReasonLabels = {
   phone: 'телефон',
@@ -79,6 +86,8 @@ export function ClientViewModal({
   onClose,
   canManage = false,
   onEdit,
+  companyId = '',
+  ticketContext = null,
 }) {
   const significantDates = Array.isArray(client?.significantDates)
     ? client.significantDates
@@ -149,6 +158,22 @@ export function ClientViewModal({
           </div>
         </ClientViewSection>
 
+        {open &&
+        companyId &&
+        client?._id &&
+        canPartyAccess(ticketContext, { resource: 'tickets' }) &&
+        canPartyAccess(ticketContext, { resource: 'tickets.contacts' }) ? (
+          <ClientTicketHistory
+            key={String(client._id)}
+            companyId={companyId}
+            clientId={String(client._id)}
+            enabled={isPartyTicketingEnabled(ticketContext?.company)}
+            canFinance={canPartyAccess(ticketContext, {
+              resource: 'tickets.finance',
+            })}
+          />
+        ) : null}
+
         <ClientViewSection title="Контакты">
           <div className="grid gap-2">
             <ClientViewLine label="Телефон">
@@ -179,7 +204,7 @@ export function ClientViewModal({
 
         {client?.comment ? (
           <ClientViewSection title="Комментарий">
-            <div className="whitespace-pre-wrap text-sm text-slate-700">
+            <div className="text-sm whitespace-pre-wrap text-slate-700">
               {client.comment}
             </div>
           </ClientViewSection>
@@ -256,14 +281,14 @@ export function ClientSelectModal({
     <div className="flex gap-2">
       <button
         type="button"
-        className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+        className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
         onClick={onClose}
       >
         Отмена
       </button>
       <button
         type="button"
-        className="px-4 py-2 text-sm font-semibold text-white transition rounded cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         onClick={() => {
           onAddNew()
         }}
@@ -293,20 +318,20 @@ export function ClientSelectModal({
           prefix={
             <FontAwesomeIcon
               icon={faMagnifyingGlass}
-              className="w-4 h-4 text-gray-400"
+              className="h-4 w-4 text-gray-400"
             />
           }
         />
-        <div className="overflow-auto max-h-72">
+        <div className="max-h-72 overflow-auto">
           {filtered.length === 0 && (
-            <p className="p-2 text-sm text-center text-gray-500">
+            <p className="p-2 text-center text-sm text-gray-500">
               Клиенты не найдены
             </p>
           )}
           {filtered.map((client) => (
             <div
               key={client._id}
-              className="p-2 border-b border-gray-200 cursor-pointer hover:bg-sky-50"
+              className="cursor-pointer border-b border-gray-200 p-2 hover:bg-sky-50"
               onClick={() => {
                 onSelect(client)
                 onClose()
@@ -484,14 +509,14 @@ export function ClientFormModal({
     <div className="flex gap-2">
       <button
         type="button"
-        className="px-4 py-2 text-sm font-semibold text-gray-700 transition border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+        className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
         onClick={requestClose}
       >
         Отмена
       </button>
       <button
         type="button"
-        className="px-4 py-2 text-sm font-semibold text-white transition rounded cursor-pointer bg-sky-600 hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+        className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={saving}
         onClick={() => onSubmit(getNormalizedDraft())}
       >
@@ -671,7 +696,7 @@ export function ClientFormModal({
           />
           {isLegalEntity && (
             <div className="relative mt-2 rounded border border-sky-200 p-3 pt-4">
-              <div className="absolute -top-2 left-3 bg-white px-1 text-xs font-semibold tracking-wide uppercase text-slate-500">
+              <div className="absolute -top-2 left-3 bg-white px-1 text-xs font-semibold tracking-wide text-slate-500 uppercase">
                 Реквизиты
               </div>
               <div className="flex flex-col gap-2.5">
@@ -686,7 +711,8 @@ export function ClientFormModal({
                     street: clientDraft.legalAddress || '',
                   }}
                   onChange={(field, nextValue) => {
-                    if (field === 'street') handleChange('legalAddress')(nextValue)
+                    if (field === 'street')
+                      handleChange('legalAddress')(nextValue)
                   }}
                   title=""
                   tone="party"
@@ -758,7 +784,7 @@ export function ClientFormModal({
             rows={3}
           />
           <div className="grid gap-3 rounded border border-sky-100 bg-sky-50/50 p-3">
-            <div className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+            <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
               Значимые даты
             </div>
             {(clientDraft.significantDates || []).map((item, index) => (
@@ -821,7 +847,7 @@ export function ClientFormModal({
 
         {clientDraft._id && activeCompanyId ? (
           <div className="grid gap-4 border-t border-gray-200 pt-4">
-            <div className="text-xs font-semibold tracking-wide uppercase text-slate-500">
+            <div className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
               Переписки
             </div>
             <PartyVkConversationsPanel

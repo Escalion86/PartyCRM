@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
+import { getPartyOrderPermanentDeleteBlocker } from './partyOrderPermanentDelete.js'
 import { normalizePartyTransactionPayload, serializePartyTransaction } from './partyTransactionsCore.js'
 import { canAccessPartyTransaction } from './partyTransactionAccess.js'
 import { canPartyAccess } from '../helpers/partyRolePermissions.js'
@@ -35,6 +36,7 @@ const setup = ({ grouped = false, denied = false, missing = false } = {}) => {
     canAccessPartyTransaction,
     withPartyFinancialTransaction: async (tenant, callback) => { assert.equal(tenant, tenantId); return callback(session) },
     assertPartyReportGate: async () => { throw new Error('An income must not call payout report gate') },
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => ({ findOne: filter => { assert.equal(filter.tenantId, tenantId); assert.equal(filter._id, order._id); return q(order) }, updateMany: async (filter, update, options) => { assert.equal(filter.tenantId, tenantId); assert.equal(options.session, session); assert.equal(update.$inc.sharedLocationRevision, 1) } }),
     validatePartyTransactionOrder: async (args) => { assert.equal(args.tenantId, tenantId); return { order } },
     validatePartyPayoutTransactionStaff: () => ({}),
@@ -84,19 +86,22 @@ test('permanent deletion protects group payment parts and concurrent order revis
   for (const hasPart of [true, false]) {
     let deleteCalls = 0
     const deps = {
+      getPartyOrderPermanentDeleteBlocker,
       NextResponse: { json: body => ({ status: 200, body }) },
       getPartyRequestContext: async () => ({ context: { tenantId, role: 'owner', staff: { _id: id, tenantId, role: 'owner', status: 'active' } } }),
       canPartyAccess,
       isValidObjectId: () => true,
       partyError: (status, code) => ({ status, code }),
       getPartyOrderWriteGuard: order => ({ sharedLocationRevision: order.sharedLocationRevision }),
-      getPartyOrderModel: async () => ({
+      withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
+    getPartyOrderModel: async () => ({
         findOne: filter => { assert.equal(filter.tenantId, tenantId); return { lean: async () => ({ _id: id, status: 'active', sharedLocationRevision: 3 }) } },
         findOneAndDelete: filter => { deleteCalls++; assert.equal(filter.tenantId, tenantId); assert.equal(filter.sharedLocationRevision, 3); return { lean: async () => null } },
       }),
       getPartyTransactionModel: async () => ({ findOne: filter => {
-        assert.deepEqual(filter, { tenantId, orderId: id, groupPaymentId: { $ne: null } })
-        return { select: () => ({ lean: async () => hasPart ? { _id: 'payment' } : null }) }
+        assert.equal(filter.tenantId, tenantId)
+        assert.equal(filter.orderId, id)
+        return { select: () => ({ lean: async () => hasPart && filter.groupPaymentId ? { _id: 'payment' } : null }) }
       } }),
     }
     const DELETE = compileFunction(`${orderSource}\nreturn DELETE`, Object.keys(deps))(...Object.values(deps))

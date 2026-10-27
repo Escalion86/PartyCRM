@@ -1,5 +1,7 @@
 import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
 import { NextResponse } from 'next/server'
+import { withPartyOrderVenueWrite } from '@server/partyVenueBookings'
+import { getPartyOrderPermanentDeleteBlocker } from '@server/partyOrderPermanentDelete'
 import { getPartySharedLocationOrderIds } from '@server/partyRelatedOrders'
 import { syncPartyOrderInventory } from '@server/partyInventory'
 import {
@@ -119,6 +121,7 @@ export async function PATCH(req, { params }) {
   }
 
   const body = await parseJsonBody(req)
+  if (['fulfillment', 'initialPayment', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint'].some((field) => Object.hasOwn(body, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие проведения или оплаты', 'validation')
   const PartyOrders = await getPartyOrderModel()
   const currentOrder = await PartyOrders.findOne({
     _id: id,
@@ -176,21 +179,22 @@ export async function PATCH(req, { params }) {
   }
 
   if (isStatusOnlyPatch) {
-    if (['draft', 'active'].includes(nextStatus)) {
-      const conflicts = await findPartyOrderConflicts({
-        PartyOrders,
-        tenantId: context.tenantId,
-        payload: { ...currentOrder, status: nextStatus },
-        excludeOrderId: id,
-        sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }),
-      })
-      if (hasPartyOrderConflicts(conflicts)) return partyError(409, 'partycrm_order_conflict', 'Найдены пересечения по точке или исполнителю', 'validation', { conflicts: maskPartyOrderConflicts(context, conflicts) })
+    let order
+    try {
+      order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, previousOrder: currentOrder, nextOrder: { ...currentOrder, status: nextStatus }, work: async ({ session, legacy }) => {
+        if (['draft', 'active'].includes(nextStatus)) {
+          const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: { ...currentOrder, status: nextStatus }, excludeOrderId: id, sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }), session, checkLocation: legacy })
+          if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
+        }
+        return PartyOrders.findOneAndUpdate(
+          { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
+          { $set: { status: nextStatus, ...(nextStatus === 'closed' ? { eventBrief: await snapshotPartyBriefForClose({ tenantId: context.tenantId, order: currentOrder }) } : {}) }, $inc: { commercialRevision: 1 } },
+          { returnDocument: 'after', ...(session ? { session } : {}) }
+        ).lean()
+      } })
+    } catch (cause) {
+      return partyError(cause.status || 500, cause.code || 'partycrm_order_save_failed', cause.status ? cause.message : 'Не удалось сохранить заказ', 'validation', cause.conflicts ? { conflicts: maskPartyOrderConflicts(context, cause.conflicts) } : {})
     }
-    const order = await PartyOrders.findOneAndUpdate(
-      { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
-      { $set: { status: nextStatus, ...(nextStatus === 'closed' ? { eventBrief: await snapshotPartyBriefForClose({ tenantId: context.tenantId, order: currentOrder }) } : {}) }, $inc: { commercialRevision: 1 } },
-      { returnDocument: 'after' }
-    ).lean()
 
     if (!order) return partyError(409, 'partycrm_order_revision_conflict', 'Заказ изменился. Обновите его перед изменением статуса.', 'conflict')
 
@@ -370,29 +374,17 @@ export async function PATCH(req, { params }) {
     access
   )
 
-  const conflicts = await findPartyOrderConflicts({
-    PartyOrders,
-    tenantId: context.tenantId,
-    payload: limitedPayload,
-    excludeOrderId: id,
-    sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }),
-  })
-  if (hasPartyOrderConflicts(conflicts)) {
-    return partyError(
-      409,
-      'partycrm_order_conflict',
-      'Найдены пересечения по точке или исполнителю',
-      'validation',
-      { conflicts: maskPartyOrderConflicts(context, conflicts) }
-    )
-  }
-
   const revisionFilter = getPartyOrderWriteGuard(currentOrder)
-  const order = await PartyOrders.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId, ...revisionFilter },
-    { $set: limitedPayload },
-    { returnDocument: 'after' }
-  ).lean()
+  let order
+  try {
+    order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, previousOrder: currentOrder, nextOrder: limitedPayload, work: async ({ session, legacy }) => {
+      const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, excludeOrderId: id, sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }), session, checkLocation: legacy })
+      if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
+      return PartyOrders.findOneAndUpdate({ _id: id, tenantId: context.tenantId, ...revisionFilter }, { $set: limitedPayload }, { returnDocument: 'after', ...(session ? { session } : {}) }).lean()
+    } })
+  } catch (cause) {
+    return partyError(cause.status || 500, cause.code || 'partycrm_order_save_failed', cause.status ? cause.message : 'Не удалось сохранить заказ', 'validation', cause.conflicts ? { conflicts: maskPartyOrderConflicts(context, cause.conflicts) } : {})
+  }
 
   if (!order) {
     return partyError(
@@ -466,6 +458,8 @@ export async function DELETE(req, { params }) {
   }
 
   if (permanent) {
+    const immutableHistory = await getPartyOrderPermanentDeleteBlocker({ tenantId: context.tenantId, order: currentOrder })
+    if (immutableHistory) return partyError(409, immutableHistory.code, immutableHistory.message, 'validation')
     const PartyTransactions = await getPartyTransactionModel()
     const groupPaymentPart = await PartyTransactions.findOne({
       tenantId: context.tenantId,
@@ -480,12 +474,15 @@ export async function DELETE(req, { params }) {
         'validation'
       )
     }
+    const financialHistory = await getPartyOrderPermanentDeleteBlocker({ tenantId: context.tenantId, order: currentOrder, Transactions: PartyTransactions })
+    if (financialHistory) return partyError(409, financialHistory.code, financialHistory.message, 'validation')
     // Полное удаление заказа из БД
-    const order = await PartyOrders.findOneAndDelete({
-      _id: id,
-      tenantId: context.tenantId,
-      ...getPartyOrderWriteGuard(currentOrder),
-    }).lean()
+    let order
+    try {
+      order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, previousOrder: currentOrder, nextOrder: null, work: ({ session }) => PartyOrders.findOneAndDelete({ _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) }, session ? { session } : {}).lean() })
+    } catch (cause) {
+      return partyError(cause.status || 500, cause.code || 'partycrm_order_delete_failed', cause.status ? cause.message : 'Не удалось удалить заказ')
+    }
 
     if (!order) {
       return partyError(409, 'partycrm_order_changed', 'Заказ изменился. Обновите страницу и повторите действие.', 'validation')
@@ -511,11 +508,12 @@ export async function DELETE(req, { params }) {
   }
 
   // По умолчанию — отмена заказа (мягкое удаление)
-  const order = await PartyOrders.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
-    { $set: { status: 'canceled' } },
-    { returnDocument: 'after' }
-  ).lean()
+  let order
+  try {
+    order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, previousOrder: currentOrder, nextOrder: { ...currentOrder, status: 'canceled' }, work: ({ session }) => PartyOrders.findOneAndUpdate({ _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) }, { $set: { status: 'canceled' } }, { returnDocument: 'after', ...(session ? { session } : {}) }).lean() })
+  } catch (cause) {
+    return partyError(cause.status || 500, cause.code || 'partycrm_order_save_failed', cause.status ? cause.message : 'Не удалось отменить заказ')
+  }
 
   if (!order) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')

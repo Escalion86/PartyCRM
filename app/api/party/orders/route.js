@@ -4,6 +4,7 @@ import { getPartyWorkflow } from '@helpers/partyWorkflow'
 import { maskPartyOrderConflicts } from '@helpers/partyOrderAccess'
 import { filterPartyInventoryResult } from '@server/partyInventoryApi'
 import { NextResponse } from 'next/server'
+import { withPartyOrderVenueWrite } from '@server/partyVenueBookings'
 import { withPartyOrderReportSummaries } from '@server/partyOrderReportSummaries'
 import { withPartyOrderTaskSummaries } from '@server/partyOrderTaskSummaries'
 import { hasPartyOrderCalendarQuery, parsePartyOrderCalendarQuery, buildPartyOrderCalendarInterval } from '@helpers/partyOrderCalendarQuery'
@@ -617,9 +618,25 @@ export async function POST(req) {
   if (!canPartyAccess(context, { resource: 'orders', action: 'create' })) return partyError(403, 'partycrm_forbidden', 'Нет права создавать заказы')
 
   const body = await parseJsonBody(req)
+  if (['fulfillment', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint'].some((field) => Object.hasOwn(body, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие для отметки проведения', 'validation')
   if (body.status === 'closed' || body.status === 'canceled') return partyError(400, 'partycrm_invalid_initial_status', 'Создайте заявку, затем используйте действие закрытия или отмены')
   if ((body.transactions || []).some((transaction) => transaction.category === 'payout')) return partyError(400, 'partycrm_use_payout_action', 'Выплату исполнителю проводите отдельным действием после сохранения заказа')
-  const createBody = { ...body, ...(Array.isArray(body.assignedStaff) ? { assignedStaff: body.assignedStaff.map(({ staffId, role, payoutAmount }) => ({ staffId, role, payoutAmount })) } : {}) }
+  let initialPayment, initialIdentity, initialService
+  if (body.initialPayment !== undefined) {
+    try {
+      initialService = await import('@server/partyOrderCreatePayment')
+      initialPayment = initialService.parsePartyInitialPayment(body.initialPayment)
+      initialIdentity = initialService.buildPartyOrderCreateIdentity({ key: req.headers.get('Idempotency-Key'), context, body })
+      if (!canPartyAccess(context, { resource: 'finance.payments', action: 'edit' })) return partyError(403, 'partycrm_initial_payment_forbidden', 'Нет права записывать аванс', 'permission')
+      const replay = await initialService.findPartyOrderCreateReplay({ context, identity: initialIdentity })
+      if (replay) return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, replay), replayed: true })
+    } catch (cause) {
+      return partyError(cause.status || 500, cause.code || 'partycrm_initial_payment_failed', cause.status ? cause.message : 'Не удалось подготовить сохранение заказа с авансом')
+    }
+  }
+  const ordinaryBody = { ...body }
+  delete ordinaryBody.initialPayment
+  const createBody = { ...ordinaryBody, ...(Array.isArray(body.assignedStaff) ? { assignedStaff: body.assignedStaff.map(({ staffId, role, payoutAmount }) => ({ staffId, role, payoutAmount })) } : {}) }
   const baseline = normalizeOrderPayload({})
   const changedFields = Object.fromEntries(Object.entries(createBody).filter(([key, value]) => !['_id', 'workflowStageId'].includes(key) && JSON.stringify(value) !== JSON.stringify(baseline[key])))
   const normalizedPayload = normalizeOrderPayload(createBody, {
@@ -691,32 +708,32 @@ export async function POST(req) {
     access
   )
 
-  const conflicts = await findPartyOrderConflicts({
-    PartyOrders,
-    tenantId: context.tenantId,
-    payload: limitedPayload,
-  })
-  if (hasPartyOrderConflicts(conflicts)) {
-    return partyError(
-      409,
-      'partycrm_order_conflict',
-      'Найдены пересечения по точке или исполнителю',
-      'validation',
-      { conflicts: maskPartyOrderConflicts(context, conflicts) }
-    )
+  let order
+  try {
+    if (initialPayment) {
+      const outcome = await initialService.createPartyOrderWithPayment({ context, identity: initialIdentity, payment: initialPayment, payload: limitedPayload, checkConflicts: async (session) => {
+        const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, session, checkLocation: false })
+        if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по исполнителям'), { status: 409, code: 'partycrm_order_conflict', conflicts })
+      } })
+      order = outcome.order
+      if (outcome.replayed) return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, order), replayed: true })
+    } else order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, nextOrder: limitedPayload, work: async ({ session, legacy }) => {
+      const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, session, checkLocation: legacy })
+      if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
+      const payload = { ...limitedPayload, tenantId: context.tenantId }
+      return session ? (await PartyOrders.create([payload], { session }))[0] : PartyOrders.create({ ...limitedPayload, tenantId: context.tenantId })
+    } })
+  } catch (cause) {
+    return partyError(cause.status || 500, cause.code || 'partycrm_order_save_failed', cause.status ? cause.message : 'Не удалось сохранить заказ', 'validation', cause.conflicts ? { conflicts: maskPartyOrderConflicts(context, cause.conflicts) } : {})
   }
-
-  const order = await PartyOrders.create({
-    ...limitedPayload,
-    tenantId: context.tenantId,
-  })
 
   await recordPartyOrderAudit({
     context,
     order,
     action: 'order_created',
-    summary: 'Создал заказ',
+    summary: initialPayment ? 'Создал заказ и записал полученный аванс' : 'Создал заказ',
     changes: [],
+    ...(initialPayment ? { metadata: { initialPayment: { amount: initialPayment.amount, paymentMethod: initialPayment.paymentMethod, source: 'manual' } } } : {}),
   })
 
   await syncPartyOrderCalendarAfterCrud({
@@ -732,6 +749,6 @@ export async function POST(req) {
   })
 
   const inventory = await syncPartyOrderInventory({ tenantId: context.tenantId, order, staffId: context.staff?._id })
-  const safeOrder = filterPartyOrderForAccess(context, order.toObject())
+  const safeOrder = filterPartyOrderForAccess(context, order.toObject ? order.toObject() : order)
   return NextResponse.json({ success: true, data: safeOrder, ...(canPartyAccess(context, { resource: 'inventory', order }) ? { inventory: await filterPartyInventoryResult(context, inventory, 'inventory.reservations') } : {}) }, { status: 201 })
 }

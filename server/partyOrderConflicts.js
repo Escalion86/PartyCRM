@@ -1,9 +1,15 @@
-const hasDateRange = (payload) => Boolean(payload?.eventDate && payload?.dateEnd)
+const hasDateRange = (payload) =>
+  Boolean(payload?.eventDate && payload?.dateEnd)
 
-const buildOverlapQuery = ({ tenantId, eventDate, dateEnd, excludeOrderId }) => {
+const buildOverlapQuery = ({
+  tenantId,
+  eventDate,
+  dateEnd,
+  excludeOrderId,
+}) => {
   const conditions = {
     tenantId,
-    status: { $nin: ['canceled', 'closed'] },
+    status: { $ne: 'canceled' },
     eventDate: { $lt: dateEnd },
     dateEnd: { $gt: eventDate },
   }
@@ -21,6 +27,8 @@ export const findPartyOrderConflicts = async ({
   payload,
   excludeOrderId = null,
   sharedLocationOrderIds = [],
+  session = null,
+  checkLocation = true,
 }) => {
   if (!hasDateRange(payload)) {
     return {
@@ -38,18 +46,27 @@ export const findPartyOrderConflicts = async ({
 
   const conflictQueries = []
 
-  if (payload.placeType === 'company_location' && payload.locationId) {
+  const conflictQuery = (filter, fields) => {
+    const query = PartyOrders.find(filter).select(fields)
+    return (session ? query.session(session) : query).lean()
+  }
+  if (
+    checkLocation &&
+    payload.placeType === 'company_location' &&
+    payload.locationId
+  ) {
     conflictQueries.push(
-      PartyOrders.find({
-        ...overlapQuery,
-        // Only IDs resolved from the stored tenant group by the caller are trusted.
-        ...(excludeOrderId && sharedLocationOrderIds.length
-          ? { _id: { $nin: [excludeOrderId, ...sharedLocationOrderIds] } }
-          : {}),
-        locationId: payload.locationId,
-      })
-        .select('_id title eventDate dateEnd locationId')
-        .lean()
+      conflictQuery(
+        {
+          ...overlapQuery,
+          // Only IDs resolved from the stored tenant group by the caller are trusted.
+          ...(excludeOrderId && sharedLocationOrderIds.length
+            ? { _id: { $nin: [excludeOrderId, ...sharedLocationOrderIds] } }
+            : {}),
+          locationId: payload.locationId,
+        },
+        '_id title eventDate dateEnd locationId'
+      )
     )
   } else {
     conflictQueries.push(Promise.resolve([]))
@@ -61,18 +78,21 @@ export const findPartyOrderConflicts = async ({
 
   if (staffIds.length > 0) {
     conflictQueries.push(
-      PartyOrders.find({
-        ...overlapQuery,
-        'assignedStaff.staffId': { $in: staffIds },
-      })
-        .select('_id title eventDate dateEnd assignedStaff.staffId')
-        .lean()
+      conflictQuery(
+        {
+          ...overlapQuery,
+          'assignedStaff.staffId': { $in: staffIds },
+        },
+        '_id title eventDate dateEnd assignedStaff.staffId'
+      )
     )
   } else {
     conflictQueries.push(Promise.resolve([]))
   }
 
-  const [locationConflicts, staffConflicts] = await Promise.all(conflictQueries)
+  // MongoDB does not support parallel operations inside one transaction.
+  const locationConflicts = await conflictQueries[0]
+  const staffConflicts = await conflictQueries[1]
 
   return {
     locationConflicts,

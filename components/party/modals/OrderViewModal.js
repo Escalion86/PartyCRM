@@ -252,6 +252,7 @@ export default function OrderViewModal({
   services = [],
   canManage = false,
   activeCompanyId = '',
+  ticketContext = null,
   onClose,
   onEdit,
   onUpdateOrder,
@@ -475,7 +476,7 @@ export default function OrderViewModal({
         </Section>
 
         <Section title="Бриф праздника">
-          <PartyEventBriefView value={order?.eventBrief || {}} companyId={activeCompanyId} orderId={String(order._id)} orderStatus={order.status} />
+          <PartyEventBriefView value={order?.eventBrief || {}} companyId={activeCompanyId} orderId={String(order._id)} orderStatus={order.status} servicesIds={order.servicesIds} />
         </Section>
 
         <Section title="Контакты по заказу">
@@ -862,6 +863,8 @@ export default function OrderViewModal({
         <ClientViewModal
           open={true}
           client={viewingClient}
+          companyId={activeCompanyId}
+          ticketContext={ticketContext}
           canManage={false}
           onClose={() => setViewingClient(null)}
         />

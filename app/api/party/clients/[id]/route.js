@@ -208,7 +208,7 @@ export async function DELETE(req, { params }) {
     return partyError(
       409,
       'partycrm_client_delete_blocked',
-      'Нельзя удалить клиента со связанными заказами, звонками или переписками',
+      'Нельзя удалить клиента со связанной историей. Его можно архивировать или объединить с другой карточкой',
       'validation',
       { relations, canArchive: true }
     )

@@ -34,6 +34,15 @@ const partyLocationsSchema = {
     default: null,
     min: 0,
   },
+  usageMode: {
+    type: String,
+    enum: ['exclusive', 'shared'],
+    default: 'exclusive',
+  },
+  preparationMinutes: { type: Number, default: 0, min: 0, max: 1440 },
+  cleanupMinutes: { type: Number, default: 0, min: 0, max: 1440 },
+  venueBookingRevision: { type: Number, default: 0 },
+  venueBookingManaged: { type: Boolean, default: false },
 }
 
 export default partyLocationsSchema

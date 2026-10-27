@@ -5,6 +5,7 @@ import Select from '@components/Select'
 import { useMemo, useState } from 'react'
 import useCompanySettings from '../useCompanySettings'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
+import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
 
 const TIME_ZONE_OPTIONS = [
   { value: 'UTC', label: 'UTC' },
@@ -14,6 +15,67 @@ const TIME_ZONE_OPTIONS = [
 ]
 
 const DEFAULT_ORDER_NUMBER_FORMAT = 'P-{YYYY}-{SEQ}'
+
+function TicketingModuleSettings({ settings, companyId, saving, savePatch }) {
+  const actual = isPartyTicketingEnabled(settings)
+  const [desired, setDesired] = useState(null)
+  const enabled = desired ?? actual
+  const dirty = desired !== null && desired !== actual
+  usePartyUnsavedChanges(dirty, {
+    label: 'модуль билетов и посещений',
+    scope: companyId,
+    pending: saving,
+  })
+  const save = async () => {
+    try {
+      await savePatch({ modules: { ticketing: { enabled } } })
+      setDesired(null)
+      window.dispatchEvent(new Event('partycrm:profile-updated'))
+    } catch {
+      /* Preserve the selected value; the parent shows the API error. */
+    }
+  }
+  return (
+    <section className="rounded-2xl border border-sky-100 bg-white p-5">
+      <h2 className="text-base font-semibold text-slate-950">
+        Билеты и посещения
+      </h2>
+      <p className="mt-1 text-sm text-slate-500">
+        Программы по сеансам и без фиксированного времени, брони и учёт
+        полученной оплаты. Права сотрудников настраиваются в должностях.
+      </p>
+      <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 text-sm font-semibold text-sky-950">
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={saving}
+          onChange={(event) =>
+            setDesired(
+              event.target.checked === actual ? null : event.target.checked
+            )
+          }
+        />
+        Включить модуль билетных мероприятий
+      </label>
+      <p className="mt-1 text-xs text-slate-500">
+        После выключения сохраняются история, вход и возвраты по существующим
+        билетам. Новые продажи и оплаты блокируются.
+      </p>
+      <p className="mt-2 text-xs text-slate-500">
+        Сейчас модуль {actual ? 'включён' : 'выключен'}.
+        {dirty ? ' Выбранное изменение ещё не сохранено.' : ''}
+      </p>
+      <button
+        type="button"
+        className="mt-3 min-h-11 cursor-pointer rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        disabled={!dirty || saving}
+        onClick={save}
+      >
+        {saving ? 'Сохраняем…' : 'Сохранить модуль'}
+      </button>
+    </section>
+  )
+}
 
 function CompanyProfileForm({ company, saving, savePatch }) {
   const [profileForm, setProfileForm] = useState({
@@ -178,6 +240,13 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
 
   return (
     <div className="grid gap-4">
+      <TicketingModuleSettings
+        key={activeCompanyId}
+        settings={settings}
+        companyId={activeCompanyId}
+        saving={saving}
+        savePatch={savePatch}
+      />
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
         <Select
           label="Вид формы заказа"

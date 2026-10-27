@@ -45,12 +45,27 @@ export async function POST(req) {
     )
   }
 
-  const { client, order } = await createPartyPublicLeadOrder({
-    company: resolved.company,
-    normalized,
-    rawPayload: body,
-    apiKeyData: resolved.apiKeyData,
-  })
+  let created
+  try {
+    created = await createPartyPublicLeadOrder({
+      company: resolved.company,
+      normalized,
+      rawPayload: body,
+      apiKeyData: resolved.apiKeyData,
+    })
+  } catch (cause) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: cause.code || 'partycrm_lead_create_failed',
+          message: cause.status ? cause.message : 'Не удалось принять заявку',
+        },
+      },
+      { status: cause.status || 500 }
+    )
+  }
+  const { client, order } = created
 
   return NextResponse.json(
     {
@@ -59,6 +74,7 @@ export async function POST(req) {
         clientId: String(client._id),
         orderId: String(order._id),
         status: order.status,
+        bookingNeedsReview: created.bookingNeedsReview === true,
       },
     },
     { status: 201 }

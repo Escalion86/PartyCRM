@@ -40,6 +40,7 @@ export const DEFAULT_COMPANY_SETTINGS = Object.freeze({
   notifications: {},
   documents: {},
   integrations: {},
+  modules: { ticketing: { enabled: false } },
 })
 
 export const normalizeCompanyEventTypes = (eventTypes = []) =>
@@ -226,6 +227,7 @@ export const normalizeCompanySettings = (value = {}) => ({
   notifications: normalizeCompanyNotifications(value?.notifications),
   documents: normalizeCompanyDocuments(value?.documents),
   integrations: normalizeObjectField(value?.integrations),
+  modules: { ticketing: { enabled: value?.modules?.ticketing?.enabled === true } },
 })
 
 export const mergeCompanySettingsPatch = (current, patch) =>
@@ -243,6 +245,12 @@ export const mergeCompanySettingsPatch = (current, patch) =>
     integrations: {
       ...normalizeObjectField(current?.integrations),
       ...normalizeObjectField(patch?.integrations),
+    },
+    modules: {
+      ticketing: {
+        ...normalizeObjectField(current?.modules?.ticketing),
+        ...normalizeObjectField(patch?.modules?.ticketing),
+      },
     },
   })
 

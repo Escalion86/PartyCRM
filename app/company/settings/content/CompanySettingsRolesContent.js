@@ -3,6 +3,7 @@ import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsaved
 
 import { useEffect, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
 import {
   getPartyDefaultRolePermissions,
   PARTY_ROLE_PERMISSION_GROUPS,
@@ -65,6 +66,7 @@ export default function CompanySettingsRolesContent({ activeCompanyId }) {
   const [original, setOriginal] = useState(null)
   const [busy, setBusy] = useState(true)
   const [canManage, setCanManage] = useState(false)
+  const [ticketingEnabled, setTicketingEnabled] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [search, setSearch] = useState('')
@@ -92,12 +94,14 @@ export default function CompanySettingsRolesContent({ activeCompanyId }) {
     setDraft(null)
     setOriginal(null)
     setCanManage(false)
+    setTicketingEnabled(false)
     const headers = { 'x-partycrm-company-id': activeCompanyId }
     Promise.allSettled([
       apiJson('/api/party/roles', { cache: 'no-store', headers }),
       apiJson('/api/party/locations', { cache: 'no-store', headers }),
       apiJson('/api/party/workflow', { cache: 'no-store', headers }),
-    ]).then(([roleResult, locationResult, workflowResult]) => {
+      apiJson('/api/party/company-settings', { cache: 'no-store', headers }),
+    ]).then(([roleResult, locationResult, workflowResult, settingsResult]) => {
       if (!alive) return
       if (roleResult.status === 'fulfilled') {
         setRoles(roleResult.value.data || [])
@@ -112,6 +116,12 @@ export default function CompanySettingsRolesContent({ activeCompanyId }) {
         setLocations(locationResult.value.data || [])
       if (workflowResult.status === 'fulfilled')
         setStages(workflowResult.value.data?.stages || [])
+      if (settingsResult.status === 'fulfilled')
+        setTicketingEnabled(
+          isPartyTicketingEnabled(
+            settingsResult.value.data?.settings || settingsResult.value.data
+          )
+        )
       setBusy(false)
     })
     return () => {
@@ -185,18 +195,25 @@ export default function CompanySettingsRolesContent({ activeCompanyId }) {
       },
       { hidden: 0, read: 0, edit: 0 }
     )
-  const totals = counts(PARTY_ROLE_PERMISSIONS)
+  const activePermissions = PARTY_ROLE_PERMISSIONS.filter(
+    (row) => row.group !== 'ticketing' || ticketingEnabled
+  )
+  const totals = counts(activePermissions)
   const query = searchable(search.trim())
-  const visibleGroups = PARTY_ROLE_PERMISSION_GROUPS.map((group) => ({
-    ...group,
-    rows: groupRows
-      .get(group.key)
-      .filter(
-        (row) =>
-          !query ||
-          searchable(`${group.label} ${row.label} ${row.key}`).includes(query)
-      ),
-  })).filter((group) => group.rows.length)
+  const visibleGroups = PARTY_ROLE_PERMISSION_GROUPS.filter(
+    (group) => group.key !== 'ticketing' || ticketingEnabled
+  )
+    .map((group) => ({
+      ...group,
+      rows: groupRows
+        .get(group.key)
+        .filter(
+          (row) =>
+            !query ||
+            searchable(`${group.label} ${row.label} ${row.key}`).includes(query)
+        ),
+    }))
+    .filter((group) => group.rows.length)
   const changedPermissions = PARTY_ROLE_PERMISSIONS.filter(
     (row) => levelOf(row, draft) !== levelOf(row, original)
   ).length

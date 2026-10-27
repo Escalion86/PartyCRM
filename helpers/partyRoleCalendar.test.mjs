@@ -36,3 +36,13 @@ test('calendar query range includes all visible grid days with an exclusive end'
   assert.equal(+new Date(range.dateTo) > +new Date(range.dateFrom), true)
   assert.equal((+new Date(range.dateTo) - +new Date(range.dateFrom)) / 86400000 < 50, true)
 })
+
+test('ticket sessions have an independent read grant and never project buyer or order finances', () => {
+  const row = { _id: 'ticket-session:abc', calendarEntityType: 'ticket_session', title: 'Шоу', eventDate: '2026-10-27T10:00:00Z', dateEnd: '2026-10-27T12:00:00Z', status: 'active', client: { name: 'Hidden buyer' }, contractAmount: 99999 }
+  assert.equal(projectPartyRoleCalendarOrder(row, { title: true, clientName: true }), null)
+  const result = projectPartyRoleCalendarOrder(row, { tickets: true, clientName: true })
+  assert.equal(result.title, 'Сеанс: Шоу')
+  assert.equal(result.end.toISOString(), row.dateEnd.replace('Z', '.000Z'))
+  assert.equal(result.clientName, '')
+  assert.doesNotMatch(JSON.stringify(result), /Hidden|99999/)
+})
