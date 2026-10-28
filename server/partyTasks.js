@@ -120,6 +120,7 @@ export const serializeTask = (context, task, { order = null, staffById = new Map
   return {
     ...result, _id: String(task._id),
     canEdit, canComplete,
+    canReopen: writable && canManageTask(context) && canPartyAccess(context, { resource: 'tasks', action: 'complete' }) && ['done', 'canceled'].includes(task.status),
     canCancel: writable && canPartyAccess(context, { resource: 'tasks', action: 'cancel' }) && !['done', 'canceled'].includes(task.status),
     blockedReason: allowed ? '' : 'Должность не имеет доступа к связанному заказу на его текущем этапе.',
     orderTitle: allowed && order ? (canPartyAccess(context, { resource: 'orders.title', order }) ? order.title : '') || (canPartyAccess(context, { resource: 'orders.serviceTitle', order }) ? order.serviceTitle : '') || 'Заказ' : '',

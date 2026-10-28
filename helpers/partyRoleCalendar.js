@@ -61,3 +61,64 @@ export const buildPartyRoleCalendarDays = (orders, days, access = {}) => {
     )
   return result
 }
+
+// Only known intervals occupy the time grid. A hidden or missing end is a
+// point in time and is shown separately, without inventing a booking duration.
+export const layoutPartyRoleCalendarDay = (items, date) => {
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const dayEnd = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() + 1
+  )
+  const minutes = (value) =>
+    value.getHours() * 60 + value.getMinutes() + value.getSeconds() / 60
+  const points = [],
+    intervals = []
+  for (const item of items) {
+    if (!item.end || item.end <= item.start) {
+      if (item.start >= dayStart && item.start < dayEnd) points.push(item)
+      continue
+    }
+    if (item.end <= dayStart || item.start >= dayEnd) continue
+    const startMinute = item.start <= dayStart ? 0 : minutes(item.start)
+    const endMinute = item.end >= dayEnd ? 1440 : minutes(item.end)
+    intervals.push({
+      ...item,
+      startMinute,
+      endMinute,
+      labelStartMinute: Math.min(startMinute, 1398),
+      continuesBefore: item.start < dayStart,
+      continuesAfter: item.end > dayEnd,
+      // Reserve label space for a 44px button at 64px/hour. The actual interval
+      // is drawn independently, so short events retain their true duration.
+      labelEndMinute: Math.min(1440, Math.max(endMinute, startMinute + 42)),
+    })
+  }
+  intervals.sort(
+    (a, b) =>
+      a.labelStartMinute - b.labelStartMinute ||
+      b.endMinute - a.endMinute ||
+      a.id.localeCompare(b.id)
+  )
+  let group = [],
+    laneEnds = [],
+    groupEnd = -1
+  const finish = () => {
+    for (const item of group) item.laneCount = laneEnds.length
+    group = []
+    laneEnds = []
+    groupEnd = -1
+  }
+  for (const item of intervals) {
+    if (group.length && item.labelStartMinute >= groupEnd) finish()
+    let lane = laneEnds.findIndex((end) => end <= item.labelStartMinute)
+    if (lane < 0) lane = laneEnds.length
+    laneEnds[lane] = item.labelEndMinute
+    item.lane = lane
+    group.push(item)
+    groupEnd = Math.max(groupEnd, item.labelEndMinute)
+  }
+  finish()
+  return { points, intervals }
+}

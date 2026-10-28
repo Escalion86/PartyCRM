@@ -5,10 +5,19 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import { PARTY_TASK_STATUSES, partyTaskDateInput } from '@helpers/partyTasks'
 import {
-  getPartyTaskDueLabel,
   getPartyTaskQuickDate,
   matchesPartyTaskFilter,
 } from '@helpers/partyTaskPresentation'
+import {
+  buildPartyTasksQuery,
+  mergePartyTaskBoardPages,
+  mergePartyTaskRows,
+  PARTY_TASK_BOARD_STATUSES,
+  readPartyTaskView,
+  savePartyTaskView,
+} from '@helpers/partyTaskViews'
+import PartyTaskBoard from './PartyTaskBoard'
+import PartyTaskCard from './PartyTaskCard'
 import FieldHelp from '@components/FieldHelp'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
@@ -40,8 +49,28 @@ export default function PartyTasks({
   const [data, setData] = useState({ tasks: [], staff: [], roles: [] })
   const [filter, setFilter] = useState('open')
   const [search, setSearch] = useState('')
+  const [querySearch, setQuerySearch] = useState('')
+  const [scope, setScope] = useState('all')
+  const [view, setView] = useState('list')
+  const preferenceIdentity = useRef('')
+  const controller = useRef(null)
+  const queryTime = useRef(new Date())
+  const board = !compact && view === 'board' && filter !== 'canceled'
+  const requestKey = JSON.stringify([
+    companyId,
+    orderId,
+    filter,
+    querySearch,
+    scope,
+    board,
+  ])
+  useEffect(() => {
+    const timer = setTimeout(() => setQuerySearch(search), 250)
+    return () => clearTimeout(timer)
+  }, [search])
   const [staffSearch, setStaffSearch] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pendingAction, setPendingAction] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState(null)
   const [editing, setEditing] = useState(null)
@@ -59,31 +88,74 @@ export default function PartyTasks({
     return () => onDirtyChange?.(false)
   }, [dirty, uploading, onDirtyChange])
   const load = useCallback(
-    async (cursor = '') => {
+    async (cursor = '', status = '') => {
       const requestGeneration = ++generation.current
+      controller.current?.abort()
+      const abortController = new AbortController()
+      controller.current = abortController
       setBusy(true)
       setError('')
-      try {
-        const query = new URLSearchParams()
-        if (orderId) query.set('orderId', orderId)
-        if (cursor) query.set('cursor', cursor)
+      if (!cursor) {
+        queryTime.current = new Date()
+        setData((previous) => ({
+          ...previous,
+          tasks: [],
+          columns: {},
+          nextCursor: null,
+          loadedQueryKey: null,
+        }))
+      }
+      const fetchPage = async (columnStatus = '') => {
+        const query = buildPartyTasksQuery({
+          orderId,
+          filter,
+          search: querySearch,
+          scope,
+          status: columnStatus,
+          cursor,
+          now: queryTime.current,
+        })
         const result = await apiJson(`/api/party/tasks?${query}`, {
           headers: { 'x-partycrm-company-id': companyId },
+          signal: abortController.signal,
         })
-        if (requestGeneration !== generation.current) return
-        setData((previous) => ({
-          ...result.data,
-          tasks: cursor
-            ? [...previous.tasks, ...result.data.tasks]
-            : result.data.tasks,
-        }))
+        return { status: columnStatus, data: result.data }
+      }
+      try {
+        if (board) {
+          const pages = await Promise.all(
+            (status ? [status] : PARTY_TASK_BOARD_STATUSES).map(fetchPage)
+          )
+          if (requestGeneration !== generation.current) return
+          setData((previous) => ({
+            ...mergePartyTaskBoardPages(previous, pages, Boolean(cursor)),
+            loadedQueryKey: requestKey,
+          }))
+        } else {
+          const page = await fetchPage()
+          if (requestGeneration !== generation.current) return
+          setData((previous) => ({
+            ...page.data,
+            loadedQueryKey: requestKey,
+            tasks: cursor
+              ? mergePartyTaskRows(previous.tasks, page.data.tasks)
+              : page.data.tasks,
+            staff: cursor
+              ? mergePartyTaskRows(previous.staff, page.data.staff)
+              : page.data.staff,
+          }))
+        }
       } catch (cause) {
-        if (requestGeneration === generation.current) setError(cause.message)
+        if (
+          requestGeneration === generation.current &&
+          cause.name !== 'AbortError'
+        )
+          setError(cause.message)
       } finally {
         if (requestGeneration === generation.current) setBusy(false)
       }
     },
-    [companyId, orderId]
+    [companyId, orderId, filter, querySearch, scope, board, requestKey]
   )
   useEffect(() => {
     setData({ tasks: [], staff: [], roles: [] })
@@ -91,17 +163,61 @@ export default function PartyTasks({
     setEditing(null)
     setNotice(null)
     setSearch('')
+    setQuerySearch('')
+    setScope('all')
+    setView('list')
+    preferenceIdentity.current = ''
+  }, [companyId, orderId])
+  useEffect(() => {
     load()
     return () => {
       generation.current += 1
+      controller.current?.abort()
     }
   }, [load])
+  useEffect(() => {
+    if (compact || !data.currentStaffId) return
+    const identity = `${companyId}:${data.currentStaffId}`
+    if (preferenceIdentity.current === identity) return
+    preferenceIdentity.current = identity
+    let storage
+    try {
+      storage = window.localStorage
+    } catch {
+      /* Storage is optional. */
+    }
+    const preferred = readPartyTaskView(
+      storage,
+      companyId,
+      data.currentStaffId,
+      window.matchMedia('(max-width: 767px)').matches
+    )
+    setView(preferred)
+    if (preferred === 'board')
+      setFilter((previous) => (previous === 'open' ? 'all' : previous))
+  }, [companyId, data.currentStaffId, compact])
+  const changeView = (nextView) => {
+    setView(nextView)
+    if (nextView === 'board' && filter === 'open') setFilter('all')
+    try {
+      savePartyTaskView(
+        window.localStorage,
+        companyId,
+        data.currentStaffId,
+        nextView
+      )
+    } catch {
+      /* Storage is optional. */
+    }
+  }
   usePartyUnsavedChanges(dirty, {
     label: 'задача',
     scope: companyId,
-    pending: uploading || (busy && Boolean(draft)),
+    pending: uploading || pendingAction || (busy && Boolean(draft)),
   })
   const mutate = async (task, patch) => {
+    const requestGeneration = generation.current
+    setPendingAction(true)
     setBusy(true)
     setError('')
     try {
@@ -115,6 +231,7 @@ export default function PartyTasks({
             seriesAction: 'stop_series',
           }),
         })
+        if (requestGeneration !== generation.current) return
         if (
           !window.confirm(
             `Остановить серию и отменить ${preview.data.affectedCount} открытых задач? Выполненные задачи и история сохранятся.`
@@ -127,17 +244,12 @@ export default function PartyTasks({
           previewToken: preview.data.previewToken,
         }
       }
-      const result = await apiJson(`/api/party/tasks/${task._id}`, {
+      await apiJson(`/api/party/tasks/${task._id}`, {
         method: 'PATCH',
         headers: { 'x-partycrm-company-id': companyId },
         body: JSON.stringify({ revision: task.revision, ...patch }),
       })
-      setData((previous) => ({
-        ...previous,
-        tasks: previous.tasks.map((row) =>
-          row._id === task._id ? result.data : row
-        ),
-      }))
+      if (requestGeneration !== generation.current) return
       setNotice(
         patch.action === 'stop_series'
           ? { text: 'Повторы остановлены.' }
@@ -153,14 +265,23 @@ export default function PartyTasks({
                   filter: 'canceled',
                   link: 'Показать отменённые',
                 }
-              : { text: 'Задача взята в работу.' }
+              : {
+                  text:
+                    patch.status === 'new'
+                      ? 'Задача возвращена в новые.'
+                      : 'Задача взята в работу.',
+                }
       )
       onChanged?.()
+      await load()
     } catch (cause) {
-      if (/измен|Обновите/i.test(cause.message)) await load()
+      if (requestGeneration !== generation.current) return
+      if (cause.status === 409 || /измен|Обновите/i.test(cause.message))
+        await load()
       setError(cause.message)
     } finally {
-      setBusy(false)
+      if (requestGeneration === generation.current) setBusy(false)
+      setPendingAction(false)
     }
   }
   const begin = (task = null) => {
@@ -186,6 +307,7 @@ export default function PartyTasks({
   const save = async (event) => {
     event.preventDefault()
     if (uploading) return
+    const requestGeneration = generation.current
     setBusy(true)
     setError('')
     try {
@@ -212,6 +334,7 @@ export default function PartyTasks({
             applyToSeries: true,
           }),
         })
+        if (requestGeneration !== generation.current) return
         if (
           !window.confirm(
             `Изменить эту и будущие задачи серии? Будет обновлено ${preview.data.affectedCount} открытых задач. Выполненные задачи и история сохранятся.`
@@ -233,12 +356,16 @@ export default function PartyTasks({
           ),
         }
       )
-      if (!editing || !matchesPartyTaskFilter(result.data, filter))
-        setFilter(
-          ['done', 'canceled'].includes(result.data.status)
+      if (requestGeneration !== generation.current) return
+      const nextFilter =
+        !editing || !matchesPartyTaskFilter(result.data, filter)
+          ? ['done', 'canceled'].includes(result.data.status)
             ? result.data.status
-            : 'open'
-        )
+            : board
+              ? 'all'
+              : 'open'
+          : filter
+      setFilter(nextFilter)
       setSearch('')
       setNotice({
         text: editing ? 'Изменения задачи сохранены.' : 'Задача создана.',
@@ -246,11 +373,11 @@ export default function PartyTasks({
       setDraft(null)
       setEditing(null)
       onChanged?.()
-      await load()
+      if (nextFilter === filter && !querySearch) await load()
     } catch (cause) {
-      setError(cause.message)
+      if (requestGeneration === generation.current) setError(cause.message)
     } finally {
-      setBusy(false)
+      if (requestGeneration === generation.current) setBusy(false)
     }
   }
   const applyQuickDate = (days) =>
@@ -258,36 +385,19 @@ export default function PartyTasks({
       ...previous,
       dueAt: partyTaskDateInput(getPartyTaskQuickDate(days)),
     }))
-  const now = new Date()
-  const query = search.trim().toLocaleLowerCase('ru-RU')
-  const tasks = data.tasks
-    .filter(
-      (task) =>
-        matchesPartyTaskFilter(task, filter, now) &&
-        (!query ||
-          [task.title, task.orderTitle]
-            .filter(Boolean)
-            .join(' ')
-            .toLocaleLowerCase('ru-RU')
-            .includes(query))
-    )
-    .sort(
-      (a, b) =>
-        (a.dueAt ? new Date(a.dueAt).getTime() : Infinity) -
-        (b.dueAt ? new Date(b.dueAt).getTime() : Infinity)
-    )
+  const currentData = data.loadedQueryKey === requestKey
+  const actionBusy = busy || pendingAction || search !== querySearch
+  const tasks = [...(currentData ? data.tasks : [])].sort(
+    (a, b) =>
+      (a.dueAt ? +new Date(a.dueAt) : Infinity) -
+      (b.dueAt ? +new Date(b.dueAt) : Infinity)
+  )
   const quickFilters = [
-    ['open', 'Открытые'],
+    [board ? 'all' : 'open', board ? 'Все статусы' : 'Открытые'],
     ['overdue', 'Просрочено'],
     ['today', 'Сегодня'],
     ['undated', 'Без срока'],
   ]
-  const statusStyles = {
-    new: 'bg-sky-50 text-sky-800',
-    in_progress: 'bg-amber-50 text-amber-900',
-    done: 'bg-emerald-50 text-emerald-800',
-    canceled: 'bg-slate-100 text-slate-600',
-  }
   const staffById = new Map(
     data.staff.map((person) => [String(person._id), person.name])
   )
@@ -306,10 +416,34 @@ export default function PartyTasks({
           </div>
         )}
         <div className="flex flex-wrap gap-2">
+          {!compact && !draft && (
+            <div
+              role="group"
+              aria-label="Вид задач"
+              className="flex rounded-lg border border-slate-200 bg-white p-1"
+            >
+              {[
+                ['board', 'Доска'],
+                ['list', 'Список'],
+              ].map(([value, label]) => (
+                <button
+                  type="button"
+                  key={value}
+                  aria-pressed={view === value}
+                  disabled={pendingAction}
+                  className={`min-h-11 cursor-pointer rounded-md px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${view === value ? 'bg-sky-700 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                  onClick={() => changeView(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <select
             aria-label="Статус задач"
             className={`${control} w-auto cursor-pointer`}
             value={filter}
+            disabled={pendingAction || Boolean(draft)}
             onChange={(event) => setFilter(event.target.value)}
           >
             <option value="open">Открытые</option>
@@ -327,7 +461,7 @@ export default function PartyTasks({
             <button
               type="button"
               className={`${button} bg-sky-600 text-white`}
-              disabled={busy}
+              disabled={actionBusy}
               onClick={() => begin()}
             >
               + Задача
@@ -336,7 +470,7 @@ export default function PartyTasks({
           <button
             type="button"
             className={button}
-            disabled={busy || Boolean(draft)}
+            disabled={actionBusy || Boolean(draft)}
             onClick={() => load()}
           >
             Обновить
@@ -361,6 +495,7 @@ export default function PartyTasks({
             <button
               type="button"
               className="min-h-10 cursor-pointer font-semibold underline underline-offset-4"
+              disabled={pendingAction || Boolean(draft)}
               onClick={() => {
                 setFilter(notice.filter)
                 setSearch('')
@@ -381,6 +516,7 @@ export default function PartyTasks({
                 className={control}
                 placeholder="Найти по названию или заказу"
                 value={search}
+                disabled={pendingAction}
                 onChange={(event) => setSearch(event.target.value)}
               />
             </label>
@@ -389,11 +525,35 @@ export default function PartyTasks({
                 type="button"
                 className={button}
                 aria-label="Очистить поиск задач"
+                disabled={pendingAction}
                 onClick={() => setSearch('')}
               >
                 Сбросить
               </button>
             )}
+          </div>
+          <div
+            role="group"
+            aria-label="Назначение задач"
+            className="flex flex-wrap gap-2"
+          >
+            {[
+              ['all', 'Все доступные'],
+              ['mine', 'Мои'],
+              ['role', 'Моей должности'],
+              ['created', 'Поставленные мной'],
+            ].map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                aria-pressed={scope === value}
+                disabled={pendingAction}
+                className={`min-h-11 cursor-pointer rounded-lg px-3 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50 ${scope === value ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                onClick={() => setScope(value)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
           <div
             role="group"
@@ -405,26 +565,18 @@ export default function PartyTasks({
                 type="button"
                 key={value}
                 aria-pressed={filter === value}
-                className={`min-h-11 cursor-pointer rounded-full border px-3 py-2 text-sm transition ${filter === value ? 'border-sky-700 bg-sky-700 text-white' : value === 'overdue' && data.tasks.some((task) => matchesPartyTaskFilter(task, value, now)) ? 'border-red-200 bg-red-50 text-red-800 hover:bg-red-100' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                disabled={pendingAction}
+                className={`min-h-11 cursor-pointer rounded-full border px-3 py-2 text-sm transition disabled:cursor-not-allowed disabled:opacity-50 ${filter === value ? 'border-sky-700 bg-sky-700 text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
                 onClick={() => setFilter(value)}
               >
                 {label}
-                <span
-                  className={`ml-2 rounded-full px-1.5 py-0.5 text-xs ${filter === value ? 'bg-white/20' : 'bg-slate-100 text-slate-600'}`}
-                >
-                  {
-                    data.tasks.filter((task) =>
-                      matchesPartyTaskFilter(task, value, now)
-                    ).length
-                  }
-                </span>
               </button>
             ))}
           </div>
-          {data.nextCursor && (
+          {currentData && !draft && !board && data.nextCursor && (
             <p className="text-xs text-slate-500">
-              Фильтры и поиск учитывают загруженные задачи. Остальные доступны
-              по кнопке «Показать ещё».
+              Показано {tasks.length} задач. Остальные совпадения доступны по
+              кнопке «Показать ещё».
             </p>
           )}
         </div>
@@ -738,7 +890,10 @@ export default function PartyTasks({
               className={button}
               disabled={busy || uploading}
               onClick={() => {
-                if (!dirty || window.confirm('Закрыть редактор без сохранения?')) {
+                if (
+                  !dirty ||
+                  window.confirm('Закрыть редактор без сохранения?')
+                ) {
                   setDraft(null)
                   setEditing(null)
                 }
@@ -749,21 +904,23 @@ export default function PartyTasks({
           </div>
         </form>
       )}
-      {busy && !data.tasks.length && (
+      {!draft && !error && (busy || !currentData) && !tasks.length && (
         <p role="status" className="p-3 text-sm text-slate-500">
           Загрузка задач…
         </p>
       )}
-      {!busy && !error && !tasks.length && (
+      {currentData && !draft && !board && !busy && !error && !tasks.length && (
         <div className="rounded-xl border border-dashed border-sky-200 bg-sky-50/60 p-5 text-sm text-slate-600">
           <p>
-            {search
-              ? 'Ничего не найдено. Попробуйте другое название или заказ.'
-              : filter === 'overdue'
-                ? 'Просроченных задач нет.'
-                : filter === 'today'
-                  ? 'На сегодня задач нет.'
-                  : 'Задач с выбранным статусом пока нет.'}
+            {data.nextCursor
+              ? 'В этой части списка совпадений нет. Загрузите следующую страницу, чтобы продолжить поиск.'
+              : search
+                ? 'Ничего не найдено. Попробуйте другое название или заказ.'
+                : filter === 'overdue'
+                  ? 'Просроченных задач нет.'
+                  : filter === 'today'
+                    ? 'На сегодня задач нет.'
+                    : 'Задач с выбранным статусом пока нет.'}
           </p>
           {(search || filter !== 'open') && (
             <button
@@ -782,197 +939,40 @@ export default function PartyTasks({
       <p role="status" aria-live="polite" className="sr-only">
         Показано задач: {tasks.length}
       </p>
-      <div className="space-y-3">
-        {tasks.map((task) => (
-          <article
-            key={task._id}
-            className={`min-w-0 rounded-xl border bg-white p-3 sm:p-4 ${matchesPartyTaskFilter(task, 'overdue', now) ? 'border-red-200' : 'border-sky-100'}`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="min-w-0 font-semibold break-words text-slate-900">
-                {task.title}
-              </h2>
-              <span
-                className={`shrink-0 rounded-full px-2 py-1 text-xs ${statusStyles[task.status] || statusStyles.new}`}
-              >
-                {PARTY_TASK_STATUSES[task.status]}
-              </span>
-            </div>
-            <p
-              className={`mt-1 text-sm ${matchesPartyTaskFilter(task, 'overdue', now) ? 'font-semibold text-red-700' : 'text-slate-500'}`}
-            >
-              {getPartyTaskDueLabel(task, now)}
-            </p>
-            {task.orderTitle && (
-              <p className="mt-1 text-xs break-words text-slate-500">
-                Заказ: {task.orderTitle}
-              </p>
-            )}
-            {(task.assigneeRoleId || task.assigneeStaffIds?.length > 0) && (
-              <p className="mt-1 text-xs break-words text-slate-500">
-                Кому:{' '}
-                {[
-                  task.assigneeRoleId
-                    ? rolesById.get(String(task.assigneeRoleId)) || 'Должность'
-                    : '',
-                  ...(task.assigneeStaffIds || [])
-                    .slice(0, 2)
-                    .map((id) => staffById.get(String(id)) || 'Сотрудник'),
-                  (task.assigneeStaffIds || []).length > 2
-                    ? `ещё ${task.assigneeStaffIds.length - 2}`
-                    : '',
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </p>
-            )}
-            {task.descriptionHtml && (
-              <details className="mt-2 rounded-lg bg-slate-50 px-3">
-                <summary className="min-h-10 cursor-pointer py-2 text-sm font-medium text-sky-800">
-                  Описание и вложения
-                </summary>
-                <div
-                  className="max-w-none pb-3 text-sm break-words [&_img]:my-2 [&_img]:h-auto [&_img]:max-w-full [&_ol]:ml-5 [&_ol]:list-decimal [&_ul]:ml-5 [&_ul]:list-disc"
-                  dangerouslySetInnerHTML={{ __html: task.descriptionHtml }}
-                />
-              </details>
-            )}
-            {(task.blockedReason ||
-              task.deadlineWarning ||
-              task.calendarWarning ||
-              task.orphaned) && (
-              <p className="mt-2 rounded bg-amber-50 p-2 text-sm text-amber-900">
-                {task.blockedReason ||
-                  task.deadlineWarning ||
-                  task.calendarWarning ||
-                  'Один из назначенных сотрудников неактивен. Требуется решение администратора.'}
-              </p>
-            )}
-            {task.status === 'done' && (
-              <p className="mt-2 text-xs text-slate-500">
-                Выполнил:{' '}
-                {task.completedByName ||
-                  data.staff.find(
-                    (person) => person._id === String(task.completedByStaffId)
-                  )?.name ||
-                  'Сотрудник'}
-                {task.completedAt
-                  ? ` · ${new Date(task.completedAt).toLocaleString('ru-RU')}`
-                  : ''}
-              </p>
-            )}
-            <div className="mt-3 flex flex-wrap gap-2">
-              {task.canComplete &&
-                ['new', 'in_progress'].includes(task.status) && (
-                  <>
-                    {task.status === 'new' && (
-                      <button
-                        type="button"
-                        className={button}
-                        disabled={busy}
-                        onClick={() =>
-                          mutate(task, {
-                            action: 'status',
-                            status: 'in_progress',
-                          })
-                        }
-                      >
-                        В работу
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className={`${button} bg-sky-600 text-white`}
-                      disabled={busy}
-                      onClick={() =>
-                        mutate(task, { action: 'status', status: 'done' })
-                      }
-                    >
-                      Выполнено
-                    </button>
-                  </>
-                )}
-              {(task.canEdit || task.canCancel) && (
-                <details
-                  className="relative ml-auto"
-                  name={`${formId}-task-actions`}
-                  onBlur={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget))
-                      event.currentTarget.open = false
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape') {
-                      event.preventDefault()
-                      event.currentTarget.open = false
-                      event.currentTarget.querySelector('summary')?.focus()
-                    }
-                  }}
-                >
-                  <summary
-                    className={`${button} list-none text-center [&::-webkit-details-marker]:hidden`}
-                  >
-                    Ещё
-                    <span className="sr-only">
-                      : действия с задачей {task.title}
-                    </span>
-                  </summary>
-                  <div className="absolute top-full right-0 z-20 mt-1 min-w-52 space-y-1 rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
-                    {task.canEdit && (
-                      <button
-                        type="button"
-                        className={`${button} w-full border-transparent text-left`}
-                        disabled={busy || Boolean(draft)}
-                        onClick={(event) => {
-                          event.currentTarget.closest('details').open = false
-                          begin(task)
-                        }}
-                      >
-                        Изменить
-                      </button>
-                    )}
-                    {task.canCancel &&
-                      ['new', 'in_progress'].includes(task.status) && (
-                        <button
-                          type="button"
-                          className={`${button} w-full border-transparent text-left text-red-700`}
-                          disabled={busy}
-                          onClick={(event) => {
-                            event.currentTarget.closest('details').open = false
-                            if (window.confirm('Отменить задачу?'))
-                              mutate(task, {
-                                action: 'status',
-                                status: 'canceled',
-                              })
-                          }}
-                        >
-                          Отменить
-                        </button>
-                      )}
-                    {task.canEdit && task.seriesActive && (
-                      <button
-                        type="button"
-                        className={`${button} w-full border-transparent text-left text-red-700`}
-                        disabled={busy}
-                        onClick={(event) => {
-                          event.currentTarget.closest('details').open = false
-                          mutate(task, { action: 'stop_series' })
-                        }}
-                      >
-                        Остановить повторы
-                      </button>
-                    )}
-                  </div>
-                </details>
-              )}
-            </div>
-          </article>
-        ))}
-      </div>
-      {data.nextCursor && (
+      {!draft && board && currentData ? (
+        <PartyTaskBoard
+          columns={currentData ? data.columns : {}}
+          busy={actionBusy || !currentData || Boolean(error)}
+          onLoadMore={load}
+          onMutate={mutate}
+          onEdit={begin}
+          editing={Boolean(draft)}
+          staffById={staffById}
+          rolesById={rolesById}
+          actionsName={`${formId}-task-actions`}
+        />
+      ) : !draft && !board ? (
+        <div className="space-y-3">
+          {tasks.map((task) => (
+            <PartyTaskCard
+              key={task._id}
+              task={task}
+              staffById={staffById}
+              rolesById={rolesById}
+              busy={actionBusy}
+              editing={Boolean(draft)}
+              onEdit={begin}
+              onMutate={mutate}
+              actionsName={`${formId}-task-actions`}
+            />
+          ))}
+        </div>
+      ) : null}
+      {currentData && !draft && !board && data.nextCursor && (
         <button
           type="button"
           className={button}
-          disabled={busy}
+          disabled={actionBusy}
           onClick={() => load(data.nextCursor)}
         >
           Показать ещё

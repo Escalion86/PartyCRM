@@ -49,6 +49,39 @@ export const buildPartyOrderCalendarGrid = (monthCursor = new Date()) => {
   })
 }
 
+// Construct dates with local calendar arithmetic: a week crossing a clock change
+// still contains seven consecutive dates, rather than seven 24-hour offsets.
+export const buildPartyOrderCalendarPeriod = (cursor, view = 'month') => {
+  if (view === 'month') return buildPartyOrderCalendarGrid(cursor)
+  const date = new Date(
+    cursor.getFullYear(),
+    cursor.getMonth(),
+    cursor.getDate()
+  )
+  const offset = view === 'week' ? (date.getDay() + 6) % 7 : 0
+  return Array.from({ length: view === 'week' ? 7 : 1 }, (_, index) => {
+    const current = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate() - offset + index
+    )
+    return {
+      date: current,
+      key: toPartyOrderCalendarDateKey(current),
+      inCurrentMonth: true,
+    }
+  })
+}
+
+export const shiftPartyOrderCalendarPeriod = (cursor, view, direction) =>
+  view === 'month'
+    ? new Date(cursor.getFullYear(), cursor.getMonth() + direction, 1)
+    : new Date(
+        cursor.getFullYear(),
+        cursor.getMonth(),
+        cursor.getDate() + direction * (view === 'week' ? 7 : 1)
+      )
+
 export const buildPartyOrderCalendarItems = (orders = []) => {
   const itemsByDay = new Map()
   const meta = { orders: 0, additional: 0 }
@@ -92,7 +125,8 @@ export const buildPartyOrderCalendarItems = (orders = []) => {
 
   itemsByDay.forEach((items) => {
     items.sort((first, second) => {
-      const timeDiff = toMinuteOfDay(first.startsAt) - toMinuteOfDay(second.startsAt)
+      const timeDiff =
+        toMinuteOfDay(first.startsAt) - toMinuteOfDay(second.startsAt)
       if (timeDiff !== 0) return timeDiff
       if (first.type !== second.type) return first.type === 'order' ? -1 : 1
       return first.title.localeCompare(second.title, 'ru')

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import { getPartyRoleCalendarRange } from '@helpers/partyRoleCalendar'
-import { buildPartyOrderCalendarGrid } from './partyOrderCalendarViewModel'
+import { buildPartyOrderCalendarPeriod } from './partyOrderCalendarViewModel'
 
 const empty = []
 
@@ -14,6 +14,7 @@ export default function usePartyOrderCalendar({
   accessKey,
   refreshKey,
   ticketsEnabled = false,
+  view = 'month',
 }) {
   const [retry, setRetry] = useState(0)
   const [state, setState] = useState({
@@ -23,9 +24,10 @@ export default function usePartyOrderCalendar({
     error: '',
   })
   const generation = useRef(0)
-  const monthKey = `${month.getFullYear()}-${month.getMonth()}`
-  const key = `${companyId}:${accessKey}:${monthKey}:${refreshKey}:${retry}:${ticketsEnabled}`
-  const range = getPartyRoleCalendarRange(buildPartyOrderCalendarGrid(month))
+  const range = getPartyRoleCalendarRange(
+    buildPartyOrderCalendarPeriod(month, view)
+  )
+  const key = `${companyId}:${accessKey}:${view}:${range.dateFrom}:${range.dateTo}:${refreshKey}:${retry}:${ticketsEnabled}`
   const dateFrom = range.dateFrom
   const dateTo = range.dateTo
   useEffect(() => {

@@ -78,7 +78,7 @@ export default function PartyTasksWorkspace({ companies = [] }) {
   return (
     <>
       <PartyUnsavedChangesBootstrap />
-      <div className="mx-auto w-full max-w-5xl space-y-4 p-3 sm:p-5">
+      <div className="mx-auto w-full max-w-7xl space-y-4 p-3 sm:p-5">
         {companies.length > 1 && (
           <label className="block text-sm text-slate-600">
             Компания

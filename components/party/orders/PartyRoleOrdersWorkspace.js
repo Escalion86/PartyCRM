@@ -47,7 +47,10 @@ import PartyRoleOrderPayments from './PartyRoleOrderPayments'
 import PartyOrderFulfillment from './PartyOrderFulfillment'
 import usePartyOrderCalendar from './usePartyOrderCalendar'
 import usePartyOrderList from './usePartyOrderList'
-import { toPartyOrderCalendarMonthStart } from './partyOrderCalendarViewModel'
+import {
+  readPartyOrderViewPreference,
+  writePartyOrderViewPreference,
+} from '@helpers/partyOrderViewPreference'
 
 const PartyRoleOrdersCalendar = dynamic(
   () => import('./PartyRoleOrdersCalendar')
@@ -1344,9 +1347,8 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   const [view, setView] = useState('list')
   const [overviewVisible, setOverviewVisible] = useState(false)
   const [calendarEnabled, setCalendarEnabled] = useState(false)
-  const [calendarMonth, setCalendarMonth] = useState(() =>
-    toPartyOrderCalendarMonthStart(new Date())
-  )
+  const [calendarMonth, setCalendarMonth] = useState(() => new Date())
+  const [calendarView, setCalendarView] = useState('month')
   const [calendarRevision, setCalendarRevision] = useState(0)
   const [dirty, setDirty] = useState(false)
   const [search, setSearch] = useState('')
@@ -1462,6 +1464,14 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     }
   }, [load])
   const context = data.options.context
+  const preferenceStaffId = context?.staff?._id ? String(context.staff._id) : ''
+  useEffect(() => {
+    if (!preferenceStaffId) return
+    const saved = readPartyOrderViewPreference(companyId, preferenceStaffId)
+    setView(saved.view)
+    setCalendarView(saved.calendarView)
+    if (saved.view === 'calendar') setCalendarEnabled(true)
+  }, [companyId, preferenceStaffId])
   const can = (resource, action = 'read') =>
     canPartyAccess(context, { resource, action })
   const canCalendar = can('orders.eventDate')
@@ -1507,6 +1517,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     companyId,
     enabled: calendarEnabled && canCalendar,
     month: calendarMonth,
+    view: calendarView,
     accessKey,
     refreshKey: calendarRevision,
     ticketsEnabled: can('tickets'),
@@ -1680,12 +1691,18 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   const chooseView = (next) => {
     setView(next)
     if (next === 'calendar') setCalendarEnabled(true)
+    writePartyOrderViewPreference(companyId, preferenceStaffId, { view: next, calendarView })
     setOverviewVisible(true)
     requestAnimationFrame(() =>
       document
         .getElementById(`party-role-overview-${companyId}`)
         ?.scrollIntoView({ block: 'start' })
     )
+  }
+  const chooseCalendarView = (next) => {
+    if (!['month', 'week', 'day'].includes(next)) return
+    setCalendarView(next)
+    writePartyOrderViewPreference(companyId, preferenceStaffId, { view, calendarView: next })
   }
   return (
     <div className="space-y-4">
@@ -2051,6 +2068,8 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                 <PartyRoleOrdersCalendar
                   orders={orders}
                   month={calendarMonth}
+                  view={calendarView}
+                  onViewChange={chooseCalendarView}
                   onMonthChange={setCalendarMonth}
                   access={calendarAccess}
                   onOpen={open}
