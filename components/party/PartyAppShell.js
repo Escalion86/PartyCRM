@@ -5,6 +5,7 @@ import {
   faAngleDown,
   faBriefcase,
   faCalendarCheck,
+  faCalendarDay,
   faChartLine,
   faChartColumn,
   faGear,
@@ -40,7 +41,7 @@ import {
   allowPartyNavigation,
 } from './navigation/partyUnsavedChangesRuntime'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { canPartyOperationalPermission } from '@helpers/partyOperationalPermissions'
 import {
   canPartyAccess,
@@ -48,6 +49,7 @@ import {
 } from '@helpers/partyRolePermissions'
 import { getPartyMobileNavItems } from '@helpers/partyMobileNavigation'
 import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
+import { canPartyTodayAccess } from '@helpers/partyToday'
 import {
   PARTY_ACTIVE_COMPANY_STORAGE_KEY as ACTIVE_COMPANY_STORAGE_KEY,
   PARTY_ACTIVE_COMPANY_EVENT,
@@ -55,6 +57,7 @@ import {
 } from '@helpers/partyActiveCompany'
 
 const companyMenu = [
+  { href: '/company/today', label: 'Сегодня', icon: faCalendarDay, today: true },
   { href: '/company', label: 'Обзор', icon: faHome },
   {
     href: '/company/tasks',
@@ -123,6 +126,7 @@ const ordersSubMenu = [
 ]
 
 const performerMenu = [
+  { href: '/performer/today', label: 'Сегодня', icon: faCalendarDay, today: true },
   {
     href: '/performer/tasks',
     label: 'Задачи',
@@ -182,6 +186,7 @@ const performerMenu = [
 ]
 
 const locationOwnerMenu = [
+  { href: '/company/today', label: 'Сегодня', icon: faCalendarDay, today: true },
   { href: '/company/my-locations', label: 'Мои площадки', icon: faLocationDot },
   {
     href: '/company/tasks',
@@ -293,6 +298,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const [memberships, setMemberships] = useState([])
   const [profileLoaded, setProfileLoaded] = useState(false)
   const [activeCompanyId, setActiveCompanyId] = useState('')
+  const pendingCompanyId = useRef('')
   const effectiveVariant = useMemo(() => {
     if (variant === 'company' && isCompanySettingsPath(pathname || '')) {
       return 'company-settings'
@@ -342,7 +348,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const visibleCompanyMenu = companyMenu.filter(
     (item) =>
       (legacyCompanyAllowed ||
-        ['/company/work', '/company/tasks', '/company/ticketing'].includes(
+        ['/company/today', '/company/work', '/company/tasks', '/company/ticketing'].includes(
           item.href
         ) ||
         (item.href === '/company/settings' &&
@@ -350,6 +356,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
           activeMembership?.isAdmin)) &&
       (!item.ticketing || isPartyTicketingEnabled(activeMembership?.company)) &&
       (!item.managementOnly || activeMembership?.isAdmin) &&
+      (!item.today || canPartyTodayAccess(activeMembership)) &&
       (!item.resource ||
         (activeMembership &&
           canPartyAccess(
@@ -364,6 +371,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const visiblePerformerMenu = performerMenu.filter(
     (item) =>
       (item.href !== '/performer' || canUsePerformer) &&
+      (!item.today || memberships.some((membership) => canPartyTodayAccess(membership))) &&
       (!item.ticketing ||
         (isPartyTicketingEnabled(activeMembership?.company) &&
           activeMembership &&
@@ -393,6 +401,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
     pathname === '/company/my-locations'
       ? locationOwnerMenu.filter(
           (item) =>
+            (!item.today || canPartyTodayAccess(activeMembership)) &&
             (!item.ticketing ||
               isPartyTicketingEnabled(activeMembership?.company)) &&
             (!item.resource ||
@@ -419,6 +428,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
         '/performer/work',
         '/company/tasks',
         '/performer/tasks',
+        '/company/today',
+        '/performer/today',
       ].includes(pathname) ||
       (!legacyCompanyAllowed && !canUsePerformer),
     canCreate: Boolean(
@@ -453,18 +464,25 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   useEffect(() => {
     const syncCompany = (event) => {
+      if (event?.detail?.companyId) pendingCompanyId.current = String(event.detail.companyId)
+      const explicitId = pendingCompanyId.current
       const companyId = String(
-        event?.detail?.companyId || readPartyActiveCompanyId(memberships)
+        memberships.some((membership) => String(membership.tenantId) === explicitId)
+          ? explicitId
+          : readPartyActiveCompanyId(memberships)
       )
       if (
         memberships.some(
           (membership) => String(membership.tenantId) === companyId
         )
       )
-        setActiveCompanyId(companyId)
+        {
+          pendingCompanyId.current = companyId
+          setActiveCompanyId(companyId)
+        }
     }
     const syncStoredCompany = (event) => {
-      if (event.key === ACTIVE_COMPANY_STORAGE_KEY) syncCompany()
+      if (event.key === ACTIVE_COMPANY_STORAGE_KEY) syncCompany({ detail: { companyId: event.newValue } })
     }
     syncCompany()
     window.addEventListener(PARTY_ACTIVE_COMPANY_EVENT, syncCompany)
@@ -520,7 +538,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
 
   useEffect(() => {
     if (!profileLoaded) return
-    // Task pages verify the active membership themselves and work in either UI mode.
+    // These workspaces verify their membership on the server in either UI mode.
     if (
       [
         '/company/tasks',
@@ -529,6 +547,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
         '/performer/work',
         '/company/ticketing',
         '/performer/ticketing',
+        '/company/today',
+        '/performer/today',
       ].includes(pathname)
     )
       return
@@ -975,18 +995,21 @@ export default function PartyAppShell({ variant = 'company', children }) {
             menuOpen={mobileMenuOpen}
             onMenu={setMobileMenuOpen}
             onCreate={(href) => {
+              const params = new URLSearchParams({ create: 'order' })
+              if (activeMembership?.tenantId) params.set('companyId', String(activeMembership.tenantId))
+              const target = `${href}?${params}`
               if (
                 pathname !== href &&
                 !requestPartyLeave({
                   kind: 'route',
-                  target: `${href}?create=order`,
+                  target,
                 })
               )
                 return
               setMobileMenuOpen(false)
               if (pathname === href)
                 window.dispatchEvent(new Event('partycrm:create-order'))
-              else router.push(`${href}?create=order`)
+              else router.push(target)
             }}
           />
         )}

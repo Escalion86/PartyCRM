@@ -246,6 +246,11 @@ export const filterPartyOrderForAccess = (context, order) => {
       })
     } else output[field] = value
   }
+  // A projected order may hide its system status. Expose only the capability
+  // needed by stage controls, calculated from canonical server data each time.
+  if (canPartyAccess(context, { resource: 'orders.workflowStageId', order }) && canPartyAccess(context, { resource: 'orders', action: 'transition', order })) {
+    output.workflowTransitionAvailable = ['draft', 'active'].includes(order.status)
+  }
   return output
 }
 

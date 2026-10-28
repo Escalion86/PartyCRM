@@ -13,6 +13,32 @@ test('hidden contacts and financial values are absent from order responses, not 
   assert.equal(safe.title, 'Праздник')
 })
 
+test('stage capability distinguishes writable and readonly orders without exposing a hidden system status', () => {
+  const context = member()
+  context.position.orderScope.statuses = []
+  context.position.permissions['orders.workflowStageId'] = 'read'
+  context.position.permissions['orders.transition'] = 'edit'
+  for (const status of ['draft', 'active', 'closed', 'canceled']) {
+    const source = order({ status, workflowTransitionAvailable: ['closed', 'canceled'].includes(status) })
+    const safe = filterPartyOrderForAccess(context, source)
+    assert.equal(safe.workflowTransitionAvailable, ['draft', 'active'].includes(status), status)
+    assert.equal(Object.hasOwn(safe, 'status'), false, status)
+    assert.equal(safe.workflowStageId, 'preparation')
+    assert.equal(source.workflowTransitionAvailable, ['closed', 'canceled'].includes(status), 'projection must not mutate or trust a stored flag')
+  }
+})
+
+test('stage capability is absent without both stage visibility and permission to transition', () => {
+  const source = order({ workflowTransitionAvailable: true })
+  const stageOnly = member()
+  stageOnly.position.permissions['orders.workflowStageId'] = 'read'
+  assert.equal(Object.hasOwn(filterPartyOrderForAccess(stageOnly, source), 'workflowTransitionAvailable'), false)
+  const transitionOnly = member()
+  transitionOnly.position.permissions['orders.transition'] = 'edit'
+  assert.equal(Object.hasOwn(filterPartyOrderForAccess(transitionOnly, source), 'workflowTransitionAvailable'), false)
+  assert.equal(Object.hasOwn(filterPartyOrderForAccess(member(), source), 'workflowTransitionAvailable'), false)
+})
+
 test('brief snapshots never reveal hidden service IDs through active or retired conditions', () => {
   const context = member()
   context.position.permissions['orders.eventBrief'] = 'read'

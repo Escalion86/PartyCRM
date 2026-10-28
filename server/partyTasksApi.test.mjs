@@ -96,7 +96,7 @@ function fixture(tables = {}, options = {}) {
   }
   const exported = ['createPartyTaskForContext', 'updatePartyTaskForContext', 'canReadTask', 'serializeTask', 'canAccessTaskLocation', 'withTaskContext', 'taskJson', 'loadVisibleTask', 'loadTaskOrder', 'validateTaskData', 'taskAssignmentFilter', 'canManageTask', 'taskMediaIds', 'buildPartyTaskListAccessFilter']
   const service = new Function(...Object.keys(deps), `${source}\nreturn {${exported.join(',')}}`)(...Object.values(deps))
-  const routeDeps = { ...service, getPartyTaskModel: deps.getPartyTaskModel }
+  const routeDeps = { ...service, getPartyTaskModel: deps.getPartyTaskModel, getPartyStaffModel: deps.getPartyStaffModel }
   const routes = new Function(...Object.keys(routeDeps), `${routeSource}\nreturn {GET,PATCH}`)(...Object.values(routeDeps))
   const patch = (id, body, context = owner) => routes.PATCH({ context, json: async () => body }, { params: Promise.resolve({ id }) })
   const media = async (id, context = owner) => {
@@ -117,6 +117,41 @@ test('two shared-task completions preserve the first actor and reject the stale 
   assert.equal(h.env.data.Tasks[0].completedByStaffId, firstId)
   assert.equal(h.env.data.Tasks[0].completedByUserId, firstId)
   assert.equal(h.env.effects.length, 1)
+})
+
+test('single task GET distinguishes active assignees from missing or inactive staff within its tenant', async () => {
+  for (const [Staff, orphaned] of [
+    [[{ ...member().staff, firstName: 'Ирина' }], false],
+    [[{ ...member().staff, status: 'archived', firstName: 'Архив' }], true],
+    [[{ ...member().staff, tenantId: 'f'.repeat(24), firstName: 'Чужая компания' }], true],
+    [[], true],
+  ]) {
+    const h = fixture({ Tasks: [row()], Staff })
+    const result = await h.routes.GET({ context: owner }, { params: Promise.resolve({ id: rootId }) })
+    assert.equal(result.status, 200)
+    assert.equal(result.body.data.orphaned, orphaned)
+    assert.equal(JSON.stringify(result.body).includes('Чужая компания'), false)
+  }
+})
+
+test('single task retains archived completion actor names without treating them as available assignees', async () => {
+  const h = fixture({ Tasks: [row({ status: 'done', completedByStaffId: firstId })], Staff: [{ ...member().staff, status: 'archived', firstName: 'Ирина', secondName: 'Петрова', phone: 'private-phone' }] })
+  const result = await h.routes.GET({ context: owner }, { params: Promise.resolve({ id: rootId }) })
+  assert.equal(result.body.data.completedByName, 'Ирина Петрова')
+  assert.equal(result.body.data.orphaned, true)
+  assert.equal(JSON.stringify(result.body).includes('private-phone'), false)
+})
+
+test('canonical task PATCH returns the completion actor while blocked order stubs hide it', async () => {
+  const h = fixture({ Tasks: [row()], Staff: [{ ...member().staff, firstName: 'Ирина' }] })
+  const result = await h.patch(rootId, { action: 'status', status: 'done', revision: 0 }, member())
+  assert.equal(result.body.data.completedByName, 'Ирина')
+  const orderId = 'b'.repeat(24)
+  const blocked = fixture({ Tasks: [row({ status: 'done', orderId, completedByStaffId: firstId })], Staff: [{ ...member().staff, firstName: 'Скрытое имя' }], Orders: [{ _id: orderId, tenantId, status: 'active' }] })
+  const stub = await blocked.routes.GET({ context: member() }, { params: Promise.resolve({ id: rootId }) })
+  assert.equal(stub.status, 200)
+  assert.ok(stub.body.data.blockedReason)
+  assert.equal(stub.body.data.completedByName, '')
 })
 
 test('revoked task rights and foreign tenant IDs fail before any persisted mutation', async () => {

@@ -12,9 +12,10 @@ export const getPartyMobileNavItems = ({
   const assignments = byHref.get(company ? '/company/orders' : '/performer')
   const orders = work || assignments
   const items = [
-    company
-      ? byHref.get('/company') || byHref.get('/company/my-locations')
-      : null,
+    byHref.get(`${prefix}/today`) ||
+      (company
+        ? byHref.get('/company') || byHref.get('/company/my-locations')
+        : null),
     orders,
     orders && canCreate
       ? { href: orders.href, create: true, label: 'Создать заказ' }

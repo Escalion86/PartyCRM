@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, useRef } from 'react'
 import Link from 'next/link'
 import { PARTY_INBOX_STATUSES, PARTY_INBOX_SALES_STAGES } from '@helpers/partyInboxCore'
+import { PARTY_ACTIVE_COMPANY_EVENT, publishPartyActiveCompanyId } from '@helpers/partyActiveCompany'
+import { resolvePartyInboxCompanyLink } from '@helpers/partyInboxCompanyLink'
 
 const CHANNELS = { vk: 'VK', avito: 'Авито', telegram: 'Telegram', novofon: 'Звонки Novofon' }
 const inputClass = 'min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
@@ -10,9 +12,13 @@ const buttonClass = 'cursor-pointer rounded-lg border border-slate-300 px-3 py-2
 const subscribeCompany = (listener) => {
   window.addEventListener('storage', listener)
   window.addEventListener('partycrm-company-change', listener)
-  return () => { window.removeEventListener('storage', listener); window.removeEventListener('partycrm-company-change', listener) }
+  window.addEventListener(PARTY_ACTIVE_COMPANY_EVENT, listener)
+  return () => { window.removeEventListener('storage', listener); window.removeEventListener('partycrm-company-change', listener); window.removeEventListener(PARTY_ACTIVE_COMPANY_EVENT, listener) }
 }
-const readCompany = () => window.localStorage.getItem('partycrm.activeCompanyId') || ''
+const readCompany = () => {
+  try { return window.localStorage.getItem('partycrm.activeCompanyId') || '' }
+  catch { return '' }
+}
 const readServerCompany = () => ''
 const dateLabel = (value) => value ? new Date(value).toLocaleString('ru-RU') : ''
 const personLabel = (person) => [person.firstName, person.secondName].filter(Boolean).join(' ') || person.phone || String(person._id)
@@ -257,12 +263,59 @@ function InboxWorkspace({ companyId, currentStaffId }) {
 
 export default function PartyInboxClient({ companies }) {
   const stored = useSyncExternalStore(subscribeCompany, readCompany, readServerCompany)
-  const companyId = companies.find((company) => company.id === stored)?.id || companies[0]?.id || ''
+  const [link, setLink] = useState({ ready: false, requested: null, selected: '' })
+  const initializedLink = useRef(false)
+  const selectedCompanyRef = useRef('')
+  useEffect(() => {
+    if (initializedLink.current) return
+    const frame = requestAnimationFrame(() => {
+    if (initializedLink.current) return
+    initializedLink.current = true
+    const url = new URL(window.location.href)
+    const requested = url.searchParams.get('companyId')
+    const resolved = resolvePartyInboxCompanyLink({ companies, requested, stored: readCompany() })
+    if (resolved.companyId) publishPartyActiveCompanyId(resolved.companyId, { skipGuard: true })
+    if (requested !== null && resolved.companyId) {
+      url.searchParams.delete('companyId')
+      window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+    }
+    setLink({ ready: true, requested: resolved.error ? requested : null, selected: resolved.companyId })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [companies])
+  useEffect(() => {
+    const synchronize = (event) => {
+      if (event.type === 'storage' && event.key !== 'partycrm.activeCompanyId') return
+      const next = String(event.type === 'storage' ? event.newValue || '' : event.detail?.companyId || readCompany())
+      if (!companies.some((company) => String(company.id) === next)) {
+        const expected = selectedCompanyRef.current
+        if (expected && companies.some((company) => String(company.id) === expected))
+          queueMicrotask(() => {
+            if (selectedCompanyRef.current === expected) publishPartyActiveCompanyId(expected, { skipGuard: true, persist: false })
+          })
+        setLink((previous) => ({ ...previous, notice: 'Входящие выбранной компании недоступны. Осталась прежняя компания.' }))
+        return
+      }
+      setLink((previous) => !previous.ready || previous.requested !== null || previous.selected === next ? previous : { ...previous, selected: next, notice: '' })
+    }
+    return subscribeCompany(synchronize)
+  }, [companies])
+  const requested = link.requested !== null ? link.requested : link.selected && !companies.some((company) => String(company.id) === link.selected) ? link.selected : null
+  const resolved = resolvePartyInboxCompanyLink({ companies, requested, stored })
+  const companyId = link.ready ? requested !== null ? resolved.companyId : link.selected || resolved.companyId : ''
+  useEffect(() => { selectedCompanyRef.current = companyId }, [companyId])
   const currentStaffId = companies.find((company) => company.id === companyId)?.staffId || ''
   return <main className="mx-auto w-full max-w-7xl p-4 text-slate-900 sm:p-6">
     <div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-semibold">Входящие</h1><p className="mt-1 text-sm text-slate-500">Обращения, ответы и следующие контакты</p></div>
-      <label className="text-sm">Компания<select aria-label="Активная компания" className={`${inputClass} mt-1 cursor-pointer`} value={companyId} onChange={(event) => { window.localStorage.setItem('partycrm.activeCompanyId', event.target.value); window.dispatchEvent(new Event('partycrm-company-change')) }}>{companies.map((company) => <option key={company.id} value={company.id}>{company.title}</option>)}</select></label>
+      <label className="text-sm">Компания<select aria-label="Активная компания" className={`${inputClass} mt-1 cursor-pointer`} value={companyId} disabled={!link.ready} onChange={(event) => {
+        if (!companies.some((company) => String(company.id) === event.target.value) || !publishPartyActiveCompanyId(event.target.value)) return
+        const url = new URL(window.location.href)
+        url.searchParams.delete('companyId')
+        window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+        setLink({ ready: true, requested: null, selected: event.target.value })
+      }}><option value="" disabled>Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.title}</option>)}</select></label>
     </div>
+    {link.ready && (resolved.error || link.notice) ? <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{resolved.error || link.notice}</p> : null}
     {companyId ? <InboxWorkspace key={companyId} companyId={companyId} currentStaffId={currentStaffId} /> : <p role="status">Выбор компании…</p>}
   </main>
 }

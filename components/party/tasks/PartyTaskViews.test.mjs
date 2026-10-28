@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import * as taskHelpers from '../../../helpers/partyTasks.js'
 import * as presentation from '../../../helpers/partyTaskPresentation.js'
 import * as views from '../../../helpers/partyTaskViews.js'
+import * as focus from '../../../helpers/partyTaskFocus.js'
 
 const require = createRequire(import.meta.url)
 const { transformSync } = require('next/dist/build/swc')
@@ -145,7 +146,14 @@ test('board reports loaded counts honestly and keeps continuation for empty chun
 // Run the actual workspace component and its effects without a browser or DOM.
 // Controllable promises verify query races; the React SSR tests above cover
 // the real rendering of cards and columns.
-const workspaceHarness = ({ narrow = true, respond } = {}) => {
+const workspaceHarness = ({
+  narrow = true,
+  respond,
+  componentName = 'PartyTasks',
+  initialProps = { companyId: 'company1' },
+  overrides = {},
+  environment = {},
+} = {}) => {
   const hooks = [],
     timers = new Map(),
     requests = [],
@@ -155,7 +163,7 @@ const workspaceHarness = ({ narrow = true, respond } = {}) => {
     tree,
     effects = [],
     timerId = 0
-  let componentProps = { companyId: 'company1' }
+  let componentProps = initialProps
   const differs = (a, b) =>
     !a || a.length !== b.length || a.some((value, i) => !Object.is(value, b[i]))
   const mockReact = {
@@ -212,7 +220,7 @@ const workspaceHarness = ({ narrow = true, respond } = {}) => {
     nextCursor: null,
   }
   const Workspace = compile(
-    'PartyTasks',
+    componentName,
     {
       react: mockReact,
       'next/dynamic': () => () => null,
@@ -240,6 +248,8 @@ const workspaceHarness = ({ narrow = true, respond } = {}) => {
       ) => guards.push(options),
       './PartyTaskBoard': Board,
       './PartyTaskCard': Card,
+      '@helpers/partyTaskFocus': focus,
+      ...overrides,
     },
     {
       window: {
@@ -252,6 +262,7 @@ const workspaceHarness = ({ narrow = true, respond } = {}) => {
         return timerId
       },
       clearTimeout: (id) => timers.delete(id),
+      ...environment,
     }
   )
   const flush = () => {
@@ -288,6 +299,11 @@ const workspaceHarness = ({ narrow = true, respond } = {}) => {
     },
     setCompany(companyId) {
       componentProps = { companyId }
+      changed = true
+      flush()
+    },
+    setProps(next) {
+      componentProps = { ...componentProps, ...next }
       changed = true
       flush()
     },
@@ -494,4 +510,212 @@ test('late save completion cannot clear loading of another company', async () =>
     false
   )
   assert.equal(harness.find((node) => node.type === Card).length, 0)
+})
+
+test('an external focused-task update refreshes the list after an open editor is closed without discarding its draft', async () => {
+  const harness = workspaceHarness()
+  await harness.settle()
+  harness
+    .find(
+      (node) => node.type === 'button' && node.props.children === '+ Задача'
+    )[0]
+    .props.onClick()
+  harness
+    .find((node) => node.type === 'input' && node.props.maxLength === 240)[0]
+    .props.onChange({ target: { value: 'Несохранённая задача' } })
+  harness.flush()
+  const before = harness.requests.length
+  harness.setProps({ refreshKey: 1 })
+  await harness.settle()
+  assert.equal(harness.requests.length, before)
+  assert.equal(
+    harness.find(
+      (node) => node.type === 'input' && node.props.maxLength === 240
+    )[0].props.value,
+    'Несохранённая задача'
+  )
+  harness
+    .find(
+      (node) => node.type === 'button' && node.props.children === 'Отмена'
+    )[0]
+    .props.onClick()
+  await harness.settle()
+  assert.equal(harness.requests.length, before + 1)
+  assert.equal(harness.find((node) => node.type === 'form').length, 0)
+})
+
+test('focused task actions send canonical revision and refresh callers without editing its unrelated fields', async () => {
+  let changes = 0
+  const harness = workspaceHarness({
+    componentName: 'PartyTaskFocus',
+    initialProps: {
+      companyId: 'company1',
+      taskId: task._id,
+      onChanged: () => changes++,
+    },
+    respond: (_url, options) => ({
+      ...task,
+      canComplete: !options.method,
+      status: options.method ? 'done' : 'new',
+    }),
+  })
+  await harness.settle()
+  const card = harness.find((node) => node.type === Card)[0]
+  assert.equal(card.props.task.canEdit, false)
+  await card.props.onMutate(card.props.task, {
+    action: 'status',
+    status: 'done',
+  })
+  await harness.settle()
+  assert.deepEqual(JSON.parse(harness.requests.at(-1).options.body), {
+    action: 'status',
+    status: 'done',
+    revision: 2,
+  })
+  assert.equal(changes, 1)
+  assert.equal(
+    harness.find((node) => node.type === Card)[0].props.task.status,
+    'done'
+  )
+})
+
+test('a focused task ignores a late response after another company or task is selected', async () => {
+  const late = deferred()
+  const harness = workspaceHarness({
+    componentName: 'PartyTaskFocus',
+    initialProps: { companyId: 'company1', taskId: task._id },
+    respond: (_url, options) =>
+      options.headers['x-partycrm-company-id'] === 'company1'
+        ? late.promise
+        : { ...task, _id: 'task2', title: 'Другая задача' },
+  })
+  harness.flush()
+  const first = harness.requests[0]
+  harness.setProps({ companyId: 'company2', taskId: 'task2' })
+  await harness.settle()
+  late.resolve({ ...task, title: 'Устаревшая задача' })
+  await harness.settle()
+  assert.equal(first.options.signal.aborted, true)
+  assert.equal(
+    harness.find((node) => node.type === Card)[0].props.task.title,
+    'Другая задача'
+  )
+})
+
+test('focused task failures render an error without a false task, and disabled drafts cannot mutate it', async () => {
+  const broken = workspaceHarness({
+    componentName: 'PartyTaskFocus',
+    initialProps: { companyId: 'company1', taskId: task._id },
+    respond: () => {
+      throw new Error('Задача недоступна')
+    },
+  })
+  await broken.settle()
+  assert.equal(broken.find((node) => node.type === Card).length, 0)
+  assert.equal(
+    broken.find((node) => node.props?.role === 'alert')[0].props.children,
+    'Задача недоступна'
+  )
+  const blocked = workspaceHarness({
+    componentName: 'PartyTaskFocus',
+    initialProps: { companyId: 'company1', taskId: task._id, disabled: true },
+    respond: () => ({ ...task, canComplete: true }),
+  })
+  await blocked.settle()
+  const card = blocked.find((node) => node.type === Card)[0]
+  await card.props.onMutate(card.props.task, {
+    action: 'status',
+    status: 'done',
+  })
+  assert.equal(blocked.requests.length, 1)
+})
+
+const focusWorkspaceHarness = (search, companies) => {
+  const published = []
+  const TaskList = () => null
+  const TaskFocus = () => null
+  const instance = workspaceHarness({
+    componentName: 'PartyTasksWorkspace',
+    initialProps: { companies },
+    overrides: {
+      './PartyTasks': TaskList,
+      './PartyTaskFocus': TaskFocus,
+      '@helpers/partyActiveCompany': {
+        readPartyActiveCompanyId: () => companies[0]?.id || '',
+        publishPartyActiveCompanyId: (id) => {
+          published.push(id)
+          return true
+        },
+      },
+      '@components/party/navigation/usePartyUnsavedChanges': {
+        requestPartyLeave: () => true,
+      },
+      '@components/party/navigation/PartyUnsavedChangesBootstrap': () => null,
+    },
+    environment: {
+      window: {
+        location: {
+          search,
+          href: `https://app.example/performer/tasks${search}`,
+        },
+        addEventListener() {},
+        removeEventListener() {},
+        history: { state: { next: true }, replaceState() {} },
+      },
+      requestAnimationFrame: (callback) => {
+        callback()
+        return 1
+      },
+      cancelAnimationFrame() {},
+    },
+  })
+  return { ...instance, TaskList, TaskFocus, published }
+}
+
+test('task workspace honors a validated task/company link before the remembered first company', async () => {
+  const first = '1'.repeat(24),
+    second = '2'.repeat(24),
+    taskId = 'a'.repeat(24)
+  const harness = focusWorkspaceHarness(
+    `?companyId=${second}&taskId=${taskId}`,
+    [{ id: first }, { id: second }]
+  )
+  await harness.settle()
+  assert.equal(
+    harness.find((node) => node.type === harness.TaskList)[0].props.companyId,
+    second
+  )
+  assert.equal(
+    harness.find((node) => node.type === harness.TaskFocus)[0].props.taskId,
+    taskId
+  )
+  assert.deepEqual(harness.published, [second])
+  const before = harness.find((node) => node.type === harness.TaskList)[0]
+  harness.find((node) => node.type === harness.TaskFocus)[0].props.onChanged()
+  const after = harness.find((node) => node.type === harness.TaskList)[0]
+  assert.equal(after.key, before.key)
+  assert.equal(after.props.refreshKey, before.props.refreshKey + 1)
+})
+
+test('foreign and incomplete task links display recovery selection without loading another company task', async () => {
+  const companyId = '1'.repeat(24),
+    taskId = 'a'.repeat(24)
+  for (const search of [
+    `?taskId=${taskId}`,
+    `?companyId=${'2'.repeat(24)}&taskId=${taskId}`,
+  ]) {
+    const harness = focusWorkspaceHarness(search, [{ id: companyId }])
+    await harness.settle()
+    assert.equal(
+      harness.find((node) => node.type === harness.TaskList).length,
+      0
+    )
+    assert.equal(
+      harness.find((node) => node.type === harness.TaskFocus).length,
+      0
+    )
+    assert.equal(harness.find((node) => node.type === 'select').length, 1)
+    assert.equal(harness.find((node) => node.props?.role === 'alert').length, 1)
+    assert.deepEqual(harness.published, [])
+  }
 })

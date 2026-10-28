@@ -45,6 +45,7 @@ export default function PartyTasks({
   compact = false,
   onChanged,
   onDirtyChange,
+  refreshKey = 0,
 }) {
   const [data, setData] = useState({ tasks: [], staff: [], roles: [] })
   const [filter, setFilter] = useState('open')
@@ -83,10 +84,13 @@ export default function PartyTasks({
   )
   const formId = useId()
   const generation = useRef(0)
+  const appliedRefresh = useRef(refreshKey)
+  const interactionBlocked =
+    dirty || uploading || pendingAction || (busy && Boolean(draft))
   useEffect(() => {
-    onDirtyChange?.(dirty || uploading)
+    onDirtyChange?.(interactionBlocked)
     return () => onDirtyChange?.(false)
-  }, [dirty, uploading, onDirtyChange])
+  }, [interactionBlocked, onDirtyChange])
   const load = useCallback(
     async (cursor = '', status = '') => {
       const requestGeneration = ++generation.current
@@ -175,6 +179,17 @@ export default function PartyTasks({
       controller.current?.abort()
     }
   }, [load])
+  useEffect(() => {
+    if (
+      appliedRefresh.current === refreshKey ||
+      draft ||
+      uploading ||
+      pendingAction
+    )
+      return
+    appliedRefresh.current = refreshKey
+    load()
+  }, [refreshKey, draft, uploading, pendingAction, load])
   useEffect(() => {
     if (compact || !data.currentStaffId) return
     const identity = `${companyId}:${data.currentStaffId}`

@@ -10,10 +10,16 @@ import {
 import { requestPartyLeave } from '@components/party/navigation/usePartyUnsavedChanges'
 import PartyUnsavedChangesBootstrap from '@components/party/navigation/PartyUnsavedChangesBootstrap'
 import PartyTasks from './PartyTasks'
+import PartyTaskFocus from './PartyTaskFocus'
+import { readPartyTaskFocus } from '@helpers/partyTaskFocus'
 
 export default function PartyTasksWorkspace({ companies = [] }) {
   const [companyId, setCompanyId] = useState(companies[0]?.id || '')
   const [companyReady, setCompanyReady] = useState(false)
+  const [focusedTaskId, setFocusedTaskId] = useState('')
+  const [focusError, setFocusError] = useState('')
+  const [taskRefresh, setTaskRefresh] = useState(0)
+  const [childDirty, setChildDirty] = useState(false)
   const companyRef = useRef(companyId)
   const initializedCompany = useRef(false)
   const changeCompany = useCallback(
@@ -46,6 +52,15 @@ export default function PartyTasksWorkspace({ companies = [] }) {
       }
       companyRef.current = nextId
       setCompanyId(nextId)
+      setFocusedTaskId('')
+      setFocusError('')
+      setChildDirty(false)
+      const url = new URL(window.location.href)
+      if (url.searchParams.has('companyId') || url.searchParams.has('taskId')) {
+        url.searchParams.set('companyId', nextId)
+        url.searchParams.delete('taskId')
+        window.history.replaceState(window.history.state, '', url)
+      }
       return true
     },
     [companies]
@@ -54,7 +69,12 @@ export default function PartyTasksWorkspace({ companies = [] }) {
     const frame = requestAnimationFrame(() => {
       if (initializedCompany.current) return
       initializedCompany.current = true
-      const initialId = readPartyActiveCompanyId(companies, companyRef.current)
+      const focused = readPartyTaskFocus(window.location.search, companies)
+      const initialId = focused.requested
+        ? focused.companyId
+        : readPartyActiveCompanyId(companies, companyRef.current)
+      setFocusedTaskId(focused.taskId)
+      setFocusError(focused.error)
       companyRef.current = initialId
       setCompanyId(initialId)
       setCompanyReady(true)
@@ -79,7 +99,8 @@ export default function PartyTasksWorkspace({ companies = [] }) {
     <>
       <PartyUnsavedChangesBootstrap />
       <div className="mx-auto w-full max-w-7xl space-y-4 p-3 sm:p-5">
-        {companies.length > 1 && (
+        {(companies.length > 1 ||
+          (companyReady && !companyId && companies.length > 0)) && (
           <label className="block text-sm text-slate-600">
             Компания
             <select
@@ -88,6 +109,11 @@ export default function PartyTasksWorkspace({ companies = [] }) {
               disabled={!companyReady}
               onChange={(event) => changeCompany(event.target.value, true)}
             >
+              {!companyId ? (
+                <option value="" disabled>
+                  Выберите компанию
+                </option>
+              ) : null}
               {companies.map((company) => (
                 <option key={company.id} value={company.id}>
                   {company.title}
@@ -96,14 +122,48 @@ export default function PartyTasksWorkspace({ companies = [] }) {
             </select>
           </label>
         )}
+        {focusError ? (
+          <p
+            role="alert"
+            className="rounded-lg bg-red-50 p-3 text-sm text-red-800"
+          >
+            {focusError}
+          </p>
+        ) : null}
         {!companyReady ? (
           <p role="status" className="p-3 text-sm text-slate-500">
             Загрузка компании…
           </p>
         ) : companyId ? (
-          <PartyTasks key={companyId} companyId={companyId} />
+          <>
+            {focusedTaskId ? (
+              <PartyTaskFocus
+                key={`${companyId}:${focusedTaskId}`}
+                companyId={companyId}
+                taskId={focusedTaskId}
+                disabled={childDirty}
+                onChanged={() => setTaskRefresh((previous) => previous + 1)}
+                onClose={() => {
+                  setFocusedTaskId('')
+                  const url = new URL(window.location.href)
+                  url.searchParams.delete('taskId')
+                  window.history.replaceState(window.history.state, '', url)
+                }}
+              />
+            ) : null}
+            <PartyTasks
+              key={companyId}
+              companyId={companyId}
+              onDirtyChange={setChildDirty}
+              refreshKey={taskRefresh}
+            />
+          </>
         ) : (
-          <p>Нет компаний с доступом к задачам.</p>
+          <p>
+            {companies.length
+              ? 'Выберите доступную компанию, чтобы открыть задачи.'
+              : 'Нет компаний с доступом к задачам.'}
+          </p>
         )}
       </div>
     </>

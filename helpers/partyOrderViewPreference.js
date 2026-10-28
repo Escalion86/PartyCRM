@@ -4,7 +4,7 @@ const keyFor = (companyId, staffId) =>
     ? `partycrm.orderView.v1:${encodeURIComponent(companyId)}:${encodeURIComponent(staffId)}`
     : null
 const normalize = (value) => ({
-  view: value?.view === 'calendar' ? 'calendar' : 'list',
+  view: ['calendar', 'board'].includes(value?.view) ? value.view : 'list',
   calendarView: ['month', 'week', 'day'].includes(value?.calendarView)
     ? value.calendarView
     : 'month',

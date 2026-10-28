@@ -47,6 +47,12 @@ import PartyRoleOrderPayments from './PartyRoleOrderPayments'
 import PartyOrderFulfillment from './PartyOrderFulfillment'
 import usePartyOrderCalendar from './usePartyOrderCalendar'
 import usePartyOrderList from './usePartyOrderList'
+import usePartyOrderBoard from './usePartyOrderBoard'
+import {
+  getPartyOrderBoardStages,
+  getPartyOrderBoardTransitions,
+  resolvePartyOrderDeepLink,
+} from '@helpers/partyOrderBoard'
 import {
   readPartyOrderViewPreference,
   writePartyOrderViewPreference,
@@ -55,6 +61,7 @@ import {
 const PartyRoleOrdersCalendar = dynamic(
   () => import('./PartyRoleOrdersCalendar')
 )
+const PartyRoleOrdersBoard = dynamic(() => import('./PartyRoleOrdersBoard'))
 
 const PartyTasks = dynamic(() => import('@components/party/tasks/PartyTasks'))
 const PartyOrderReports = dynamic(
@@ -1332,7 +1339,7 @@ function RoleOrderEditor({
   )
 }
 
-function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
+function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' }) {
   const [data, setData] = useState({
     options: emptyOptions,
     workflow: DEFAULT_PARTY_WORKFLOW,
@@ -1354,6 +1361,10 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [quickFilter, setQuickFilter] = useState('all')
+  const [boardPending, setBoardPending] = useState('')
+  const [transitionHelpOrder, setTransitionHelpOrder] = useState(null)
+  const transitionGeneration = useRef(0)
+  const requestedOrder = useRef('')
   const pendingCreate = useRef(false)
   const generation = useRef(0)
   const openingGeneration = useRef(0)
@@ -1461,6 +1472,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     return () => {
       generation.current += 1
       openingGeneration.current += 1
+      transitionGeneration.current += 1
     }
   }, [load])
   const context = data.options.context
@@ -1475,7 +1487,8 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   const can = (resource, action = 'read') =>
     canPartyAccess(context, { resource, action })
   const canCalendar = can('orders.eventDate')
-  const effectiveView = view === 'calendar' && canCalendar ? 'calendar' : 'list'
+  const canBoard = can('orders.workflowStageId')
+  const effectiveView = view === 'calendar' && canCalendar ? 'calendar' : view === 'board' && canBoard ? 'board' : 'list'
   const accessKey = `${context?.role || ''}:${context?.staff?._id || ''}:${context?.position?._id || ''}:${context?.position?.revision || 0}`
   const effectiveQuickFilter =
     (quickFilter === 'tasks' && !can('tasks')) ||
@@ -1496,7 +1509,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
   const now = new Date()
   const list = usePartyOrderList({
     companyId,
-    enabled: Boolean(context) && can('orders'),
+    enabled: Boolean(context) && can('orders') && effectiveView !== 'board',
     accessKey,
     search: effectiveSearch,
     stageId: effectiveStageFilter,
@@ -1513,6 +1526,22 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     ).toISOString(),
     refreshKey: calendarRevision,
   })
+  const boardStages = useMemo(
+    () => getPartyOrderBoardStages(context, data.workflow, effectiveStageFilter),
+    [context, data.workflow, effectiveStageFilter]
+  )
+  const board = usePartyOrderBoard({
+    companyId,
+    enabled: Boolean(context) && can('orders') && effectiveView === 'board',
+    accessKey,
+    stageIds: boardStages.map((stage) => stage.id),
+    search: effectiveSearch,
+    quick: effectiveQuickFilter,
+    todayFrom: new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString(),
+    todayTo: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).toISOString(),
+    refreshKey: calendarRevision,
+  })
+  usePartyUnsavedChanges(false, { label: 'передача заказа', scope: companyId, pending: Boolean(boardPending) })
   const calendar = usePartyOrderCalendar({
     companyId,
     enabled: calendarEnabled && canCalendar,
@@ -1565,9 +1594,10 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     return () =>
       window.removeEventListener('partycrm:create-order', requestCreate)
   }, [context, data.options, dirtyChanged, focusEditor])
-  const leave = (target) => requestPartyLeave({ kind: 'record', target })
-  const open = async (order) => {
-    if (busy || openingId) return
+  const leave = useCallback((target) => requestPartyLeave({ kind: 'record', target }), [])
+  const open = useCallback(async (order) => {
+    if (busy || openingId || boardPending) return
+    setTransitionHelpOrder(null)
     if (order.calendarEntityType === 'ticket_session') {
       const href = `${window.location.pathname.startsWith('/performer') ? '/performer' : '/company'}/ticketing?${new URLSearchParams({ sessionId: order.ticketSessionId, companyId })}`
       if (!requestPartyLeave({ kind: 'route', target: href })) return
@@ -1616,7 +1646,18 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     } finally {
       if (current === openingGeneration.current) setOpeningId('')
     }
-  }
+  }, [busy, openingId, boardPending, companyId, data.options, dirtyChanged, focusEditor, leave])
+  useEffect(() => {
+    if (!initialOrderId || !context || busy || openingId || requestedOrder.current === initialOrderId) return
+    requestedOrder.current = initialOrderId
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('orderId') === initialOrderId) {
+      url.searchParams.delete('orderId')
+      url.searchParams.delete('companyId')
+      window.history.replaceState(window.history.state, '', url)
+    }
+    open({ _id: initialOrderId })
+  }, [initialOrderId, context, busy, openingId, open])
   const close = () => {
     if (!leave('list')) return
     returnFocusRequested.current = true
@@ -1643,6 +1684,45 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
     }
     setCalendarRevision((value) => value + 1)
     load({ refreshSelection: !accessChanged })
+  }
+  const moveOrder = async (order, stageId) => {
+    if (busy || boardPending || dirtyRef.current || !getPartyOrderBoardTransitions(context, data.workflow, order).some((stage) => stage.id === stageId)) return
+    const current = ++transitionGeneration.current
+    setBoardPending(String(order._id))
+    setTransitionHelpOrder(null)
+    setError('')
+    try {
+      const result = await apiJson(`/api/party/orders/${order._id}/stage`, {
+        method: 'PATCH',
+        headers: { 'x-partycrm-company-id': companyId },
+        body: JSON.stringify({ toStageId: stageId, expectedUpdatedAt: new Date(order.updatedAt).toISOString() }),
+      })
+      if (current !== transitionGeneration.current) return
+      const accessChanged = result.accessChanged || !result.data
+      if (selectedId.current === String(order._id)) {
+        if (accessChanged) {
+          selectedId.current = ''
+          setSelected(null)
+          setSelectedOptions(null)
+        } else {
+          setSelected(result.data)
+          setEditorRevision((value) => value + 1)
+        }
+      }
+      setNotice(accessChanged ? 'Заказ передан. На новом этапе он доступен другим сотрудникам.' : 'Рабочий этап заказа изменён.')
+      setCalendarRevision((value) => value + 1)
+      load({ refreshSelection: true })
+    } catch (cause) {
+      if (current !== transitionGeneration.current) return
+      if (cause.payload?.error?.code === 'partycrm_brief_required') setTransitionHelpOrder(order)
+      else if ([403, 404, 409].includes(cause.status)) {
+        setCalendarRevision((value) => value + 1)
+        await load({ refreshSelection: true })
+      }
+      if (current === transitionGeneration.current) setError(cause.message || 'Не удалось передать заказ')
+    } finally {
+      if (current === transitionGeneration.current) setBoardPending('')
+    }
   }
   const today = new Date().toDateString()
   const matchesQuickFilter = (order) =>
@@ -1724,7 +1804,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
             <button
               type="button"
               className={button + ' bg-sky-600 text-white hover:bg-sky-700'}
-              disabled={busy}
+              disabled={busy || Boolean(boardPending)}
               onClick={() => open({})}
             >
               + Заказ
@@ -1733,7 +1813,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
           <button
             type="button"
             className={button}
-            disabled={busy || dirty}
+            disabled={busy || dirty || Boolean(boardPending)}
             onClick={() => {
               load({ refreshSelection: true })
               setCalendarRevision((value) => value + 1)
@@ -1743,7 +1823,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
           </button>
         </div>
       </div>
-      {context && can('orders') && canCalendar ? (
+      {context && can('orders') && (canCalendar || canBoard) ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div
             role="group"
@@ -1752,12 +1832,14 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
           >
             {[
               ['list', 'Список'],
-              ['calendar', 'Календарь'],
+              ...(canBoard ? [['board', 'Доска']] : []),
+              ...(canCalendar ? [['calendar', 'Календарь']] : []),
             ].map(([id, label]) => (
               <button
                 type="button"
                 key={id}
                 aria-pressed={effectiveView === id}
+                disabled={Boolean(boardPending)}
                 className={
                   'min-h-11 cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold ' +
                   (effectiveView === id
@@ -1788,6 +1870,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
           ) : null}
         </div>
       ) : null}
+      {boardPending ? <p role="status" className="rounded-lg bg-sky-50 p-3 text-sm text-sky-800">Передаём заказ на другой рабочий этап…</p> : null}
       {openingId ? (
         <p
           role="status"
@@ -1812,6 +1895,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
           className="rounded-lg bg-red-50 p-3 text-sm text-red-800"
         >
           {error}
+          {transitionHelpOrder ? <button type="button" className={button + ' ml-2'} disabled={busy || Boolean(boardPending)} onClick={() => open(transitionHelpOrder)}>Открыть заказ и заполнить бриф</button> : null}
           {!context ? (
             <button
               type="button"
@@ -1852,7 +1936,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
             id={`party-role-overview-${companyId}`}
             className={
               selected && !overviewVisible
-                ? effectiveView === 'calendar'
+                ? effectiveView !== 'list'
                   ? 'hidden min-w-0 space-y-3'
                   : 'hidden min-w-0 space-y-3 lg:block'
                 : 'min-w-0 space-y-3'
@@ -1874,6 +1958,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                   maxLength={160}
                   className={control}
                   value={search}
+                  disabled={Boolean(boardPending)}
                   onChange={(event) => setSearch(event.target.value)}
                 />
               </label>
@@ -1901,7 +1986,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                       },
                     ]
                   : []),
-                ...(canCalendar && effectiveView === 'list'
+                ...(canCalendar && effectiveView !== 'calendar'
                   ? [
                       {
                         id: 'undated',
@@ -1914,6 +1999,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                   type="button"
                   key={item.id}
                   aria-pressed={effectiveQuickFilter === item.id}
+                  disabled={Boolean(boardPending)}
                   onClick={() => setQuickFilter(item.id)}
                   className={
                     'min-h-10 cursor-pointer rounded-lg border px-3 py-2 text-sm ' +
@@ -1932,6 +2018,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                 <select
                   className={control + ' cursor-pointer'}
                   value={effectiveStageFilter}
+                  disabled={Boolean(boardPending)}
                   onChange={(event) => setStageFilter(event.target.value)}
                 >
                   <option value="">Все доступные этапы</option>
@@ -1947,6 +2034,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
               <button
                 type="button"
                 className={button}
+                disabled={Boolean(boardPending)}
                 onClick={() => {
                   setSearch('')
                   setStageFilter('')
@@ -1956,6 +2044,10 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
                 Сбросить фильтры
               </button>
             ) : null}
+            {effectiveView === 'board' ? <>
+              {dirty ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Сохраните или отмените изменения открытого заказа перед передачей карточек.</p> : null}
+              <PartyRoleOrdersBoard context={context} workflow={data.workflow} stages={boardStages} board={board} disabled={busy || dirty || Boolean(boardPending) || Boolean(openingId)} selectedId={selected?._id ? String(selected._id) : ''} onOpen={open} onTransition={moveOrder} />
+            </> : null}
             {effectiveView === 'list' ? (
               <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
                 <span>Сначала новые</span>
@@ -2115,7 +2207,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath }) {
           {selected ? (
             <div
               id={`party-role-editor-${companyId}`}
-              inert={Boolean(openingId) || busy}
+              inert={Boolean(openingId) || busy || Boolean(boardPending)}
             >
               <RoleOrderEditor
                 key={
@@ -2154,6 +2246,7 @@ export default function PartyRoleOrdersWorkspace({
   const companyInitialized = useRef(false)
   const currentCompanyId = useRef(fixedCompanyId || companies[0]?.id || '')
   const [companyNotice, setCompanyNotice] = useState('')
+  const [deepOrder, setDeepOrder] = useState({ companyId: '', orderId: '' })
   const chooseCompany = useCallback(
     (id, { external = false } = {}) => {
       if (fixedCompanyId || id === currentCompanyId.current) return
@@ -2185,6 +2278,7 @@ export default function PartyRoleOrdersWorkspace({
       if (!external && !publishPartyActiveCompanyId(id)) return
       currentCompanyId.current = String(id)
       setCompanyNotice('')
+      setDeepOrder({ companyId: '', orderId: '' })
       setCompanyId(String(id))
     },
     [companies, fixedCompanyId]
@@ -2194,9 +2288,13 @@ export default function PartyRoleOrdersWorkspace({
     // Read browser preference after hydration; the server renders the first allowed company.
     const frame = requestAnimationFrame(() => {
       companyInitialized.current = true
-      const id = fixedCompanyId || readPartyActiveCompanyId(companies)
+      const fallbackCompanyId = fixedCompanyId || readPartyActiveCompanyId(companies)
+      const link = resolvePartyOrderDeepLink(new URL(window.location.href).searchParams, { companies, fixedCompanyId, fallbackCompanyId })
+      const id = link.companyId
       currentCompanyId.current = id
       setCompanyId(id)
+      setDeepOrder({ companyId: id, orderId: link.orderId })
+      if (link.error) setCompanyNotice(link.error)
       setCompanyReady(true)
       if (id) publishPartyActiveCompanyId(id, { skipGuard: true })
     })
@@ -2256,6 +2354,7 @@ export default function PartyRoleOrdersWorkspace({
         <CompanyRoleOrders
           key={activeId}
           companyId={activeId}
+          initialOrderId={deepOrder.companyId === activeId ? deepOrder.orderId : ''}
           legacyAdvancedPath={legacyAdvancedPath}
         />
       ) : (
