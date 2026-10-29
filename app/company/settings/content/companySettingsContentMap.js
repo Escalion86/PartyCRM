@@ -9,6 +9,7 @@ import CompanySettingsReportsContent from './CompanySettingsReportsContent'
 import CompanySettingsRolesContent from './CompanySettingsRolesContent'
 import CompanySettingsBriefContent from './CompanySettingsBriefContent'
 import CompanySettingsWorkflowContent from './CompanySettingsWorkflowContent'
+import CompanySettingsPreparationTemplatesContent from './CompanySettingsPreparationTemplatesContent'
 
 export const COMPANY_SETTINGS_CONTENT = Object.freeze({
   general: CompanySettingsGeneralContent,
@@ -22,4 +23,5 @@ export const COMPANY_SETTINGS_CONTENT = Object.freeze({
   roles: CompanySettingsRolesContent,
   brief: CompanySettingsBriefContent,
   workflow: CompanySettingsWorkflowContent,
+  'preparation-templates': CompanySettingsPreparationTemplatesContent,
 })

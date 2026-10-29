@@ -8,6 +8,7 @@ import {
 } from '../../../helpers/partyRolePermissions.js'
 import * as workflowHelpers from '../../../helpers/partyWorkflow.js'
 import * as boardHelpers from '../../../helpers/partyOrderBoard.js'
+import { canPartyResourceCalendarAccess } from '../../../helpers/partyResourceCalendar.js'
 import { createHookHost, nodes, textOf } from './partyOrderBoardTestHost.mjs'
 
 const require = createRequire(import.meta.url)
@@ -123,6 +124,7 @@ const setup = ({
         ...workflowHelpers,
         ...boardHelpers,
         canPartyAccess,
+        canPartyResourceCalendarAccess,
         isPartyRestrictedManagementContext,
         h: (type, values, ...children) => ({
           type,

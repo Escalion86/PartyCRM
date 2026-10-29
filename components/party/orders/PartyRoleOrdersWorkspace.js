@@ -57,6 +57,7 @@ import {
   readPartyOrderViewPreference,
   writePartyOrderViewPreference,
 } from '@helpers/partyOrderViewPreference'
+import { canPartyResourceCalendarAccess } from '@helpers/partyResourceCalendar'
 
 const PartyRoleOrdersCalendar = dynamic(
   () => import('./PartyRoleOrdersCalendar')
@@ -64,6 +65,7 @@ const PartyRoleOrdersCalendar = dynamic(
 const PartyRoleOrdersBoard = dynamic(() => import('./PartyRoleOrdersBoard'))
 
 const PartyTasks = dynamic(() => import('@components/party/tasks/PartyTasks'))
+const PartyPreparationTemplateApply = dynamic(() => import('@components/party/preparation/PartyPreparationTemplateApply'))
 const PartyOrderReports = dynamic(
   () => import('@components/party/reports/PartyOrderReports')
 )
@@ -137,6 +139,7 @@ function RoleOrderEditor({
   const [error, setError] = useState('')
   const [reportDirty, setReportDirty] = useState({})
   const [taskDirty, setTaskDirty] = useState(false)
+  const [tasksRefreshKey, setTasksRefreshKey] = useState(0)
   const [newClientDirty, setNewClientDirty] = useState(false)
   const [createdClients, setCreatedClients] = useState([])
   const [initialPayment, setInitialPayment] = useState({
@@ -199,6 +202,7 @@ function RoleOrderEditor({
     []
   )
   const dirtyTask = useCallback((value) => setTaskDirty(value), [])
+  const templatePending = useCallback((value) => setReportDirty((previous) => previous.template === value ? previous : { ...previous, template: value }), [])
   const dirtyClient = useCallback(
     (value) =>
       setReportDirty((previous) =>
@@ -365,6 +369,7 @@ function RoleOrderEditor({
     { id: 'reports', title: 'Отчёты', show: existing && can('reports') },
   ].filter((item) => item.show)
   const chooseTab = (id) => {
+    if (reportDirty.template) return
     setTab(id)
     requestAnimationFrame(() =>
       document
@@ -491,7 +496,7 @@ function RoleOrderEditor({
         <button
           type="button"
           className={button}
-          disabled={busy}
+          disabled={busy || reportDirty.template}
           onClick={onClose}
         >
           К списку
@@ -522,6 +527,7 @@ function RoleOrderEditor({
               type="button"
               role="tab"
               aria-selected={tab === item.id}
+              disabled={reportDirty.template}
               tabIndex={tab === item.id ? 0 : -1}
               aria-controls={tabId + '-' + item.id}
               id={tabId + '-tab-' + item.id}
@@ -1189,12 +1195,28 @@ function RoleOrderEditor({
               </div>
             ) : null}
             {item.id === 'tasks' ? (
-              <PartyTasks
-                companyId={companyId}
-                orderId={order._id}
-                compact
-                onDirtyChange={dirtyTask}
-              />
+              <>
+                {can('tasks.create', 'edit') && can('tasks.assign', 'edit') && !['closed', 'canceled'].includes(order.status) ? <PartyPreparationTemplateApply
+                  companyId={companyId}
+                  orderId={order._id}
+                  disabled={busy || changes.dirty || contractAmountInvalid || taskDirty || Object.entries(reportDirty).some(([key, value]) => key !== 'template' && value)}
+                  onPendingChange={templatePending}
+                  onApplied={async () => {
+                    setTasksRefreshKey((value) => value + 1)
+                    const result = await apiJson(`/api/party/orders/${order._id}`, { cache: 'no-store', headers: { 'x-partycrm-company-id': companyId } })
+                    onSaved(result.data, result.accessChanged || !result.data)
+                  }}
+                /> : null}
+                <fieldset disabled={reportDirty.template} className="min-w-0 border-0 p-0">
+                  <PartyTasks
+                    companyId={companyId}
+                    orderId={order._id}
+                    compact
+                    refreshKey={tasksRefreshKey}
+                    onDirtyChange={dirtyTask}
+                  />
+                </fieldset>
+              </>
             ) : null}
             {item.id === 'reports' ? (
               <PartyOrderReports
@@ -1868,6 +1890,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
               Продолжить редактирование
             </button>
           ) : null}
+          {canPartyResourceCalendarAccess(context) ? <a className={button} href={`/performer/resources?companyId=${encodeURIComponent(companyId)}`}>Ресурсы</a> : null}
         </div>
       ) : null}
       {boardPending ? <p role="status" className="rounded-lg bg-sky-50 p-3 text-sm text-sky-800">Передаём заказ на другой рабочий этап…</p> : null}

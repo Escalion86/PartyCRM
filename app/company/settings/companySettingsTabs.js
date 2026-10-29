@@ -48,6 +48,12 @@ export const COMPANY_SETTINGS_TABS = Object.freeze([
     access: 'management',
   },
   {
+    slug: 'preparation-templates',
+    label: 'Шаблоны задач',
+    href: '/company/settings/preparation-templates',
+    access: 'management',
+  },
+  {
     slug: 'workflow',
     label: 'Этапы заказов',
     href: '/company/settings/workflow',

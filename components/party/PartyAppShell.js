@@ -50,6 +50,7 @@ import {
 import { getPartyMobileNavItems } from '@helpers/partyMobileNavigation'
 import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
 import { canPartyTodayAccess } from '@helpers/partyToday'
+import { canPartyResourceCalendarAccess } from '@helpers/partyResourceCalendar'
 import {
   PARTY_ACTIVE_COMPANY_STORAGE_KEY as ACTIVE_COMPANY_STORAGE_KEY,
   PARTY_ACTIVE_COMPANY_EVENT,
@@ -70,6 +71,12 @@ const companyMenu = [
     label: 'Заказы',
     icon: faBriefcase,
     resource: 'orders',
+  },
+  {
+    href: '/company/resources',
+    label: 'Ресурсы',
+    icon: faCalendarDay,
+    resourceCalendar: true,
   },
   {
     href: '/company/ticketing',
@@ -140,6 +147,12 @@ const performerMenu = [
     resource: 'orders',
   },
   {
+    href: '/performer/resources',
+    label: 'Ресурсы',
+    icon: faCalendarDay,
+    resourceCalendar: true,
+  },
+  {
     href: '/performer/ticketing',
     label: 'Билеты и посещения',
     icon: faTicket,
@@ -188,6 +201,12 @@ const performerMenu = [
 const locationOwnerMenu = [
   { href: '/company/today', label: 'Сегодня', icon: faCalendarDay, today: true },
   { href: '/company/my-locations', label: 'Мои площадки', icon: faLocationDot },
+  {
+    href: '/company/resources',
+    label: 'Ресурсы',
+    icon: faCalendarDay,
+    resourceCalendar: true,
+  },
   {
     href: '/company/tasks',
     label: 'Задачи',
@@ -348,7 +367,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const visibleCompanyMenu = companyMenu.filter(
     (item) =>
       (legacyCompanyAllowed ||
-        ['/company/today', '/company/work', '/company/tasks', '/company/ticketing'].includes(
+        ['/company/today', '/company/work', '/company/tasks', '/company/ticketing', '/company/resources'].includes(
           item.href
         ) ||
         (item.href === '/company/settings' &&
@@ -357,6 +376,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
       (!item.ticketing || isPartyTicketingEnabled(activeMembership?.company)) &&
       (!item.managementOnly || activeMembership?.isAdmin) &&
       (!item.today || canPartyTodayAccess(activeMembership)) &&
+      (!item.resourceCalendar || canPartyResourceCalendarAccess(activeMembership)) &&
       (!item.resource ||
         (activeMembership &&
           canPartyAccess(
@@ -372,6 +392,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
     (item) =>
       (item.href !== '/performer' || canUsePerformer) &&
       (!item.today || memberships.some((membership) => canPartyTodayAccess(membership))) &&
+      (!item.resourceCalendar || memberships.some((membership) => canPartyResourceCalendarAccess(membership))) &&
       (!item.ticketing ||
         (isPartyTicketingEnabled(activeMembership?.company) &&
           activeMembership &&
@@ -402,6 +423,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
       ? locationOwnerMenu.filter(
           (item) =>
             (!item.today || canPartyTodayAccess(activeMembership)) &&
+            (!item.resourceCalendar || canPartyResourceCalendarAccess(activeMembership)) &&
             (!item.ticketing ||
               isPartyTicketingEnabled(activeMembership?.company)) &&
             (!item.resource ||
@@ -430,6 +452,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
         '/performer/tasks',
         '/company/today',
         '/performer/today',
+        '/company/resources',
+        '/performer/resources',
       ].includes(pathname) ||
       (!legacyCompanyAllowed && !canUsePerformer),
     canCreate: Boolean(
@@ -549,6 +573,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
         '/performer/ticketing',
         '/company/today',
         '/performer/today',
+        '/company/resources',
+        '/performer/resources',
       ].includes(pathname)
     )
       return

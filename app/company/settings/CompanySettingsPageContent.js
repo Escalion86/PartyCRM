@@ -59,6 +59,10 @@ const TAB_META = Object.freeze({
     title: 'Этапы заказов',
     description: 'Рабочие этапы и разрешённые переходы между ними.',
   },
+  'preparation-templates': {
+    title: 'Шаблоны задач',
+    description: 'Наборы задач подготовки, ответственные и сроки относительно мероприятия.',
+  },
 })
 
 export default function CompanySettingsPageContent({
