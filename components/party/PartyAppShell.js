@@ -20,6 +20,7 @@ import {
   faUserTie,
   faClockRotateLeft,
   faTicket,
+  faPlus,
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
@@ -48,6 +49,7 @@ import {
   isPartyRestrictedManagementContext,
 } from '@helpers/partyRolePermissions'
 import { getPartyMobileNavItems } from '@helpers/partyMobileNavigation'
+import { getPartyNavigationGroups } from '@helpers/partyNavigationGroups'
 import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
 import { canPartyTodayAccess } from '@helpers/partyToday'
 import { canPartyResourceCalendarAccess } from '@helpers/partyResourceCalendar'
@@ -236,7 +238,7 @@ const secondaryMenu = [
     icon: faUserTie,
     performerOnly: true,
   },
-  { href: '/party/settings', label: 'Настройки', icon: faGear, always: true },
+  { href: '/party/settings', label: 'Личные настройки', icon: faGear, always: true },
 ]
 
 const getDisplayName = (user) =>
@@ -253,31 +255,35 @@ const MenuLink = ({ item, active, onClick }) => (
   <Link
     href={item.href}
     onClick={onClick}
+    aria-current={active ? 'page' : undefined}
     className={cn(
-      'flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors',
+      'flex min-h-11 min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-200',
       active
-        ? 'bg-sky-500 text-white'
+        ? 'bg-sky-700 text-white'
         : 'text-white/80 hover:bg-white/10 hover:text-white'
     )}
   >
     <FontAwesomeIcon icon={item.icon} className="h-4 w-4 min-w-4" />
-    <span className="whitespace-nowrap">{item.label}</span>
+    <span className="min-w-0 flex-1 break-words">{item.label}</span>
   </Link>
 )
 
-const MenuGroupButton = ({ item, active, open, onClick }) => (
+const MenuGroupButton = ({ item, active, open, onClick, controls }) => (
   <button
     type="button"
     onClick={onClick}
+    aria-expanded={open}
+    aria-controls={open ? controls : undefined}
     className={cn(
-      'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors',
+      'flex min-h-11 min-w-0 w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-200',
       active
-        ? 'bg-sky-500 text-white'
+        ? 'bg-sky-700 text-white'
         : 'text-white/80 hover:bg-white/10 hover:text-white'
     )}
   >
     <FontAwesomeIcon icon={item.icon} className="h-4 w-4 min-w-4" />
-    <span className="flex-1 text-left whitespace-nowrap">{item.label}</span>
+    <span className="min-w-0 flex-1 break-words text-left">{item.label}</span>
+    {item.access === COMPANY_SETTINGS_ACCESS.DEV ? <span className="text-purple-300" aria-label="Только разработчик">*</span> : null}
     <FontAwesomeIcon
       icon={faAngleDown}
       className={cn('h-3.5 w-3.5 min-w-3.5 transition-transform', {
@@ -291,21 +297,60 @@ const SubMenuLink = ({ item, active, onClick }) => (
   <Link
     href={item.href}
     onClick={onClick}
+    aria-current={active ? 'page' : undefined}
     className={cn(
-      'ml-6 flex min-h-8 items-center rounded-md border-l-2 px-3 py-1.5 text-sm font-medium transition-colors',
+      'ml-6 flex min-h-11 min-w-0 items-center gap-2 rounded-md border-l px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-200',
       active
         ? 'border-sky-300 bg-white/10 text-sky-100'
         : 'border-white/10 text-white/65 hover:border-white/25 hover:bg-white/6 hover:text-white'
     )}
   >
     <span className="truncate">{item.label}</span>
+    {item.access === COMPANY_SETTINGS_ACCESS.DEV ? <span className="text-purple-300" aria-label="Только разработчик">*</span> : null}
   </Link>
 )
+
+function NavigationGroup({ group, active, children }) {
+  return (
+    <details open={group.id === 'work' || active} className="group min-w-0">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-sky-200 [&::-webkit-details-marker]:hidden">
+        {group.label}
+        <FontAwesomeIcon icon={faAngleDown} className="h-3 w-3 shrink-0 transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="mt-1 grid min-w-0 gap-1">{children}</div>
+    </details>
+  )
+}
 
 export default function PartyAppShell({ variant = 'company', children }) {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const mobileMenu = useRef(null)
+  const menuReturnFocus = useRef(null)
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+    menuReturnFocus.current = document.activeElement
+    const frame = requestAnimationFrame(() => {
+      mobileMenu.current?.querySelector('a, button, summary')?.focus()
+    })
+    const escape = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setMobileMenuOpen(false)
+      menuReturnFocus.current?.focus()
+    }
+    const resized = () => {
+      if (window.matchMedia('(min-width: 768px)').matches) setMobileMenuOpen(false)
+    }
+    window.addEventListener('keydown', escape)
+    window.addEventListener('resize', resized)
+    return () => {
+      cancelAnimationFrame(frame)
+      window.removeEventListener('keydown', escape)
+      window.removeEventListener('resize', resized)
+    }
+  }, [mobileMenuOpen])
   const [companySettingsExpanded, setCompanySettingsExpanded] = useState(null)
   const [performerSettingsExpanded, setPerformerSettingsExpanded] =
     useState(null)
@@ -461,6 +506,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
       canPartyAccess(activeMembership, { resource: 'orders', action: 'create' })
     ),
   })
+  const navigationGroups = getPartyNavigationGroups(primaryMenu)
+  const createItem = mobileNavItems.find((item) => item.create)
   const visibleSecondaryMenu = secondaryMenu.filter((item) => {
     if (item.always) return true
     if (item.performerOnly) return profileLoaded && canUsePerformer
@@ -653,6 +700,16 @@ export default function PartyAppShell({ variant = 'company', children }) {
     return !currentHash
   }
 
+  const openNewOrder = (href) => {
+    const params = new URLSearchParams({ create: 'order' })
+    if (activeMembership?.tenantId) params.set('companyId', String(activeMembership.tenantId))
+    const target = `${href}?${params}`
+    if (pathname !== href && !requestPartyLeave({ kind: 'route', target })) return
+    setMobileMenuOpen(false)
+    if (pathname === href) window.dispatchEvent(new Event('partycrm:create-order'))
+    else router.push(target)
+  }
+
   const logout = async () => {
     const target = '/party/login?callbackUrl=/party/entry'
     if (!requestPartyLeave({ kind: 'route', target })) return
@@ -678,13 +735,21 @@ export default function PartyAppShell({ variant = 'company', children }) {
             </Link>
           </div>
 
-          <nav className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
-            <div className="grid gap-1">
-              {primaryMenu.map((item) => {
+          <nav aria-label="Основная навигация" className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 py-4">
+            {createItem ? (
+              <button type="button" className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-200" onClick={() => openNewOrder(createItem.href)}>
+                <FontAwesomeIcon icon={faPlus} className="h-4 w-4" />
+                Новая заявка
+              </button>
+            ) : null}
+            <div className="grid min-w-0 gap-3">
+              {navigationGroups.map((group) => (
+                <NavigationGroup key={group.id} group={group} active={group.items.some((item) => isActive(item.href))}>
+              {group.items.map((item) => {
                 const isOrdersGroup =
                   isCompanyVariant && item.href === '/company/orders'
                 const isSettingsGroup =
-                  isCompanyVariant && item.href === '/company/settings'
+                  isCompanyVariant && companySettingsActive && item.href === '/company/settings'
                 const isPerformerSettingsGroup =
                   effectiveVariant === 'performer' &&
                   item.href === '/performer/settings'
@@ -696,6 +761,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                         item={item}
                         active={ordersActive}
                         open={ordersOpen}
+                        controls="party-orders-desktop"
                         onClick={() => setOrdersExpanded(!ordersOpen)}
                       />
                     ) : isSettingsGroup ? (
@@ -703,6 +769,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                         item={item}
                         active={companySettingsActive}
                         open={companySettingsOpen}
+                        controls="party-company-settings-desktop"
                         onClick={() =>
                           setCompanySettingsExpanded(!companySettingsOpen)
                         }
@@ -712,6 +779,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                         item={item}
                         active={performerSettingsActive}
                         open={performerSettingsOpen}
+                        controls="party-performer-settings-desktop"
                         onClick={() =>
                           setPerformerSettingsExpanded(!performerSettingsOpen)
                         }
@@ -720,7 +788,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                       <MenuLink item={item} active={isActive(item.href)} />
                     )}
                     {isOrdersGroup && ordersOpen ? (
-                      <div className="mt-1">
+                      <div id="party-orders-desktop" className="mt-1">
                         <div className="grid gap-1">
                           {ordersSubMenu.map((subItem) => (
                             <SubMenuLink
@@ -733,7 +801,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                       </div>
                     ) : null}
                     {isSettingsGroup && companySettingsOpen ? (
-                      <div className="mt-1">
+                      <div id="party-company-settings-desktop" className="mt-1">
                         <div className="grid gap-1">
                           {visibleCompanySettingsMenu.map((subItem) => (
                             <SubMenuLink
@@ -746,7 +814,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                       </div>
                     ) : null}
                     {isPerformerSettingsGroup && performerSettingsOpen ? (
-                      <div className="mt-1">
+                      <div id="party-performer-settings-desktop" className="mt-1">
                         <div className="grid gap-1">
                           {PERFORMER_SETTINGS_TABS.map((subItem) => (
                             <SubMenuLink
@@ -761,6 +829,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
                   </div>
                 )
               })}
+                </NavigationGroup>
+              ))}
             </div>
 
             <div className="mt-auto grid gap-1 border-t border-white/10 pt-4">
@@ -778,13 +848,15 @@ export default function PartyAppShell({ variant = 'company', children }) {
                       href: '/party/site-settings/tariffs',
                       label: 'Настройка сайта',
                       icon: faGear,
+                      access: COMPANY_SETTINGS_ACCESS.DEV,
                     }}
                     active={siteSettingsActive}
                     open={siteSettingsOpen}
+                    controls="party-site-settings-desktop"
                     onClick={() => setSiteSettingsExpanded(!siteSettingsOpen)}
                   />
                   {siteSettingsOpen ? (
-                    <div className="grid gap-1">
+                    <div id="party-site-settings-desktop" className="grid gap-1">
                       {PARTY_SITE_SETTINGS_TABS.map((subItem) => (
                         <SubMenuLink
                           key={subItem.href}
@@ -821,8 +893,10 @@ export default function PartyAppShell({ variant = 'company', children }) {
                 <button
                   type="button"
                   onClick={() => setMobileMenuOpen((value) => !value)}
-                  className="grid h-10 w-10 place-items-center rounded-md border border-sky-100 text-sky-700 md:hidden"
-                  aria-label="Открыть меню"
+                  className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-md border border-sky-100 text-sky-700 md:hidden"
+                  aria-label={mobileMenuOpen ? 'Закрыть меню' : 'Открыть меню'}
+                  aria-expanded={mobileMenuOpen}
+                  aria-controls={mobileMenuOpen ? 'party-primary-mobile-menu' : undefined}
                 >
                   <span className="grid gap-1">
                     <span className="block h-0.5 w-5 bg-current" />
@@ -837,13 +911,15 @@ export default function PartyAppShell({ variant = 'company', children }) {
             </header>
 
             {mobileMenuOpen && (
-              <div className="fixed inset-x-0 top-16 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 overflow-y-auto border-b border-sky-100 bg-slate-950 px-3 py-3 md:hidden">
-                <nav className="grid gap-1">
-                  {primaryMenu.map((item) => {
+              <div ref={mobileMenu} id="party-primary-mobile-menu" className="fixed inset-x-0 top-16 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 overflow-x-hidden overflow-y-auto border-b border-sky-100 bg-slate-950 px-3 py-3 text-white md:hidden">
+                <nav aria-label="Меню разделов" className="grid min-w-0 gap-3">
+                  {navigationGroups.map((group) => (
+                    <NavigationGroup key={group.id} group={group} active={group.items.some((item) => isActive(item.href))}>
+                  {group.items.map((item) => {
                     const isOrdersGroup =
                       isCompanyVariant && item.href === '/company/orders'
                     const isSettingsGroup =
-                      isCompanyVariant && item.href === '/company/settings'
+                      isCompanyVariant && companySettingsActive && item.href === '/company/settings'
                     const isPerformerSettingsGroup =
                       effectiveVariant === 'performer' &&
                       item.href === '/performer/settings'
@@ -855,6 +931,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                             item={item}
                             active={ordersActive}
                             open={ordersOpen}
+                            controls="party-orders-mobile"
                             onClick={() => setOrdersExpanded(!ordersOpen)}
                           />
                         ) : isSettingsGroup ? (
@@ -862,6 +939,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                             item={item}
                             active={companySettingsActive}
                             open={companySettingsOpen}
+                            controls="party-company-settings-mobile"
                             onClick={() =>
                               setCompanySettingsExpanded(!companySettingsOpen)
                             }
@@ -871,6 +949,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                             item={item}
                             active={performerSettingsActive}
                             open={performerSettingsOpen}
+                            controls="party-performer-settings-mobile"
                             onClick={() =>
                               setPerformerSettingsExpanded(
                                 !performerSettingsOpen
@@ -892,7 +971,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                           />
                         )}
                         {isOrdersGroup && ordersOpen ? (
-                          <div className="mt-1">
+                          <div id="party-orders-mobile" className="mt-1">
                             <div className="grid gap-1">
                               {ordersSubMenu.map((subItem) => (
                                 <SubMenuLink
@@ -909,7 +988,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                           </div>
                         ) : null}
                         {isSettingsGroup && companySettingsOpen ? (
-                          <div className="mt-1">
+                          <div id="party-company-settings-mobile" className="mt-1">
                             <div className="grid gap-1">
                               {visibleCompanySettingsMenu.map((subItem) => (
                                 <SubMenuLink
@@ -926,7 +1005,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
                           </div>
                         ) : null}
                         {isPerformerSettingsGroup && performerSettingsOpen ? (
-                          <div className="mt-1">
+                          <div id="party-performer-settings-mobile" className="mt-1">
                             <div className="grid gap-1">
                               {PERFORMER_SETTINGS_TABS.map((subItem) => (
                                 <SubMenuLink
@@ -945,6 +1024,8 @@ export default function PartyAppShell({ variant = 'company', children }) {
                       </div>
                     )
                   })}
+                    </NavigationGroup>
+                  ))}
                   {visibleSecondaryMenu.map((item) => (
                     <MenuLink
                       key={item.href}
@@ -967,15 +1048,17 @@ export default function PartyAppShell({ variant = 'company', children }) {
                           href: '/party/site-settings/tariffs',
                           label: 'Настройка сайта',
                           icon: faGear,
+                          access: COMPANY_SETTINGS_ACCESS.DEV,
                         }}
                         active={siteSettingsActive}
                         open={siteSettingsOpen}
+                        controls="party-site-settings-mobile"
                         onClick={() =>
                           setSiteSettingsExpanded(!siteSettingsOpen)
                         }
                       />
                       {siteSettingsOpen ? (
-                        <div className="grid gap-1">
+                        <div id="party-site-settings-mobile" className="grid gap-1">
                           {PARTY_SITE_SETTINGS_TABS.map((subItem) => (
                             <SubMenuLink
                               key={subItem.href}
@@ -1010,7 +1093,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
             )}
           </div>
 
-          <div className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pb-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] md:pb-0">
+          <div inert={mobileMenuOpen || undefined} className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pb-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] md:pb-0">
             {children}
           </div>
         </section>
@@ -1020,23 +1103,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
             items={mobileNavItems}
             menuOpen={mobileMenuOpen}
             onMenu={setMobileMenuOpen}
-            onCreate={(href) => {
-              const params = new URLSearchParams({ create: 'order' })
-              if (activeMembership?.tenantId) params.set('companyId', String(activeMembership.tenantId))
-              const target = `${href}?${params}`
-              if (
-                pathname !== href &&
-                !requestPartyLeave({
-                  kind: 'route',
-                  target,
-                })
-              )
-                return
-              setMobileMenuOpen(false)
-              if (pathname === href)
-                window.dispatchEvent(new Event('partycrm:create-order'))
-              else router.push(target)
-            }}
+            onCreate={openNewOrder}
           />
         )}
       </main>

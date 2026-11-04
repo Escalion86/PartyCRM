@@ -133,7 +133,8 @@ export async function PATCH(req, { params }) {
   }
 
   if (Object.hasOwn(body, 'workflowStageId') && body.workflowStageId !== (currentOrder.workflowStageId || '')) return partyError(400, 'partycrm_use_stage_transition', 'Для смены этапа используйте действие передачи заказа')
-  const changedPatch = Object.fromEntries(Object.entries(body).filter(([key, value]) => !['_id', 'tenantId', 'commercialRevision', 'expectedUpdatedAt', 'expectedRevision', 'transactions'].includes(key) && JSON.stringify(value) !== JSON.stringify(currentOrder[key])))
+  if (['pricingSnapshot', 'orderTypeSnapshot'].some((field) => Object.hasOwn(body, field) && JSON.stringify(body[field]) !== JSON.stringify(currentOrder[field]))) return partyError(400, 'partycrm_order_server_fields', 'Расчёт и название типа формируются сервером')
+  const changedPatch = Object.fromEntries(Object.entries(body).filter(([key, value]) => !['_id', 'tenantId', 'commercialRevision', 'expectedUpdatedAt', 'expectedRevision', 'transactions', 'completeBooking', 'bookingVersion'].includes(key) && JSON.stringify(value) !== JSON.stringify(currentOrder[key])))
   const fieldGuard = guardPartyOrderPatch(context, changedPatch, currentOrder)
   if (!fieldGuard.ok) return partyError(403, 'partycrm_forbidden_order_fields', 'Нет права изменять некоторые поля заказа', 'permission', { fields: fieldGuard.forbiddenFields })
 
@@ -258,7 +259,13 @@ export async function PATCH(req, { params }) {
   if (Object.hasOwn(body, 'dateEnd') && !Object.hasOwn(body, 'durationMinutes')) {
     bodyWithBackwardCompatibleBrief.durationMinutes = undefined
   }
-  const payload = normalizeOrderPayload(bodyWithBackwardCompatibleBrief)
+  let payload = normalizeOrderPayload(bodyWithBackwardCompatibleBrief)
+  try {
+    if (body.bookingVersion === 1 || currentOrder.bookingVersion === 1) {
+      const { preparePartyOrderBooking } = await import('@server/partyOrderBooking')
+      payload = await preparePartyOrderBooking({ context, body, payload, previous: currentOrder })
+    }
+  } catch (cause) { return partyError(cause.status || 500, cause.code || 'partycrm_booking_failed', cause.status ? cause.message : 'Не удалось подготовить заказ', 'validation') }
   // Assignment forms cannot overwrite server-owned reports/calendar linkage.
   if (Array.isArray(payload.assignedStaff)) {
     const previousById = new Map((currentOrder.assignedStaff || []).map(item => [String(item.staffId), item]))
@@ -275,6 +282,7 @@ export async function PATCH(req, { params }) {
   // A stale editor must never resurrect the embedded ledger after migration.
   if (currentOrder.legacyLedgerMigrationId) payload.transactions = []
   const touchesCommercialFields = [
+    'serviceSelections', 'orderTypeId', 'rental', 'discount',
     'servicesIds',
     'serviceTitle',
     'contractAmount',
@@ -305,7 +313,7 @@ export async function PATCH(req, { params }) {
   const commercialChanged =
     touchesCommercialFields && (servicesOrAmountChanged || orderItemsChanged)
   if (commercialChanged) {
-    if (servicesOrAmountChanged && !orderItemsChanged) payload.orderItems = []
+    if (servicesOrAmountChanged && !orderItemsChanged && payload.bookingVersion !== 1) payload.orderItems = []
     payload.agreedProposal = {}
     payload.commercialRevision = currentCommercialRevision + 1
   }
@@ -324,6 +332,7 @@ export async function PATCH(req, { params }) {
 
   if (
     hasClientOrServiceFields &&
+    !(payload.bookingVersion === 1 && payload.status === 'draft') &&
     !payload.clientId &&
     !payload.client.name &&
     payload.servicesIds.length === 0 &&

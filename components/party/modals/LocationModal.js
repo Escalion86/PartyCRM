@@ -12,6 +12,7 @@ import {
 } from '@helpers/addressPool'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
 import FieldHelp from '@components/FieldHelp'
+import PartyWorkingScheduleEditor from '@components/party/locations/PartyWorkingScheduleEditor'
 
 export default function LocationModal({
   open,
@@ -157,6 +158,8 @@ export default function LocationModal({
           <legend className="px-1 text-sm font-semibold text-slate-800">
             Занятость площадки
           </legend>
+          <label className="block text-sm text-slate-700">Стоимость аренды за час, ₽<input className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2" type="number" min={0} step="0.01" value={locationDraft.hourlyRentalRate ?? 0} onChange={(event) => handleChange('hourlyRentalRate')(event.target.value)} /></label>
+          <details><summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Рабочий график помещения</summary><PartyWorkingScheduleEditor value={locationDraft.workingSchedule || null} onChange={handleChange('workingSchedule')} disabled={saving} /></details>
           <label className="block text-sm text-slate-700">
             Режим использования
             <select

@@ -9,6 +9,7 @@ import {
 import * as workflowHelpers from '../../../helpers/partyWorkflow.js'
 import * as boardHelpers from '../../../helpers/partyOrderBoard.js'
 import { canPartyResourceCalendarAccess } from '../../../helpers/partyResourceCalendar.js'
+import { PARTY_ORDER_SORT_OPTIONS } from '../../../helpers/partyOrderBooking.js'
 import { createHookHost, nodes, textOf } from './partyOrderBoardTestHost.mjs'
 
 const require = createRequire(import.meta.url)
@@ -124,6 +125,8 @@ const setup = ({
         ...workflowHelpers,
         ...boardHelpers,
         canPartyAccess,
+        PARTY_ORDER_SORT_OPTIONS,
+        Modal: 'modal',
         canPartyResourceCalendarAccess,
         isPartyRestrictedManagementContext,
         h: (type, values, ...children) => ({
@@ -178,6 +181,8 @@ const setup = ({
           calendarView: 'month',
         }),
         writePartyOrderViewPreference() {},
+        readPartyOrderSortPreference: () => 'created_desc',
+        writePartyOrderSortPreference() {},
         requestAnimationFrame: (run) => {
           run()
           return 1

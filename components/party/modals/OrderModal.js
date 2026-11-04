@@ -2,7 +2,9 @@
 
 import { PartyOrderContactRolesEditor } from '@components/party/orders/PartyOrderContactRoles'
 
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useEffect } from 'react'
+import PartyOrderWizard from '@components/party/orders/PartyOrderWizard'
+import PartyOrderExtensions from '@components/party/orders/PartyOrderExtensions'
 import { useSetAtom } from 'jotai'
 import { apiJson } from '@helpers/apiClient'
 import {
@@ -139,6 +141,14 @@ export default function OrderModal({
   isEdit,
 }) {
   const [clientModal, setClientModal] = useState('')
+  const [bookingOpen, setBookingOpen] = useState(false)
+  const [canonicalTypes, setCanonicalTypes] = useState([])
+  useEffect(() => {
+    if (!open || !activeCompanyId) return
+    const controller = new AbortController()
+    apiJson('/api/party/order-types', { headers: { 'x-partycrm-company-id': activeCompanyId }, cache: 'no-store', signal: controller.signal }).then((result) => { if (!controller.signal.aborted) setCanonicalTypes(result.data.map((item) => item.title)) }).catch(() => {})
+    return () => controller.abort()
+  }, [open, activeCompanyId])
   const [clientDraft, setClientDraft] = useState(EMPTY_PARTY_CLIENT)
   const [clientSaving, setClientSaving] = useState(false)
   const [otherContactSelectIndex, setOtherContactSelectIndex] = useState(null)
@@ -274,16 +284,17 @@ export default function OrderModal({
         normalizedType,
       ])
 
-      const response = await apiJson('/api/party/company-settings', {
-        method: 'PATCH',
+      await apiJson('/api/party/order-types', {
+        method: 'POST',
         headers: requestHeaders,
-        body: JSON.stringify({ orderTypes: nextOrderTypes }),
+        body: JSON.stringify({ title: normalizedType }),
       })
-      handleCompanySettingsResponse(response.data)
+      setCanonicalTypes((previous) => [...new Set([...previous, normalizedType])])
+      handleCompanySettingsResponse({ ...companySettings, orderTypes: nextOrderTypes })
     },
     [
       activeCompanyId,
-      companySettings?.orderTypes,
+      companySettings,
       handleCompanySettingsResponse,
       requestHeaders,
     ]
@@ -838,12 +849,14 @@ export default function OrderModal({
         <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
             <div data-order-group="Услуги" className="grid gap-2">
+              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => setBookingOpen(true)}>Изменить тип, место, услуги и время</button> : null}
               <PartyOrderTypePicker
                 value={orderDraft.title || ''}
                 onChange={(val) => handleChange('title', val || '')}
-                orderTypes={companySettings?.orderTypes || []}
+                orderTypes={normalizeCompanyDictionary([...(companySettings?.orderTypes || []), ...canonicalTypes])}
                 onCreateOrderType={handleOrderTypeCreate}
-                allowCreate={Boolean(activeCompanyId)}
+                allowCreate={Boolean(activeCompanyId) && orderDraft.bookingVersion !== 1}
+                disabled={orderDraft.bookingVersion === 1}
               />
               <ServiceMultiSelect
                 value={orderDraft.servicesIds || []}
@@ -1152,6 +1165,7 @@ export default function OrderModal({
         {/* ====== Вкладка 4: Финансы и документы ====== */}
         <TabPanel tabName="Финансы и документы">
           <div className="flex flex-col gap-2">
+            {orderDraft._id ? <PartyOrderExtensions companyId={activeCompanyId} order={orderDraft} mode="payments" disabled={saving || hasUnsavedChanges} onSaved={(next) => { onOrderApplied?.(next); onClose?.() }} /> : null}
             <Input
               label="Сумма клиента"
               type="number"
@@ -1180,6 +1194,7 @@ export default function OrderModal({
             <hr className="border-t border-gray-200" />
 
             <PartyOrderTransactionsSection
+              hideExpectationTransactions
               orderId={orderDraft._id || ''}
               activeCompanyId={activeCompanyId}
               contractAmount={
@@ -1233,6 +1248,9 @@ export default function OrderModal({
           </div>
         </TabPanel>
 
+        <TabPanel tabName="Пригласительное">
+          <PartyOrderExtensions companyId={activeCompanyId} order={orderDraft} mode="invitation" disabled={saving || hasUnsavedChanges} />
+        </TabPanel>
         <TabPanel tabName="Задачи">
           {orderDraft._id ? <PartyTasks companyId={activeCompanyId} orderId={String(orderDraft._id)} compact /> : <div className="flex flex-col gap-2">
             <div className="flex items-center justify-end">
@@ -1348,6 +1366,7 @@ export default function OrderModal({
         onCompanySettingsChange={onCompanySettingsChange}
       />
 
+      {bookingOpen ? <PartyOrderWizard companyId={activeCompanyId} order={orderDraft} onClose={() => setBookingOpen(false)} onSaved={(next) => { setBookingOpen(false); onOrderApplied?.(next); onClose?.() }} /> : null}
       {editingAdditionalEvent !== null ? (
         <AdditionalEventEditModal
           open={true}

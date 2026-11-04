@@ -15,7 +15,7 @@ export const PARTY_ROLE_PERMISSIONS = Object.freeze([
   permission('orders.create', 'Создание заказа', 'orders', true),
   permission('orders.delete', 'Удаление и отмена заказа', 'orders', true),
   permission('orders.transition', 'Перевод между этапами', 'orders', true),
-  permission('orders.title', 'Название'),
+  permission('orders.title', 'Тип заказа'),
   permission('orders.status', 'Системный статус'),
   permission('orders.workflowStageId', 'Рабочий этап'),
   permission('orders.eventDate', 'Дата и время начала'),
@@ -181,6 +181,11 @@ export const buildPartyOrderAccessFilter = (context) => {
 }
 
 const orderFieldResource = (field) => {
+  if (['orderTypeId', 'orderTypeSnapshot'].includes(field.split('.')[0])) return 'orders.title'
+  if (['bookingVersion', 'serviceSelections'].includes(field.split('.')[0])) return 'orders.servicesIds'
+  if (field === 'rental.endsAt') return 'orders.dateEnd'
+  if (field === 'rental' || field === 'rental.startsAt') return 'orders.eventDate'
+  if (['pricingSnapshot', 'discount'].includes(field.split('.')[0])) return 'finance.clientAmount'
   if (field === 'reportSummary') return 'reports'
   if (field === 'taskSummary') return 'tasks'
   if (field === 'payoutRecipients') return 'finance.payouts'
@@ -201,6 +206,9 @@ export const filterPartyOrderForAccess = (context, order) => {
   const internalFields = ['createRequestKey', 'createRequestActorId', 'createRequestFingerprint']
   if (manager(context)) return Object.fromEntries(Object.entries(order).filter(([field]) => !internalFields.includes(field)))
   const output = {}
+  if (canPartyAccess(context, { resource: 'orders.servicesIds', order }) && order.bookingVersion) {
+    output.serviceSelections = (order.orderItems || []).filter((item) => item.serviceId).map((item) => ({ serviceId: String(item.serviceId), quantity: item.quantity, title: item.title, durationMinutes: item.durationMinutes, includedRentalMinutes: item.includedRentalMinutes }))
+  }
   for (const [field, value] of Object.entries(order)) {
     if (internalFields.includes(field)) continue
     if (field === 'fulfillment') {
@@ -209,6 +217,10 @@ export const filterPartyOrderForAccess = (context, order) => {
       continue
     }
     if (field === 'additionalEvents') continue // Canonical task API/summaries enforce each task's assignments.
+    if (field === 'rental') {
+      if (value && canPartyAccess(context, { resource: 'orders.eventDate', order }) && canPartyAccess(context, { resource: 'orders.dateEnd', order })) output.rental = value
+      continue
+    }
     if (field === 'assignedStaff' && !canPartyAccess(context, { resource: 'orders.assignedStaff', order }) && canPartyAccess(context, { resource: 'finance.payouts', order })) {
       output.payoutRecipients = (value || []).map((assignment) => ({ staffId: assignment.staffId, payoutAmount: assignment.payoutAmount, payoutStatus: assignment.payoutStatus }))
       continue
@@ -232,10 +244,19 @@ export const filterPartyOrderForAccess = (context, order) => {
       continue
     }
     if (!canPartyAccess(context, { resource: orderFieldResource(field), order })) continue
-    if (field === 'eventBrief' && value && !canPartyAccess(context, { resource: 'orders.servicesIds', order })) {
-      const snapshot = value.templateSnapshot
-      const withoutConditions = (fields) => Array.isArray(fields) ? fields.map(({ serviceIds: _serviceIds, ...question }) => question) : fields
-      output.eventBrief = { ...value, ...(snapshot ? { templateSnapshot: { ...snapshot, fields: withoutConditions(snapshot.fields), retiredFields: withoutConditions(snapshot.retiredFields) } } : {}), ...(Array.isArray(value.archivedAnswers) ? { archivedAnswers: value.archivedAnswers.map((answer) => ({ ...answer, ...(answer.field ? { field: withoutConditions([answer.field])[0] } : {}) })) } : {}) }
+    if (field === 'eventBrief' && value) {
+      const maskContacts = (answer) => {
+        if (Array.isArray(answer)) return answer.map(maskContacts)
+        if (!answer || typeof answer !== 'object' || answer instanceof Date) return answer
+        if (answer.clientId) return Object.fromEntries(Object.entries(answer).filter(([key]) => key === 'clientId' || ['name', 'phone', 'email'].includes(key) && canPartyAccess(context, { resource: `orders.client.${key}`, order })))
+        return Object.fromEntries(Object.entries(answer).map(([key, nested]) => [key, maskContacts(nested)]))
+      }
+      const safe = { ...value, ...(value.customAnswers ? { customAnswers: maskContacts(value.customAnswers) } : {}), ...(value.archivedAnswers ? { archivedAnswers: maskContacts(value.archivedAnswers) } : {}) }
+      if (!canPartyAccess(context, { resource: 'orders.servicesIds', order })) {
+        const snapshot = safe.templateSnapshot
+        const withoutConditions = (fields) => Array.isArray(fields) ? fields.map(({ serviceIds: _serviceIds, ...question }) => question) : fields
+        output.eventBrief = { ...safe, ...(snapshot ? { templateSnapshot: { ...snapshot, fields: withoutConditions(snapshot.fields), retiredFields: withoutConditions(snapshot.retiredFields) } } : {}), ...(Array.isArray(safe.archivedAnswers) ? { archivedAnswers: safe.archivedAnswers.map((answer) => ({ ...answer, ...(answer.field ? { field: withoutConditions([answer.field])[0] } : {}) })) } : {}) }
+      } else output.eventBrief = safe
       continue
     }
     if (field === 'assignedStaff') {

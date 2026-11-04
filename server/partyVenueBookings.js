@@ -6,8 +6,10 @@ import {
   partyVenueId,
   partyVenueWindowsOverlap,
   assertPartyVenueConfiguration,
+  getPartyVenueOrderIntervalFilter,
 } from '../helpers/partyVenueBooking.js'
 import { sharePartyLocationBooking } from '../helpers/partySharedLocationBooking.js'
+import { isPartyWithinWorkingSchedule } from '../helpers/partyWorkingSchedule.js'
 
 const loadModels = async ({ readOnly = false } = {}) => {
   const models = await import('./partyModels')
@@ -15,6 +17,7 @@ const loadModels = async ({ readOnly = false } = {}) => {
   return {
     Locations: await models.getPartyLocationModel(),
     Orders: await models.getPartyOrderModel(),
+    Companies: await models.getPartyCompanyModel(),
     Bookings: await bookings.getPartyVenueBookingModel({ readOnly }),
     ...(readOnly ? {} : { Locks: await bookings.getPartyVenueLockModel() }),
   }
@@ -34,6 +37,7 @@ const rangeQuery = (window, location) => ({
 const legacyWindow = (order, location) =>
   getPartyVenueWindow(
     {
+      rental: order.rental,
       startsAt: order.eventDate,
       endsAt:
         order.dateEnd ||
@@ -199,6 +203,7 @@ export const createPartyVenueBookingService = ({
     capacity = null,
     session,
     checkOnly = false,
+    bookingOrder = null,
   }) => {
     const tenant = partyVenueId(tenantId)
     const source = sourceId == null && checkOnly ? null : partyVenueId(sourceId)
@@ -261,6 +266,21 @@ export const createPartyVenueBookingService = ({
       return null
     }
     if (
+      sourceType === 'order' && bookingOrder?.bookingVersion === 1 &&
+      (!previous || String(previous.locationId) !== String(locationId) ||
+        +new Date(previous.startsAt) !== +window.startsAt || +new Date(previous.endsAt) !== +window.endsAt)
+    ) {
+      const company = await read(models.Companies.findOne({ _id: tenant }).select('settings'), session)
+      if (
+        location.status !== 'active' || location.bookingEnabled === false ||
+        !isPartyWithinWorkingSchedule({ startsAt: window.occupiedFrom, endsAt: window.occupiedUntil, schedule: location.workingSchedule || company?.settings?.workingSchedule, timeZone: company?.settings?.timeZone || 'Asia/Krasnoyarsk' })
+      ) throw partyVenueFailure(
+        'График или доступность помещения изменились. Выберите другое свободное время.',
+        409,
+        'partycrm_booking_schedule_changed'
+      )
+    }
+    if (
       sourceType === 'ticket_session' &&
       (location.status !== 'active' || location.bookingEnabled === false)
     )
@@ -283,29 +303,10 @@ export const createPartyVenueBookingService = ({
         tenantId: tenant,
         locationId: location._id,
         status: { $ne: 'canceled' },
-        eventDate: { $lt: startBefore },
         ...(sourceType === 'order' && source ? { _id: { $ne: source } } : {}),
-        $or: [
-          { dateEnd: { $gt: endAfter } },
-          {
-            dateEnd: null,
-            $expr: {
-              $gt: [
-                {
-                  $add: [
-                    '$eventDate',
-                    {
-                      $multiply: [{ $ifNull: ['$durationMinutes', 60] }, 60000],
-                    },
-                  ],
-                },
-                endAfter,
-              ],
-            },
-          },
-        ],
+        ...getPartyVenueOrderIntervalFilter({ startBefore, endAfter }),
       }).select(
-        '_id locationId eventDate dateEnd durationMinutes status partyEventGroupId sharedLocationBooking'
+        '_id locationId eventDate dateEnd rental durationMinutes status partyEventGroupId sharedLocationBooking'
       ),
       session
     )
@@ -404,31 +405,9 @@ export const createPartyVenueBookingService = ({
             tenantId: tenant,
             locationId: id,
             status: { $ne: 'canceled' },
-            eventDate: { $ne: null },
-            $or: [
-              { dateEnd: { $gt: after } },
-              {
-                dateEnd: null,
-                $expr: {
-                  $gt: [
-                    {
-                      $add: [
-                        '$eventDate',
-                        {
-                          $multiply: [
-                            { $ifNull: ['$durationMinutes', 60] },
-                            60000,
-                          ],
-                        },
-                      ],
-                    },
-                    after,
-                  ],
-                },
-              },
-            ],
+            ...getPartyVenueOrderIntervalFilter({ endAfter: after }),
           }).select(
-            '_id eventDate dateEnd durationMinutes partyEventGroupId sharedLocationBooking'
+            '_id eventDate dateEnd rental durationMinutes partyEventGroupId sharedLocationBooking'
           ),
           session
         )
@@ -505,26 +484,10 @@ export const createPartyVenueBookingService = ({
         tenantId: tenant,
         locationId: id,
         status: { $ne: 'canceled' },
-        eventDate: { $ne: null, $lte: startBefore },
-        $or: [
-          { dateEnd: { $gt: endAfter } },
-          {
-            dateEnd: null,
-            $expr: {
-              $gt: [
-                {
-                  $add: [
-                    '$eventDate',
-                    {
-                      $multiply: [{ $ifNull: ['$durationMinutes', 60] }, 60000],
-                    },
-                  ],
-                },
-                endAfter,
-              ],
-            },
-          },
-        ],
+        ...getPartyVenueOrderIntervalFilter({
+          startBefore: new Date(+startBefore + 1),
+          endAfter,
+        }),
       }).select('_id'),
       session
     )
@@ -617,6 +580,12 @@ export const createPartyOrderVenueWriter =
       return work({ session: externalSession, legacy: !externalSession })
     const models = externalSession ? null : await getModels()
     if (!externalSession && !(await supportsTransactions(models.Locations))) {
+      if (Number(nextOrder?.bookingVersion || previousOrder?.bookingVersion) === 1)
+        throw partyVenueFailure(
+          'Для безопасного бронирования площадки настройте MongoDB replica set',
+          503,
+          'partycrm_venue_transaction_required'
+        )
       const company = await models.Companies.findOne({ _id: tenant })
         .select('settings.modules.ticketing')
         .lean()
@@ -666,6 +635,7 @@ export const createPartyOrderVenueWriter =
             startsAt: window?.startsAt ?? null,
             endsAt: window?.endsAt ?? null,
             status: nextOrder ? result.status : 'canceled',
+            bookingOrder: result,
             session,
           })
         return result

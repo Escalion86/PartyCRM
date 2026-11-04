@@ -106,7 +106,7 @@ const TransactionList = ({
                 {item.groupPaymentId ? ' · Часть общего платежа' : ''}
               </div>
             </div>
-            {!isClosed && !item.groupPaymentId ? (
+            {!isClosed && !item.groupPaymentId && !item.expectationId ? (
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -142,6 +142,7 @@ export default function PartyOrderTransactionsSection({
   assignedStaff = [],
   staff = [],
   onRequestAutosave,
+  hideExpectationTransactions = false,
 }) {
   const [financeError, setFinanceError] = useState('')
   const [draft, setDraft] = useState(null)
@@ -349,7 +350,7 @@ export default function PartyOrderTransactionsSection({
       <div className="grid gap-3 md:grid-cols-2">
         <TransactionList
           title={`Поступления · ${money(viewModel.incomeTotal)}`}
-          items={viewModel.income}
+          items={hideExpectationTransactions ? viewModel.income.filter((item) => !item.expectationId) : viewModel.income}
           isClosed={isClosed}
           staffById={staffById}
           onEdit={startEdit}
@@ -357,7 +358,7 @@ export default function PartyOrderTransactionsSection({
         />
         <TransactionList
           title={`Расходы · ${money(viewModel.expenseTotal)}`}
-          items={viewModel.expense}
+          items={hideExpectationTransactions ? viewModel.expense.filter((item) => !item.expectationId) : viewModel.expense}
           isClosed={isClosed}
           staffById={staffById}
           onEdit={startEdit}

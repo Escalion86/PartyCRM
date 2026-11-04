@@ -61,8 +61,8 @@ const load = async (model = {}) => {
     `const getPartyRequestContext = async () => ({context: globalThis[${JSON.stringify(key)}].requestContext}); const isValidObjectId = (value) => /^[a-f\\d]{24}$/i.test(String(value)); const partyError = (status, code, message) => ({ status, code, message })`
   )
   resolved = resolved.replace(
-    /^import \{ getPartyOrderModel, getPartyServiceModel \} from '\.\/partyModels'$/m,
-    `const getPartyOrderModel = async () => globalThis[${JSON.stringify(key)}]; const getPartyServiceModel = async () => globalThis[${JSON.stringify(key)}].services`
+    /^import \{ getPartyOrderModel, getPartyServiceModel, getPartyOrderTypeModel \} from '\.\/partyModels'$/m,
+    `const getPartyOrderModel = async () => globalThis[${JSON.stringify(key)}]; const getPartyServiceModel = async () => globalThis[${JSON.stringify(key)}].services; const getPartyOrderTypeModel = async () => globalThis[${JSON.stringify(key)}].types`
   )
   return import(
     `data:text/javascript;base64,${Buffer.from(resolved).toString('base64')}`

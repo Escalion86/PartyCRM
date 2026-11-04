@@ -18,6 +18,7 @@ import {
 } from '@helpers/partyTaskViews'
 import PartyTaskBoard from './PartyTaskBoard'
 import PartyTaskCard from './PartyTaskCard'
+import PartyTaskOrderLinks, { PartyTaskOrderOverlays } from './PartyTaskOrderLinks'
 import FieldHelp from '@components/FieldHelp'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
@@ -53,6 +54,8 @@ export default function PartyTasks({
   const [querySearch, setQuerySearch] = useState('')
   const [scope, setScope] = useState('all')
   const [view, setView] = useState('list')
+  const [relatedView, setRelatedView] = useState(null)
+  const openRelated = useCallback((kind, related) => setRelatedView({ kind, related }), [])
   const preferenceIdentity = useRef('')
   const controller = useRef(null)
   const queryTime = useRef(new Date())
@@ -604,6 +607,7 @@ export default function PartyTasks({
           <h2 className="font-semibold">
             {editing ? 'Изменить задачу' : 'Новая задача'}
           </h2>
+          {editing?.relatedOrder ? <PartyTaskOrderLinks task={editing} onOpenRelated={openRelated} /> : null}
           <fieldset disabled={busy} className="min-w-0 space-y-3">
             <label className="block text-sm">
               Название
@@ -956,6 +960,7 @@ export default function PartyTasks({
       </p>
       {!draft && board && currentData ? (
         <PartyTaskBoard
+          onOpenRelated={openRelated}
           columns={currentData ? data.columns : {}}
           busy={actionBusy || !currentData || Boolean(error)}
           onLoadMore={load}
@@ -970,6 +975,7 @@ export default function PartyTasks({
         <div className="space-y-3">
           {tasks.map((task) => (
             <PartyTaskCard
+              onOpenRelated={openRelated}
               key={task._id}
               task={task}
               staffById={staffById}
@@ -993,6 +999,7 @@ export default function PartyTasks({
           Показать ещё
         </button>
       )}
+      <PartyTaskOrderOverlays selection={String(relatedView?.related.companyId) === String(companyId) ? relatedView : null} onClose={() => setRelatedView(null)} />
     </section>
   )
 }

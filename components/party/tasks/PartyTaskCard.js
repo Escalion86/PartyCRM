@@ -1,4 +1,5 @@
 'use client'
+import PartyTaskOrderLinks from './PartyTaskOrderLinks'
 
 import { PARTY_TASK_STATUSES } from '@helpers/partyTasks'
 import {
@@ -30,6 +31,7 @@ export default function PartyTaskCard({
   onMutate,
   onDragStart,
   onDragEnd,
+  onOpenRelated,
   actionsName,
 }) {
   const now = new Date()
@@ -72,11 +74,7 @@ export default function PartyTaskCard({
       >
         {getPartyTaskDueLabel(task, now)}
       </p>
-      {task.orderTitle && (
-        <p className="mt-1 text-xs break-words text-slate-500">
-          Заказ: {task.orderTitle}
-        </p>
-      )}
+      <PartyTaskOrderLinks task={task} onOpenRelated={onOpenRelated} />
       {(task.assigneeRoleId || task.assigneeStaffIds?.length > 0) && (
         <p className="mt-1 text-xs break-words text-slate-500">
           Кому:{' '}

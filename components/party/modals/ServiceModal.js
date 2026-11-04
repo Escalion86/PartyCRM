@@ -10,6 +10,7 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 import { apiJson } from '@helpers/apiClient'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
+import PartyServiceBookingSettings from '@components/party/services/PartyServiceBookingSettings'
 
 const specializationOptions = [
   { value: 'animator', label: 'Аниматор' },
@@ -206,6 +207,7 @@ export function ServiceCreateModal({
             fullWidth
             tone="party"
           />
+          <PartyServiceBookingSettings companyId={activeCompanyId} value={serviceDraft} onChange={setServiceDraft} disabled={saving} />
         </div>
       </Modal>
 

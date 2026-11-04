@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPartyLocationModel } from '@server/partyModels'
 import { normalizePartyVenueSettings } from '@helpers/partyVenueBooking'
+import { normalizePartyRentalSettings } from '@helpers/partyWorkingSchedule'
 import {
   supportsPartyVenueTransactions,
   updatePartyVenueConfiguration,
@@ -92,6 +93,7 @@ export async function PATCH(req, { params }) {
     patch = {
       ...pickLocationPatch(body),
       ...settings,
+      ...normalizePartyRentalSettings(body),
       ...(settings.usageMode === 'shared' ? { venueBookingManaged: true } : {}),
     }
   } catch (cause) {
@@ -114,7 +116,7 @@ export async function PATCH(req, { params }) {
 
   const PartyLocations = await getPartyLocationModel()
   if (
-    ['usageMode', 'capacity', 'preparationMinutes', 'cleanupMinutes'].some(
+    ['usageMode', 'capacity', 'preparationMinutes', 'cleanupMinutes', 'workingSchedule'].some(
       (field) => Object.hasOwn(patch, field)
     )
   ) {

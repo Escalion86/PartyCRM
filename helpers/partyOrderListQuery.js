@@ -1,5 +1,6 @@
 import { canPartyAccess } from './partyRolePermissions.js'
 import { getPartyWorkflow } from './partyWorkflow.js'
+import { parsePartyOrderSorting } from './partyOrderSorting.js'
 
 export const PARTY_ORDER_LIST_PAGE_SIZE = 40
 export const PARTY_ORDER_LIST_SCAN_LIMIT = 400
@@ -32,7 +33,8 @@ export const parsePartyOrderListQuery = (params, context) => {
   const stageId = params.get('stageId') || ''
   const quick = params.get('quick') || 'all'
   const cursor = params.get('listCursor') || ''
-  if (q.length > 160 || stageId && !/^[a-z][a-z\d_-]{0,63}$/.test(stageId) || !['all', 'today', 'tasks', 'undated'].includes(quick) || cursor && !/^[a-f\d]{24}$/i.test(cursor)) invalid()
+  if (q.length > 160 || stageId && !/^[a-z][a-z\d_-]{0,63}$/.test(stageId) || !['all', 'today', 'tasks', 'undated'].includes(quick)) invalid()
+  const sorting = parsePartyOrderSorting(params, context)
   const searchable = searchFields.filter((field) => canPartyAccess(context, { resource: `orders.${field}` }))
   if (q && !searchable.length || stageId && !canPartyAccess(context, { resource: 'orders.workflowStageId' }) || ['today', 'undated'].includes(quick) && !canPartyAccess(context, { resource: 'orders.eventDate' }) || quick === 'tasks' && !canPartyAccess(context, { resource: 'tasks' })) forbidden()
   const clauses = []
@@ -46,5 +48,5 @@ export const parsePartyOrderListQuery = (params, context) => {
     clauses.push({ eventDate: { $gte: from, $lt: to } })
   } else if (params.has('todayFrom') || params.has('todayTo')) invalid()
   if (quick === 'undated') clauses.push({ eventDate: null })
-  return { quick, cursor: cursor.toLowerCase(), clauses }
+  return { quick, cursor: /^[a-f\d]{24}$/i.test(cursor) ? cursor.toLowerCase() : cursor, clauses, ...(params.has('sortBy') ? { sorting } : {}) }
 }

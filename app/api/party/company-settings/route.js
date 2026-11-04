@@ -96,7 +96,7 @@ export async function PATCH(req) {
       return partyError(503, 'partycrm_ticketing_storage_unavailable', 'Не удалось проверить готовность сервера. Настройка не изменена.')
     }
   }
-  const isGenericSetting = (key) => !['inboxSchedule', 'inboxScheduleRevision', '__proto__', 'constructor', 'prototype'].includes(key)
+  const isGenericSetting = (key) => !['inboxSchedule', 'inboxScheduleRevision', 'workingSchedule', 'bookingScheduleRevision', 'orderTypesMigrated', '__proto__', 'constructor', 'prototype'].includes(key)
     && !key.includes('.') && !key.startsWith('$')
   const settingsPatch = Object.fromEntries(
     Object.entries(rawSettingsPatch).filter(([key]) => isGenericSetting(key))

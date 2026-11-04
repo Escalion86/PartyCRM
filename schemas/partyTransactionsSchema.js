@@ -15,6 +15,7 @@ const partyTransactionsSchema = {
     type: Schema.Types.ObjectId,
     default: null,
   },
+  expectationId: { type: Schema.Types.ObjectId, default: null },
   idempotencyKey: { type: String, maxlength: 128, default: undefined },
   idempotencyActorId: { type: String, maxlength: 128, default: undefined },
   requestFingerprint: { type: String, maxlength: 64, default: undefined },

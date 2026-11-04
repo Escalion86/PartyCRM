@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { getPartyLocationModel } from '@server/partyModels'
 import { normalizePartyVenueSettings } from '@helpers/partyVenueBooking'
+import { normalizePartyRentalSettings } from '@helpers/partyWorkingSchedule'
 import { supportsPartyVenueTransactions } from '@server/partyVenueBookings'
 import {
   getPartyRequestContext,
@@ -77,6 +78,7 @@ export async function POST(req) {
     payload = {
       ...normalizeLocationPayload(body),
       ...settings,
+      ...normalizePartyRentalSettings(body),
       ...(settings.usageMode === 'shared' ? { venueBookingManaged: true } : {}),
     }
   } catch (cause) {

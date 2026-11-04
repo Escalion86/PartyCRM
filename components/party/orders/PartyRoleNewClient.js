@@ -12,15 +12,17 @@ export default function PartyRoleNewClient({
   onCreated,
   onDirtyChange,
   disabled = false,
+  initialState = null,
+  onStateChange,
 }) {
-  const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState({
+  const [open, setOpen] = useState(initialState?.open === true)
+  const [draft, setDraft] = useState(() => initialState?.draft || ({
     firstName: '',
     secondName: '',
     thirdName: '',
     phone: null,
     email: '',
-  })
+  }))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   usePartyUnsavedChanges(open && Object.values(draft).some(Boolean), {
@@ -32,6 +34,9 @@ export default function PartyRoleNewClient({
     onDirtyChange?.(open && Object.values(draft).some(Boolean))
     return () => onDirtyChange?.(false)
   }, [open, draft, onDirtyChange])
+  useEffect(() => {
+    onStateChange?.({ open, draft })
+  }, [open, draft, onStateChange])
   const can = (resource) =>
     canPartyAccess(context, { resource, action: 'edit' })
   const button =
@@ -103,7 +108,7 @@ export default function PartyRoleNewClient({
                 className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3"
                 maxLength={120}
                 value={draft[field]}
-                disabled={busy}
+                disabled={busy || disabled}
                 onChange={(event) =>
                   setDraft((previous) => ({
                     ...previous,
@@ -119,7 +124,7 @@ export default function PartyRoleNewClient({
         <PhoneInput
           value={draft.phone}
           onChange={(phone) => setDraft((previous) => ({ ...previous, phone }))}
-          disabled={busy}
+          disabled={busy || disabled}
           tone="party"
           className="w-full"
         />
@@ -131,7 +136,7 @@ export default function PartyRoleNewClient({
             type="email"
             className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3"
             value={draft.email}
-            disabled={busy}
+            disabled={busy || disabled}
             onChange={(event) =>
               setDraft((previous) => ({
                 ...previous,
@@ -150,7 +155,7 @@ export default function PartyRoleNewClient({
         <button
           type="button"
           className={button}
-          disabled={busy}
+          disabled={busy || disabled}
           onClick={submit}
         >
           {busy ? 'Сохранение…' : 'Создать и выбрать'}
@@ -158,7 +163,7 @@ export default function PartyRoleNewClient({
         <button
           type="button"
           className={button}
-          disabled={busy}
+          disabled={busy || disabled}
           onClick={() => setOpen(false)}
         >
           Отмена

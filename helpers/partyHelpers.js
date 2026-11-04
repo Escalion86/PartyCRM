@@ -153,6 +153,13 @@ export const EMPTY_PARTY_CLIENT = {
 }
 
 export const EMPTY_PARTY_SERVICE = {
+  availabilityConfigured: true,
+  orderTypeIds: [],
+  locationIds: [],
+  offsiteAllowed: false,
+  repeatable: false,
+  maxQuantity: null,
+  includedRentalMinutes: 0,
   title: '',
   specialization: 'other',
   duration: 0,

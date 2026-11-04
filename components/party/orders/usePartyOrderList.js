@@ -26,6 +26,7 @@ export default function usePartyOrderList({
   search = '',
   stageId = '',
   quick = 'all',
+  sortBy = 'created_desc',
   todayFrom = '',
   todayTo = '',
   refreshKey = 0,
@@ -43,6 +44,7 @@ export default function usePartyOrderList({
     return () => clearTimeout(timer)
   }, [querySearch, waiting])
   const params = new URLSearchParams({ view: 'list', quick })
+  if (sortBy !== 'created_desc') params.set('sortBy', sortBy)
   if (querySearch) params.set('q', querySearch)
   if (stageId) params.set('stageId', stageId)
   if (quick === 'today') {
@@ -70,12 +72,12 @@ export default function usePartyOrderList({
           if (
             !Array.isArray(result?.data) ||
             (next !== null &&
-              (typeof next !== 'string' || !/^[a-f\d]{24}$/i.test(next))) ||
+              (typeof next !== 'string' || !next || next.length > 2000)) ||
             typeof result?.meta?.hasMore !== 'boolean' ||
             result.meta.hasMore !== Boolean(next) ||
             (next &&
               nextCursor &&
-              next.toLowerCase() >= nextCursor.toLowerCase())
+              (next === nextCursor || /^[a-f\d]{24}$/i.test(next) && /^[a-f\d]{24}$/i.test(nextCursor) && next.toLowerCase() >= nextCursor.toLowerCase()))
           )
             throw invalidPage()
           for (const order of result.data) records.set(String(order._id), order)

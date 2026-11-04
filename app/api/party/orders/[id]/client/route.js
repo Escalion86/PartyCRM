@@ -63,3 +63,24 @@ export async function PATCH(req, { params }) {
     return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, result.order) })
   } catch (error) { return partyError(error.status || 500, error.code || 'partycrm_client_patch_failed', error.status ? error.message : 'Не удалось сохранить контакт') }
 }
+
+export async function GET(req, { params }) {
+  const { context, error } = await getPartyRequestContext({ req, allowLocationOwner: true })
+  if (error) return error
+  const { id } = await params
+  if (!isValidObjectId(id)) return partyError(400, 'partycrm_invalid_order_id', 'Некорректный заказ')
+  const Orders = await getPartyOrderModel()
+  const order = await Orders.findOne({ _id: id, tenantId: context.tenantId }).lean()
+  if (!order || !canPartyAccess(context, { resource: 'orders', order }) || !canPartyAccess(context, { resource: 'clients' }) || !canPartyAccess(context, { resource: 'orders.clientId', order })) return partyError(404, 'partycrm_client_not_found', 'Клиент не найден или недоступен')
+  const Clients = await getPartyClientModel()
+  const client = order.clientId ? await Clients.findOne({ _id: order.clientId, tenantId: context.tenantId }).lean() : null
+  if (!client) return partyError(404, 'partycrm_client_not_found', 'Клиент не найден или недоступен')
+  const can = (resource) => canPartyAccess(context, { resource, order })
+  const data = {
+    _id: String(client._id),
+    ...(can('orders.client.name') ? { name: [client.firstName, client.secondName, client.thirdName].filter(Boolean).join(' ') } : {}),
+    ...(can('orders.client.phone') ? { phone: client.phone, whatsapp: client.whatsapp, telegram: client.telegram, max: client.max, vk: client.vk } : {}),
+    ...(can('orders.client.email') ? { email: client.email } : {}),
+  }
+  return NextResponse.json({ success: true, data }, { headers: { 'Cache-Control': 'no-store' } })
+}

@@ -23,6 +23,24 @@ import partyTelegramConversationsSchema from '@schemas/partyTelegramConversation
 import partyTelegramMessagesSchema from '@schemas/partyTelegramMessagesSchema'
 import partyAuditLogsSchema from '@schemas/partyAuditLogsSchema'
 import partyProposalsSchema from '@schemas/partyProposalsSchema'
+import partyOrderTypesSchema from '@schemas/partyOrderTypesSchema'
+import partyPaymentExpectationsSchema from '@schemas/partyPaymentExpectationsSchema'
+
+export const getPartyOrderTypeModel = () => getProductModel({
+  product: PRODUCTS.PARTYCRM, name: 'OrderType', collectionName: 'orderTypes',
+  schemaDefinition: partyOrderTypesSchema, schemaOptions: { timestamps: true },
+  configureSchema: (schema) => schema.index({ tenantId: 1, normalizedTitle: 1 }, { unique: true }),
+})
+
+export const getPartyPaymentExpectationModel = () => getProductModel({
+  product: PRODUCTS.PARTYCRM, name: 'PaymentExpectation', collectionName: 'paymentExpectations',
+  schemaDefinition: partyPaymentExpectationsSchema, schemaOptions: { timestamps: true },
+  configureSchema: (schema) => {
+    schema.index({ tenantId: 1, orderId: 1, createdAt: -1 })
+    schema.index({ tenantId: 1, status: 1, dueAt: 1 })
+    schema.index({ tenantId: 1, createActorId: 1, createKey: 1 }, { unique: true, partialFilterExpression: { createKey: { $type: 'string' } } })
+  },
+})
 
 export const PARTY_STAFF_ROLES = Object.freeze({
   OWNER: 'owner',

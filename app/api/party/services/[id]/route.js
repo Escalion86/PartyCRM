@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getPartyOrderModel, getPartyServiceModel } from '@server/partyModels'
+import { validatePartyServiceBookingSettings } from '@server/partyOrderTypes'
 import {
   getPartyRequestContext,
   isValidObjectId,
@@ -44,7 +45,10 @@ export const PUT = async (req, { params }) => {
     return partyError(400, 'partycrm_invalid_service_id', 'Некорректный id')
   }
 
-  const patch = pickServicePatch(await parseJsonBody(req))
+  const body = await parseJsonBody(req)
+  let patch
+  try { patch = { ...pickServicePatch(body), ...await validatePartyServiceBookingSettings(body, context.tenantId) } }
+  catch (cause) { return partyError(cause.status || 400, cause.code || 'partycrm_service_invalid', cause.status ? cause.message : 'Проверьте настройки услуги', 'validation') }
   if (patch.title === '') {
     return partyError(
       400,
@@ -58,7 +62,7 @@ export const PUT = async (req, { params }) => {
   const service = await PartyServices.findOneAndUpdate(
     { _id: id, tenantId: context.tenantId },
     { $set: patch },
-    { returnDocument: 'after' }
+    { returnDocument: 'after', runValidators: true }
   ).lean()
   if (!service) {
     return partyError(404, 'partycrm_service_not_found', 'Услуга не найдена')

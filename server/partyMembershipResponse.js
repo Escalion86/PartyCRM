@@ -100,6 +100,7 @@ export const serializePartyRestrictedCompanySettings = (settings = {}) => {
     defaultOrderDurationMinutes: number(settings.defaultOrderDurationMinutes) || 60,
     orderNumberFormat: text(settings.orderNumberFormat),
     publicLeadEnabled: settings.publicLeadEnabled === true,
+      noOwnPremises: settings.noOwnPremises === true,
     notifications: { pushEnabled: settings.notifications?.pushEnabled === true },
     integrations: serializeIntegrationIndicators(settings.integrations),
     googleCalendar: { enabled: settings.googleCalendar?.enabled === true, connected: Boolean(settings.googleCalendar?.refreshToken || settings.googleCalendar?.accessToken) },

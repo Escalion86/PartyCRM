@@ -48,6 +48,7 @@ export default function PartyMobileNav({
       <button
         type="button"
         aria-expanded={menuOpen}
+        aria-controls={menuOpen ? 'party-primary-mobile-menu' : undefined}
         onClick={() => onMenu(!menuOpen)}
         className="flex min-h-16 min-w-0 flex-1 cursor-pointer flex-col items-center justify-center gap-1 text-[11px] font-semibold text-slate-600"
       >

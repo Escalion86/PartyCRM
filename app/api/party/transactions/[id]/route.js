@@ -71,6 +71,7 @@ export async function PATCH(req, { params }) {
       'permission'
     )
 
+  if (existing.expectationId) return partyError(409, 'partycrm_expectation_transaction_readonly', 'Исполнение ожидания сохраняется в истории. Для возврата оформите отдельную операцию.')
   if (existing.groupPaymentId) {
     return partyError(
       409,
@@ -146,7 +147,7 @@ export async function PATCH(req, { params }) {
             .lean()
           if (
             !current ||
-            current.groupPaymentId ||
+            current.groupPaymentId || current.expectationId ||
             String(current.orderId) !== String(existing.orderId) ||
             Number(new Date(current.updatedAt || 0)) !==
               Number(new Date(existing.updatedAt || 0))
@@ -342,6 +343,7 @@ export async function DELETE(req, { params }) {
       'permission'
     )
 
+  if (existing.expectationId) return partyError(409, 'partycrm_expectation_transaction_readonly', 'Исполнение ожидания сохраняется в истории. Для возврата оформите отдельную операцию.')
   if (existing.groupPaymentId) {
     return partyError(
       409,

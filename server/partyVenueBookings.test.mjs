@@ -22,6 +22,8 @@ const valueOf = (row, value) => {
     return row[value.slice(1)]
   if (value?.$ifNull)
     return valueOf(row, value.$ifNull[0]) ?? valueOf(row, value.$ifNull[1])
+  if (value?.$cond) return valueOf(row, value.$cond[valueOf(row, value.$cond[0]) ? 1 : 2])
+  if (value?.$gt) return valueOf(row, value.$gt[0]) > valueOf(row, value.$gt[1])
   if (value?.$multiply)
     return value.$multiply
       .map((part) => valueOf(row, part))
@@ -822,6 +824,11 @@ test('an undated private draft never creates a venue reservation or activates ma
     },
   })
   assert.equal(writes, 1)
+})
+
+test('typed timed bookings never use the legacy standalone write fallback', async () => {
+  const writer = createPartyOrderVenueWriter({ getModels: async () => ({ Locations: {} }), supportsTransactions: async () => false })
+  await assert.rejects(writer({ tenantId, nextOrder: { bookingVersion: 1, locationId, eventDate: range().startsAt, dateEnd: range().endsAt }, work() { assert.fail('Unsafe write must not run') } }), { code: 'partycrm_venue_transaction_required' })
 })
 
 test('moving a reservation requires both venues locked and a failed move retains the old booking', async () => {

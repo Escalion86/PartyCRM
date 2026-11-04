@@ -124,6 +124,12 @@ export const serializeTask = (context, task, { order = null, staffById = new Map
     canCancel: writable && canPartyAccess(context, { resource: 'tasks', action: 'cancel' }) && !['done', 'canceled'].includes(task.status),
     blockedReason: allowed ? '' : 'Должность не имеет доступа к связанному заказу на его текущем этапе.',
     orderTitle: allowed && order ? (canPartyAccess(context, { resource: 'orders.title', order }) ? order.title : '') || (canPartyAccess(context, { resource: 'orders.serviceTitle', order }) ? order.serviceTitle : '') || 'Заказ' : '',
+    relatedOrder: allowed && order ? {
+      orderId: String(order._id), companyId: String(context.tenantId),
+      ...(canPartyAccess(context, { resource: 'orders.eventDate', order }) && order.eventDate ? { eventDate: new Date(order.eventDate).toISOString() } : {}),
+      ...(canPartyAccess(context, { resource: 'orders.client.name', order }) ? { clientName: order.client?.name || '' } : {}),
+      canViewClient: Boolean(order.clientId && canPartyAccess(context, { resource: 'clients' }) && canPartyAccess(context, { resource: 'orders.clientId', order })),
+    } : null,
     deadlineWarning: allowed && order && canPartyAccess(context, { resource: 'orders.eventDate', order }) && canPartyAccess(context, { resource: 'orders.dateEnd', order }) ? getPartyTaskDeadlineWarning(task, order) : '',
     completedByName: staffById.get(taskIdOf(task.completedByStaffId)) || '',
     orphaned: canManageTask(context) && (!(task.assigneeStaffIds || []).length && !task.assigneeRoleId || (task.assigneeStaffIds || []).some((id) => !staffById.has(taskIdOf(id)))),

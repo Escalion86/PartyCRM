@@ -34,6 +34,7 @@ test('today access follows membership and field grants, including an intake mana
     orders_team: false,
     orders_preparation: false,
     payments: false,
+    payment_expectations: false,
     orders_upcoming: true,
   })
   assert.equal(canPartyTodayAccess(manager), true)

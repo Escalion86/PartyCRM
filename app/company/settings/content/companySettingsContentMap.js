@@ -10,8 +10,14 @@ import CompanySettingsRolesContent from './CompanySettingsRolesContent'
 import CompanySettingsBriefContent from './CompanySettingsBriefContent'
 import CompanySettingsWorkflowContent from './CompanySettingsWorkflowContent'
 import CompanySettingsPreparationTemplatesContent from './CompanySettingsPreparationTemplatesContent'
+import CompanySettingsOrderTypesContent from './CompanySettingsOrderTypesContent'
+import CompanySettingsBookingContent from './CompanySettingsBookingContent'
+import CompanySettingsInvitationsContent from './CompanySettingsInvitationsContent'
 
 export const COMPANY_SETTINGS_CONTENT = Object.freeze({
+  'order-types': CompanySettingsOrderTypesContent,
+  booking: CompanySettingsBookingContent,
+  invitations: CompanySettingsInvitationsContent,
   general: CompanySettingsGeneralContent,
   schedule: CompanySettingsScheduleContent,
   integrations: CompanySettingsIntegrationsContent,

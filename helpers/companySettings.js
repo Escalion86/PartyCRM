@@ -22,6 +22,7 @@ const uniqueBy = (items, getKey) => {
 export const DEFAULT_COMPANY_SETTINGS = Object.freeze({
   timeZone: 'Asia/Krasnoyarsk',
   defaultOrderDurationMinutes: 60,
+  noOwnPremises: false,
   towns: [],
   defaultTown: '',
   orderNumberFormat: 'P-{YYYY}-{SEQ}',
@@ -196,6 +197,7 @@ const normalizeDuration = (value) => {
 export const normalizeCompanySettings = (value = {}) => ({
   ...DEFAULT_COMPANY_SETTINGS,
   ...value,
+  noOwnPremises: value?.noOwnPremises === true,
   orderFormVariant: value?.orderFormVariant === 'classic' ? 'classic' : 'compact',
   timeZone:
     normalizeAddressPoolString(value?.timeZone) || DEFAULT_COMPANY_SETTINGS.timeZone,

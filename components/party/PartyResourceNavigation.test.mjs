@@ -8,6 +8,7 @@ import * as resourceCalendar from '../../helpers/partyResourceCalendar.js'
 import * as today from '../../helpers/partyToday.js'
 import * as ticketing from '../../helpers/partyTicketing.js'
 import * as mobileNavigation from '../../helpers/partyMobileNavigation.js'
+import * as navigationGroups from '../../helpers/partyNavigationGroups.js'
 import * as operationalPermissions from '../../helpers/partyOperationalPermissions.js'
 import * as companySettings from '../../app/company/settings/companySettingsTabs.js'
 import { createHookHost, nodes } from './orders/partyOrderBoardTestHost.mjs'
@@ -118,6 +119,7 @@ const setup = ({
         '@helpers/partyOperationalPermissions': operationalPermissions,
         '@helpers/partyRolePermissions': rolePermissions,
         '@helpers/partyMobileNavigation': mobileNavigation,
+        '@helpers/partyNavigationGroups': navigationGroups,
         '@helpers/partyTicketing': ticketing,
         '@helpers/partyToday': today,
         '@helpers/partyResourceCalendar': resourceCalendar,

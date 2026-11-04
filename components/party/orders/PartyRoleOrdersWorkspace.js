@@ -1,6 +1,8 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import Modal from '@components/Modal'
+import { PARTY_ORDER_SORT_OPTIONS } from '@helpers/partyOrderBooking'
 import {
   useCallback,
   useEffect,
@@ -56,6 +58,8 @@ import {
 import {
   readPartyOrderViewPreference,
   writePartyOrderViewPreference,
+  readPartyOrderSortPreference,
+  writePartyOrderSortPreference,
 } from '@helpers/partyOrderViewPreference'
 import { canPartyResourceCalendarAccess } from '@helpers/partyResourceCalendar'
 
@@ -63,6 +67,10 @@ const PartyRoleOrdersCalendar = dynamic(
   () => import('./PartyRoleOrdersCalendar')
 )
 const PartyRoleOrdersBoard = dynamic(() => import('./PartyRoleOrdersBoard'))
+const PartyOrderWizard = dynamic(() => import('./PartyOrderWizard'))
+const PartyOrderReadModal = dynamic(() => import('./PartyOrderReadModal'))
+const PartyPaymentExpectationsPanel = dynamic(() => import('./PartyPaymentExpectationsPanel'))
+const PartyOrderInvitationPanel = dynamic(() => import('@components/party/invitations/PartyOrderInvitationPanel'))
 
 const PartyTasks = dynamic(() => import('@components/party/tasks/PartyTasks'))
 const PartyPreparationTemplateApply = dynamic(() => import('@components/party/preparation/PartyPreparationTemplateApply'))
@@ -132,6 +140,7 @@ function RoleOrderEditor({
   const context = options.context
   const existing = Boolean(order._id)
   const [draft, setDraft] = useState(() => createPartyRoleOrderDraft(order))
+  const [bookingOpen, setBookingOpen] = useState(false)
   const [tab, setTab] = useState('main')
   const [visited, setVisited] = useState(['main'])
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -168,6 +177,7 @@ function RoleOrderEditor({
   const can = (resource, action = 'read') =>
     canPartyAccess(context, { resource, action })
   const editable = (field) =>
+    !(order.bookingVersion === 1 && ['title', 'servicesIds', 'eventDate', 'dateEnd', 'durationMinutes', 'placeType', 'locationId', 'customAddress', 'contractAmount'].includes(field)) &&
     !unresolvedCreate &&
     !reportDirty.client &&
     !reportDirty.payments &&
@@ -228,6 +238,9 @@ function RoleOrderEditor({
       ),
     []
   )
+  const dirtyExpectations = useCallback((value) => setReportDirty((previous) => previous.expectations === value ? previous : { ...previous, expectations: value }), [])
+  const dirtyInvitation = useCallback((value) => setReportDirty((previous) => previous.invitation === value ? previous : { ...previous, invitation: value }), [])
+  const dirtyBooking = useCallback((value) => setReportDirty((previous) => previous.booking === value ? previous : { ...previous, booking: value }), [])
   const dirtyPreparation = useCallback(
     (value) =>
       setReportDirty((previous) =>
@@ -367,6 +380,7 @@ function RoleOrderEditor({
     },
     { id: 'tasks', title: 'Задачи', show: existing && can('tasks') },
     { id: 'reports', title: 'Отчёты', show: existing && can('reports') },
+    { id: 'invitation', title: 'Приглашение', show: existing && ['orders.title', 'orders.eventDate', 'orders.locationId', 'orders.customAddress'].every((resource) => can(resource)) },
   ].filter((item) => item.show)
   const chooseTab = (id) => {
     if (reportDirty.template) return
@@ -597,7 +611,7 @@ function RoleOrderEditor({
                     onSaved={onSaved}
                   />
                 ) : null}
-                {textField('title', 'Название заказа')}
+                {can('orders.title') ? <div className="space-y-2 sm:col-span-2"><p className="text-sm text-slate-600">Тип заказа: <span className="font-semibold text-slate-900">{order.orderTypeSnapshot || order.title || 'Не указан'}</span></p>{['orders.title', 'orders.servicesIds', 'orders.eventDate'].some((resource) => can(resource, 'edit')) && !['closed', 'canceled'].includes(order.status) ? <button type="button" className={button} disabled={busy || dirty} onClick={() => setBookingOpen(true)}>Изменить тип, место, услуги и время</button> : null}</div> : null}
                 {!existing && can('finance.payments', 'edit') ? (
                   <fieldset
                     className="space-y-3 rounded-lg border border-slate-200 p-3 sm:col-span-2"
@@ -1131,6 +1145,7 @@ function RoleOrderEditor({
             ) : null}
             {item.id === 'finance' ? (
               <div className="space-y-4">
+                <PartyPaymentExpectationsPanel companyId={companyId} order={order} context={context} disabled={busy || changes.dirty || Object.entries(reportDirty).some(([key, value]) => key !== 'expectations' && value)} onSaved={onSaved} onDirtyChange={dirtyExpectations} />
                 <PartyRoleOrderPayments
                   companyId={companyId}
                   order={order}
@@ -1172,7 +1187,7 @@ function RoleOrderEditor({
                 ) : null}
                 {order.transactions?.length ? (
                   <ul className="space-y-2">
-                    {order.transactions.map((transaction, index) => (
+                    {order.transactions.filter((transaction) => !transaction.expectationId).map((transaction, index) => (
                       <li
                         key={transaction._id || index}
                         className="rounded-lg border border-slate-100 p-3 text-sm"
@@ -1181,7 +1196,7 @@ function RoleOrderEditor({
                           {transaction.type === 'income'
                             ? 'Поступление'
                             : 'Расход'}
-                          : {money(transaction.amount)}
+                          : {money(transaction.amount)} · Исполнена
                         </span>
                         {transaction.comment ? (
                           <p className="break-words text-slate-500">
@@ -1227,6 +1242,7 @@ function RoleOrderEditor({
                 manager={context.role === 'owner' || context.role === 'admin'}
               />
             ) : null}
+            {item.id === 'invitation' ? <PartyOrderInvitationPanel companyId={companyId} order={order} context={context} disabled={busy || changes.dirty || Object.entries(reportDirty).some(([key, value]) => key !== 'invitation' && value)} onDirtyChange={dirtyInvitation} /> : null}
             {item.id === 'inventory' ? (
               can('inventory.catalog') ? (
                 <OrderInventoryPanel
@@ -1299,7 +1315,7 @@ function RoleOrderEditor({
           className={
             (childDirty || (existing && !changes.dirty && !contractAmountInvalid)
               ? ''
-              : 'sticky bottom-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] z-20 md:bottom-0 ') +
+              : 'sticky bottom-0 z-20 ') +
             'flex flex-wrap items-center justify-end gap-2 rounded-b-2xl border-t border-sky-100 bg-white p-3 shadow-[0_-4px_14px_rgb(15_23_42_/_0.04)] sm:p-4'
           }
         >
@@ -1335,7 +1351,7 @@ function RoleOrderEditor({
           {changes.dirty || contractAmountInvalid || !existing ? (
             <button
               type="button"
-              className={button + ' bg-sky-600 text-white hover:bg-sky-700'}
+              className={button + ' bg-sky-700 text-white hover:bg-sky-800'}
               disabled={
                 busy ||
                 (!changes.dirty &&
@@ -1357,6 +1373,7 @@ function RoleOrderEditor({
           ) : null}
         </div>
       </>
+      {bookingOpen ? <PartyOrderWizard companyId={companyId} order={order} options={options} onSaved={(next, accessChanged) => { setBookingOpen(false); onSaved(next, accessChanged) }} onClose={() => setBookingOpen(false)} onDirtyChange={dirtyBooking} /> : null}
     </section>
   )
 }
@@ -1383,6 +1400,8 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [quickFilter, setQuickFilter] = useState('all')
+  const [sortBy, setSortBy] = useState('created_desc')
+  const [readOrderId, setReadOrderId] = useState('')
   const [boardPending, setBoardPending] = useState('')
   const [transitionHelpOrder, setTransitionHelpOrder] = useState(null)
   const transitionGeneration = useRef(0)
@@ -1504,6 +1523,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
     const saved = readPartyOrderViewPreference(companyId, preferenceStaffId)
     setView(saved.view)
     setCalendarView(saved.calendarView)
+    setSortBy(readPartyOrderSortPreference(companyId, preferenceStaffId))
     if (saved.view === 'calendar') setCalendarEnabled(true)
   }, [companyId, preferenceStaffId])
   const can = (resource, action = 'read') =>
@@ -1528,6 +1548,8 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
     'orders.serviceTitle',
   ].some((resource) => can(resource))
   const effectiveSearch = searchable ? search : ''
+  const sortOptions = PARTY_ORDER_SORT_OPTIONS.filter((option) => !option.resource || can(option.resource))
+  const effectiveSortBy = sortOptions.some((option) => option.value === sortBy) ? sortBy : 'created_desc'
   const now = new Date()
   const list = usePartyOrderList({
     companyId,
@@ -1536,6 +1558,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
     search: effectiveSearch,
     stageId: effectiveStageFilter,
     quick: effectiveQuickFilter,
+    sortBy: effectiveSortBy,
     todayFrom: new Date(
       now.getFullYear(),
       now.getMonth(),
@@ -1673,15 +1696,18 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
     if (!initialOrderId || !context || busy || openingId || requestedOrder.current === initialOrderId) return
     requestedOrder.current = initialOrderId
     const url = new URL(window.location.href)
+    const readOnly = url.searchParams.get('mode') === 'view'
     if (url.searchParams.get('orderId') === initialOrderId) {
       url.searchParams.delete('orderId')
       url.searchParams.delete('companyId')
+      url.searchParams.delete('mode')
       window.history.replaceState(window.history.state, '', url)
     }
-    open({ _id: initialOrderId })
+    if (readOnly) setReadOrderId(initialOrderId)
+    else open({ _id: initialOrderId })
   }, [initialOrderId, context, busy, openingId, open])
-  const close = () => {
-    if (!leave('list')) return
+  const close = (confirmed = false) => {
+    if (confirmed !== true && !leave('list')) return
     returnFocusRequested.current = true
     dirtyChanged(false)
     selectedId.current = ''
@@ -1825,7 +1851,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
           {can('orders', 'create') ? (
             <button
               type="button"
-              className={button + ' bg-sky-600 text-white hover:bg-sky-700'}
+              className={button + ' bg-sky-700 text-white hover:bg-sky-800'}
               disabled={busy || Boolean(boardPending)}
               onClick={() => open({})}
             >
@@ -1865,7 +1891,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
                 className={
                   'min-h-11 cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold ' +
                   (effectiveView === id
-                    ? 'bg-sky-600 text-white'
+                    ? 'bg-sky-700 text-white'
                     : 'text-sky-800 hover:bg-sky-50')
                 }
                 onClick={() => chooseView(id)}
@@ -1950,19 +1976,13 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
       {context && can('orders') ? (
         <div
           className={
-            selected && effectiveView === 'list' && !overviewVisible
-              ? 'grid min-w-0 gap-4 lg:grid-cols-[minmax(250px,320px)_minmax(0,1fr)]'
-              : 'min-w-0'
+            'min-w-0'
           }
         >
           <div
             id={`party-role-overview-${companyId}`}
             className={
-              selected && !overviewVisible
-                ? effectiveView !== 'list'
-                  ? 'hidden min-w-0 space-y-3'
-                  : 'hidden min-w-0 space-y-3 lg:block'
-                : 'min-w-0 space-y-3'
+              'min-w-0 space-y-3'
             }
           >
             {searchable ? (
@@ -1986,6 +2006,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
                 />
               </label>
             ) : null}
+            {effectiveView === 'list' ? <label className="block text-sm text-slate-600">Сортировка<select aria-label="Сортировка" className={`${control} cursor-pointer`} value={effectiveSortBy} disabled={Boolean(boardPending)} onChange={(event) => { setSortBy(event.target.value); writePartyOrderSortPreference(companyId, preferenceStaffId, event.target.value) }}>{sortOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label> : null}
             <div
               className="flex flex-wrap gap-2"
               role="group"
@@ -2073,7 +2094,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
             </> : null}
             {effectiveView === 'list' ? (
               <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
-                <span>Сначала новые</span>
+                <span>{sortOptions.find((option) => option.value === effectiveSortBy)?.label || 'Сначала новые'}</span>
                 {!list.busy && !list.error ? (
                   <span>Загружено: {list.orders.length}</span>
                 ) : null}
@@ -2111,9 +2132,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
             <div
               style={{ display: effectiveView === 'list' ? undefined : 'none' }}
               className={
-                selected
-                  ? 'space-y-2'
-                  : 'grid gap-3 md:grid-cols-2 xl:grid-cols-3'
+                'grid gap-3 md:grid-cols-2 xl:grid-cols-3'
               }
             >
               {list.orders.map((order) => (
@@ -2126,7 +2145,7 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
                       ? 'border-sky-400 bg-sky-50'
                       : 'border-sky-100 bg-white')
                   }
-                  onClick={() => open(order)}
+                  onClick={() => setReadOrderId(String(order._id))}
                 >
                   <p className="font-semibold break-words text-sky-950">
                     {order.title || order.serviceTitle || 'Заказ'}
@@ -2227,11 +2246,9 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
               </div>
             ) : null}
           </div>
-          {selected ? (
-            <div
-              id={`party-role-editor-${companyId}`}
-              inert={Boolean(openingId) || busy || Boolean(boardPending)}
-            >
+          {selected && !selected._id ? <PartyOrderWizard companyId={companyId} options={selectedOptions || data.options} onSaved={saved} onClose={close} onDirtyChange={dirtyChanged} /> : selected ? (
+            <Modal open tone="party" size="full" title={selected.orderTypeSnapshot || selected.title || 'Редактирование заказа'} onClose={close} disableBackdropClick={Boolean(openingId) || busy || Boolean(boardPending)}>
+            <div id={`party-role-editor-${companyId}`} inert={Boolean(openingId) || busy || Boolean(boardPending)}>
               <RoleOrderEditor
                 key={
                   (selected._id || 'new') +
@@ -2250,7 +2267,9 @@ function CompanyRoleOrders({ companyId, legacyAdvancedPath, initialOrderId = '' 
                 legacyAdvancedPath={legacyAdvancedPath}
               />
             </div>
+            </Modal>
           ) : null}
+          {readOrderId ? <PartyOrderReadModal companyId={companyId} orderId={readOrderId} onClose={() => setReadOrderId('')} onEdit={(order) => { setReadOrderId(''); open(order) }} /> : null}
         </div>
       ) : null}
     </div>

@@ -8,6 +8,7 @@ const partyBriefTemplatesSchema = {
     index: true,
   },
   title: { type: String, required: true, trim: true, maxlength: 180 },
+  orderTypeId: { type: Schema.Types.ObjectId, default: null },
   revision: { type: Number, required: true, min: 1 },
   // Each field may include serviceIds; publication validates their tenant and shape.
   fields: { type: [Schema.Types.Mixed], default: [] },

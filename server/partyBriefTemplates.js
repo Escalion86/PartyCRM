@@ -14,35 +14,35 @@ import {
   resolvePartyBriefTemplate,
 } from '@helpers/partyBriefTemplates'
 import { getPartyRequestContext, isValidObjectId, partyError } from './partyApi'
-import { getPartyOrderModel, getPartyServiceModel } from './partyModels'
+import { getPartyOrderModel, getPartyServiceModel, getPartyOrderTypeModel } from './partyModels'
 
 const fail = (status, code, message) => {
   throw Object.assign(new Error(message), { status, code })
 }
-export const getPartyBriefTemplateModel = () =>
+export const getPartyBriefTemplateModel = (orderTypeId = null) =>
   getProductModel({
     product: PRODUCTS.PARTYCRM,
-    name: 'BriefTemplate',
-    collectionName: 'briefTemplates',
+    name: orderTypeId ? 'OrderTypeBriefTemplate' : 'BriefTemplate',
+    collectionName: orderTypeId ? 'orderTypeBriefTemplates' : 'briefTemplates',
     schemaDefinition: partyBriefTemplatesSchema,
     schemaOptions: { timestamps: true },
     configureSchema: (schema) =>
-      schema.index({ tenantId: 1, revision: 1 }, { unique: true }),
+      schema.index(orderTypeId ? { tenantId: 1, orderTypeId: 1, revision: 1 } : { tenantId: 1, revision: 1 }, { unique: true }),
   })
 
-export const getPartyBriefTemplate = async (tenantId) => {
-  const Templates = await getPartyBriefTemplateModel()
-  return (
-    (await Templates.findOne({ tenantId }).sort({ revision: -1 }).lean()) ||
-    getPartyDefaultBriefTemplate()
-  )
+export const getPartyBriefTemplate = async (tenantId, orderTypeId = null) => {
+  const Templates = await getPartyBriefTemplateModel(orderTypeId)
+  const template = await Templates.findOne({ tenantId, ...(orderTypeId ? { orderTypeId } : {}) }).sort({ revision: -1 }).lean()
+  if (template) return template
+  if (orderTypeId) return { ...await getPartyBriefTemplate(tenantId), _id: undefined, orderTypeId, revision: 0 }
+  return getPartyDefaultBriefTemplate()
 }
 
 export const getPartyBriefTemplateForOrder = async ({ tenantId, order }) => {
   if (!order || String(order.tenantId) !== String(tenantId))
     fail(404, 'partycrm_order_not_found', 'Заказ не найден')
   const template =
-    order.status === 'closed' ? null : await getPartyBriefTemplate(tenantId)
+    order.status === 'closed' ? null : await getPartyBriefTemplate(tenantId, order.orderTypeId)
   const resolved = resolvePartyBriefTemplate(
     order.eventBrief,
     template,
@@ -73,6 +73,7 @@ export const snapshotPartyBriefForClose = async ({ tenantId, order }) => {
     ...copyPartyBriefValues(order.eventBrief || {}),
     templateSnapshot: {
       title: template.title,
+      orderTypeId: order.orderTypeId || null,
       revision: template.revision,
       fields: copyPartyBriefValues(template.fields),
       retiredFields: copyPartyBriefValues(template.retiredFields || []),
@@ -160,9 +161,10 @@ const normalizeFields = (fields) => {
       id: field.id,
       label,
       type: field.type,
+      ...(field.type === 'note' ? { content: typeof field.content === 'string' ? field.content.slice(0, 4000) : '' } : {}),
       options: field.type === 'select' ? options : [],
       legacyKey,
-      required: field.required !== false,
+      required: field.type !== 'note' && field.required !== false,
       serviceIds,
     }
   })
@@ -235,7 +237,12 @@ export const publishPartyBriefTemplate = async ({ context, body }) => {
       'partycrm_brief_revision_required',
       'Обновите форму перед сохранением'
     )
-  const previous = await getPartyBriefTemplate(context.tenantId)
+  const orderTypeId = body.orderTypeId || null
+  if (orderTypeId) {
+    const Types = await getPartyOrderTypeModel()
+    if (!isValidObjectId(orderTypeId) || !await Types.exists({ _id: orderTypeId, tenantId: context.tenantId })) fail(400, 'partycrm_order_type_invalid', 'Тип заказа не найден')
+  }
+  const previous = await getPartyBriefTemplate(context.tenantId, orderTypeId)
   if (previous.revision !== body.expectedRevision)
     fail(
       409,
@@ -271,6 +278,7 @@ export const publishPartyBriefTemplate = async ({ context, body }) => {
     const Orders = await getPartyOrderModel()
     const openOrders = await Orders.find({
       tenantId: context.tenantId,
+      orderTypeId,
       status: { $ne: 'closed' },
     })
       .select('_id eventBrief')
@@ -286,10 +294,11 @@ export const publishPartyBriefTemplate = async ({ context, body }) => {
       previousRevision: previous.revision,
     }
   }
-  const Templates = await getPartyBriefTemplateModel()
+  const Templates = await getPartyBriefTemplateModel(orderTypeId)
   try {
     const published = await Templates.create({
       tenantId: context.tenantId,
+      orderTypeId,
       title: plan.title,
       fields: plan.fields,
       retiredFields: plan.retiredFields,
@@ -341,11 +350,17 @@ export const partyBriefTemplateRoute =
   }
 
 export const readPartyBriefTemplate = async (req, context) => {
-  const orderId = new URL(req.url).searchParams.get('orderId')
+  const params = new URL(req.url).searchParams
+  const orderId = params.get('orderId')
+  const orderTypeId = params.get('orderTypeId') || null
   if (!orderId) {
-    if (!['owner', 'admin'].includes(context.role))
+    if (!['owner', 'admin'].includes(context.role) && !(orderTypeId && canPartyAccess(context, { resource: 'orders', action: 'create' }) && canPartyAccess(context, { resource: 'orders.eventBrief' })))
       fail(403, 'partycrm_forbidden', 'Выберите доступный заказ')
-    const template = await getPartyBriefTemplate(context.tenantId)
+    if (orderTypeId) {
+      const Types = await getPartyOrderTypeModel()
+      if (!isValidObjectId(orderTypeId) || !await Types.exists({ _id: orderTypeId, tenantId: context.tenantId })) fail(404, 'partycrm_order_type_not_found', 'Тип заказа не найден')
+    }
+    const template = await getPartyBriefTemplate(context.tenantId, orderTypeId)
     const canManage = canPartyAccess(context, {
       resource: 'brief.manage',
       action: 'edit',

@@ -43,6 +43,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (!isSameOrigin(url)) return
   if (url.pathname.startsWith('/api/')) return
+  // Revoked invitations must never reopen from the offline page cache.
+  if (url.pathname.startsWith('/invitation/')) return
   if (url.pathname.startsWith('/_next/image')) return
   if (url.pathname === '/party-sw.js' || url.pathname === '/sw.js') return
 

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getPartyOrderTypes } from '@server/partyOrderTypes'
 import {
   getPartyRequestContext,
   partyError,
@@ -130,7 +131,7 @@ export async function GET(req) {
           tenantId: context.tenantId,
           status: { $ne: 'archived' },
         })
-          .select('_id title')
+          .select('_id title status duration availabilityConfigured orderTypeIds locationIds offsiteAllowed repeatable maxQuantity includedRentalMinutes' + (can('finance.clientAmount') ? ' price' : ''))
           .sort({ title: 1 })
           .limit(500)
           .lean()
@@ -143,7 +144,7 @@ export async function GET(req) {
             ? { _id: { $in: context.position.orderScope.locationIds } }
             : {}),
         })
-          .select('_id title address')
+          .select('_id title address status bookingEnabled workingSchedule preparationMinutes cleanupMinutes' + (can('finance.clientAmount') ? ' hourlyRentalRate' : ''))
           .sort({ title: 1 })
           .limit(500)
           .lean()
@@ -191,6 +192,7 @@ export async function GET(req) {
       })),
       services,
       locations,
+      orderTypes: can('orders.title') ? await getPartyOrderTypes(context) : [],
       context: {
         tenantId: context.tenantId,
         role: context.role,
@@ -200,7 +202,7 @@ export async function GET(req) {
         company: {
           _id: context.company._id,
           title: context.company.title,
-          settings: { timeZone: context.company.settings?.timeZone },
+          settings: { timeZone: context.company.settings?.timeZone, noOwnPremises: context.company.settings?.noOwnPremises === true, ...(can('orders.eventDate') ? { workingSchedule: context.company.settings?.workingSchedule || null } : {}) },
         },
       },
     },

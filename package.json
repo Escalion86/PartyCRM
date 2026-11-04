@@ -1,6 +1,6 @@
 {
   "name": "PartyCRM",
-  "version": "1.32.0",
+  "version": "1.34.0",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
@@ -8,8 +8,11 @@
     "start": "next start",
     "test": "node --test \"**/*.test.mjs\"",
     "test:party-finance:mongo": "node scripts/testPartyGroupPaymentsMongo.mjs",
+    "test:party-booking:mongo": "node scripts/testPartyBookingMongo.mjs",
+    "test:party-booking:browser": "node scripts/testPartyBookingMongo.mjs --browser",
     "lint": "eslint .",
     "party:migrate-collections": "node scripts/partyRenameCollections.js",
+    "party:migrate-order-types": "node scripts/migratePartyOrderTypes.mjs",
     "tochka:discover": "node scripts/tochkaDiscover.js",
     "postinstall": "node scripts/postinstall.js"
   },

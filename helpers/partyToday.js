@@ -21,6 +21,7 @@ export const getPartyTodayAccess = (context) => {
     orders_team: upcoming && can('orders.assignedStaff'),
     orders_preparation: upcoming && can('orders.preparation'),
     payments: orders && can('finance.clientAmount') && can('finance.payments'),
+    payment_expectations: orders && (can('finance.payments') || can('finance.expenses') || can('finance.payouts')),
     orders_upcoming: upcoming,
   }
 }

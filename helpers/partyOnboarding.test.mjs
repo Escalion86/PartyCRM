@@ -5,6 +5,23 @@ import {
   getPartyCompanyOnboardingProgress,
   getPartyCompanyOnboardingSteps,
 } from './partyOnboarding.js'
+import { mergeCompanySettingsPatch } from './companySettings.js'
+
+test('company without premises can finish onboarding with a persisted setting', () => {
+  const settings = mergeCompanySettingsPatch({}, { noOwnPremises: true })
+  const savedSettings = mergeCompanySettingsPatch(settings, { defaultTown: 'Москва' })
+  const steps = getPartyCompanyOnboardingSteps({
+    noOwnPremises: savedSettings.noOwnPremises,
+    services: [{}],
+    staff: [{ role: 'owner' }, { role: 'performer' }],
+    orders: [{}],
+  })
+  assert.equal(steps[0].completed, true)
+  assert.equal(getPartyCompanyOnboardingProgress(steps).finished, true)
+  assert.equal(getPartyCompanyOnboardingProgress(getPartyCompanyOnboardingSteps({
+    noOwnPremises: savedSettings.noOwnPremises,
+  })).finished, false)
+})
 
 test('getPartyCompanyOnboardingSteps marks company setup tasks', () => {
   const steps = getPartyCompanyOnboardingSteps({

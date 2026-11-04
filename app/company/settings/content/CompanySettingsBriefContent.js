@@ -93,7 +93,7 @@ function BriefServiceCondition({ field, services, onChange, disabled }) {
   )
 }
 
-export default function CompanySettingsBriefContent({ activeCompanyId }) {
+export default function CompanySettingsBriefContent({ activeCompanyId, orderTypeId = '' }) {
   const [draft, setDraft] = useState(null)
   const [savedDraft, setSavedDraft] = useState('')
   const [removed, setRemoved] = useState([])
@@ -117,7 +117,7 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
 
   useEffect(() => {
     let alive = true
-    apiJson('/api/party/brief-template', {
+    apiJson(`/api/party/brief-template${orderTypeId ? `?orderTypeId=${orderTypeId}` : ''}`, {
       cache: 'no-store',
       headers: { 'x-partycrm-company-id': activeCompanyId },
     })
@@ -142,7 +142,7 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
     return () => {
       alive = false
     }
-  }, [activeCompanyId])
+  }, [activeCompanyId, orderTypeId])
 
   const edit = (change) => {
     setDraft((previous) => ({ ...previous, ...change }))
@@ -187,6 +187,7 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
     setNotice('')
     try {
       const payload = {
+        ...(orderTypeId ? { orderTypeId } : {}),
         title: draft.title,
         fields: draft.fields,
         expectedRevision: draft.revision,
@@ -230,7 +231,7 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
   return (
     <div className="space-y-4">
       <p className="text-sm leading-6 text-slate-600">
-        Одна форма брифа для компании. Вопрос можно показывать для любых услуг
+        {orderTypeId ? 'Форма брифа выбранного типа заказа.' : 'Общая форма для прежних заказов без типа.'} Вопрос можно показывать для любых услуг
         или только выбранных. При передаче с проверкой брифа учитываются обязательные
         вопросы, подходящие услугам заказа. Незавершённый бриф можно сохранить в
         заявке.
@@ -334,6 +335,7 @@ export default function CompanySettingsBriefContent({ activeCompanyId }) {
                     />
                   </label>
                 )}
+                {field.type === 'note' ? <label className="block text-sm">Текст заметки<textarea className={control} rows={3} maxLength={4000} value={field.content || ''} onChange={(event) => editField(field.id, { content: event.target.value })} /></label> : <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={field.required !== false} onChange={(event) => editField(field.id, { required: event.target.checked })} />Обязательный вопрос</label>}
                 <BriefServiceCondition
                   field={field}
                   services={services}

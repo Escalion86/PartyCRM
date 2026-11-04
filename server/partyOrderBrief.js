@@ -79,6 +79,7 @@ export const normalizePartyOrderItems = (
         quantity,
         unit: trimText(item?.unit, 40) || 'услуга',
         durationMinutes: normalizePartyProposalDuration(item?.durationMinutes),
+        ...(Object.hasOwn(item || {}, 'includedRentalMinutes') ? { includedRentalMinutes: normalizeInteger(item.includedRentalMinutes, { min: 0, max: 10080 }) || 0 } : {}),
         unitPrice,
         discount,
         total: normalizeMoney(quantity * unitPrice - discount),

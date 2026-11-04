@@ -81,6 +81,8 @@ export const createPartyOrderPaymentService = ({
   financialTransaction = withPartyFinancialTransaction,
   venueWrite = withPartyOrderVenueWrite,
   supportsTransactions = supportsPartyVenueTransactions,
+  getExpectations = async () => (await import('./partyModels')).getPartyPaymentExpectationModel(),
+  insertExpectations = async (args) => (await import('./partyPaymentExpectations')).insertPartyInitialExpectations(args),
 } = {}) => {
   const replay = async ({ context, identity, session = null }) => {
     const Orders = await getOrders()
@@ -110,11 +112,12 @@ export const createPartyOrderPaymentService = ({
     context,
     identity,
     payment,
+    expectations = [],
     payload,
     checkConflicts,
   }) => {
     if (
-      !canPartyAccess(context, {
+      payment && !canPartyAccess(context, {
         resource: 'finance.payments',
         action: 'edit',
         order: payload,
@@ -125,7 +128,7 @@ export const createPartyOrderPaymentService = ({
         403,
         'partycrm_initial_payment_forbidden'
       )
-    if (payment.amount > Number(payload.contractAmount || 0))
+    if (payment && payment.amount > Number(payload.contractAmount || 0))
       fail('Аванс превышает согласованную сумму заказа')
     if (
       payload.transactions?.length ||
@@ -134,9 +137,12 @@ export const createPartyOrderPaymentService = ({
       fail('Укажите полученный аванс только в поле «Аванс при создании»')
     const Orders = await getOrders(),
       Transactions = await getTransactions()
+    if (expectations.length) {
+      await (await getExpectations()).init()
+    }
     if (!(await supportsTransactions()))
       fail(
-        'Совместное сохранение заказа и аванса пока недоступно. Очистите аванс, чтобы создать обычный заказ, или обратитесь к администратору.',
+        'Сервер пока не готов к безопасному сохранению заказа с бронированием и платежами. Обратитесь к администратору.',
         503,
         'partycrm_initial_payment_transaction_required'
       )
@@ -163,19 +169,20 @@ export const createPartyOrderPaymentService = ({
                 ...identity,
                 tenantId: context.tenantId,
                 transactions: [],
-                clientPayment: {
+                ...(expectations.length ? { hasPaymentExpectations: true } : {}),
+                clientPayment: payment ? {
                   totalAmount: payload.contractAmount,
                   prepaidAmount: payment.amount,
                   status:
                     payment.amount >= payload.contractAmount
                       ? 'paid'
                       : 'prepaid',
-                },
+                } : payload.clientPayment,
               },
             ],
             { session }
           )
-          await Transactions.create(
+          if (payment) await Transactions.create(
             [
               {
                 tenantId: context.tenantId,
@@ -187,8 +194,11 @@ export const createPartyOrderPaymentService = ({
                 date: payment.date || new Date(),
               },
             ],
-            { session }
+            { session, ordered: true }
           )
+          if (expectations.length) {
+            await insertExpectations({ context, order: record, values: expectations, session })
+          }
           return record
         },
       })

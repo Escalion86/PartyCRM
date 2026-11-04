@@ -3,12 +3,13 @@ export const getPartyCompanyOnboardingSteps = ({
   services = [],
   staff = [],
   orders = [],
+  noOwnPremises = false,
 } = {}) => [
   {
     id: 'location',
     title: 'Добавить точку',
     description: 'Создайте площадку или офис, где проходят мероприятия.',
-    completed: locations.length > 0,
+    completed: locations.length > 0 || noOwnPremises === true,
     action: 'Новая точка',
     modal: 'location',
   },

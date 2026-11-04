@@ -5,6 +5,7 @@ export const getPartyOrderPermanentDeleteBlocker = async ({
   order,
   Transactions,
 }) => {
+  if (order.hasPaymentExpectations) return { code: 'partycrm_order_payment_expectations_history_readonly', message: 'Заказ с историей ожидаемых платежей нельзя удалить безвозвратно. Можно отменить заказ.' }
   if (order.fulfillment?.performedAt)
     return {
       code: 'partycrm_order_fulfillment_history_readonly',

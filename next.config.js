@@ -13,6 +13,14 @@ const nextConfig = {
   async headers() {
     return [
       {
+        source: '/invitation/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, max-age=0' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+        ],
+      },
+      {
         source: '/party-sw.js',
         headers: [
           {

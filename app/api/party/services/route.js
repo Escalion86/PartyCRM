@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getPartyServiceModel } from '@server/partyModels'
+import { validatePartyServiceBookingSettings } from '@server/partyOrderTypes'
 import {
   getPartyRequestContext,
   parseJsonBody,
@@ -48,7 +49,10 @@ export const POST = async (req) => {
   })
   if (error) return error
 
-  const payload = normalizeServicePayload(await parseJsonBody(req))
+  const body = await parseJsonBody(req)
+  let payload
+  try { payload = { ...normalizeServicePayload(body), ...await validatePartyServiceBookingSettings(body, context.tenantId) } }
+  catch (cause) { return partyError(cause.status || 400, cause.code || 'partycrm_service_invalid', cause.status ? cause.message : 'Проверьте настройки услуги', 'validation') }
   if (!payload.title) {
     return partyError(
       400,

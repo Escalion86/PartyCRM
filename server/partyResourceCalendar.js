@@ -8,11 +8,11 @@ import {
   PARTY_RESOURCE_CALENDAR_ENTRY_LIMIT,
   PARTY_RESOURCE_CALENDAR_NOTICE,
 } from '../helpers/partyResourceCalendar.js'
-import { getPartyVenueWindow, PARTY_VENUE_MAX_BUFFER_MINUTES } from '../helpers/partyVenueBooking.js'
+import { getPartyVenueWindow, getPartyVenueOrderIntervalFilter, PARTY_VENUE_MAX_BUFFER_MINUTES } from '../helpers/partyVenueBooking.js'
 
 const id = (value) => String(value?._id ?? value ?? '')
 const iso = (value) => new Date(value).toISOString()
-const orderFields = '_id tenantId title serviceTitle status workflowStageId locationId eventDate dateEnd durationMinutes assignedStaff.staffId assignedStaff.confirmationStatus responsibleStaffId partyEventGroupId sharedLocationBooking'
+const orderFields = '_id tenantId title serviceTitle status workflowStageId locationId eventDate dateEnd rental durationMinutes assignedStaff.staffId assignedStaff.confirmationStatus responsibleStaffId partyEventGroupId sharedLocationBooking'
 const loadModels = async ({ type, includeTickets }) => {
   const models = await import('./partyModels')
   const Orders = await models.getPartyOrderModel()
@@ -45,7 +45,7 @@ const windowOfOrder = (context, order, location = {}, venueLegacyDefault = false
     if (!venueLegacyDefault && !(Number(order.durationMinutes) > 0)) return null
     endsAt = new Date(+new Date(order.eventDate) + (Number(order.durationMinutes) || 60) * 60000)
   }
-  try { return getPartyVenueWindow({ startsAt: order.eventDate, endsAt }, location) }
+  try { return getPartyVenueWindow({ startsAt: order.eventDate, endsAt, ...(venueLegacyDefault ? { rental: order.rental } : {}) }, location) }
   catch { return null }
 }
 const serializeWindow = (window) => ({ start: iso(window.startsAt), end: iso(window.endsAt), occupiedFrom: iso(window.occupiedFrom), occupiedUntil: iso(window.occupiedUntil) })
@@ -138,7 +138,7 @@ export const createPartyResourceCalendarService = ({ getModels = loadModels, now
     } else if (resourceIds.length) {
       const buffer = PARTY_VENUE_MAX_BUFFER_MINUTES * 60000
       const [rows, sessions] = await Promise.all([models.Orders.find({ $and: [
-        buildPartyOrderAccessFilter(context), orderIntervalFilter(query, type === 'location' ? PARTY_VENUE_MAX_BUFFER_MINUTES : 0),
+        buildPartyOrderAccessFilter(context), type === 'location' ? { status: { $ne: 'canceled' }, ...getPartyVenueOrderIntervalFilter({ startBefore: new Date(+query.dateTo + PARTY_VENUE_MAX_BUFFER_MINUTES * 60000), endAfter: new Date(+query.dateFrom - PARTY_VENUE_MAX_BUFFER_MINUTES * 60000) }) } : orderIntervalFilter(query),
         type === 'location' ? { locationId: { $in: resourceIds }, placeType: { $ne: 'client_address' } } : { 'assignedStaff.staffId': { $in: resourceIds } },
       ] }).select(orderFields).sort({ eventDate: 1, _id: 1 }).limit(PARTY_RESOURCE_CALENDAR_ENTRY_LIMIT + 1).lean(),
       type === 'location' && access.tickets

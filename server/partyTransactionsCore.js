@@ -77,6 +77,7 @@ export const serializePartyTransaction = (doc) => {
     tenantId: String(item.tenantId),
     orderId: String(item.orderId),
     groupPaymentId: item.groupPaymentId ? String(item.groupPaymentId) : null,
+    expectationId: item.expectationId ? String(item.expectationId) : null,
     clientId: item.clientId ? String(item.clientId) : null,
     staffId: item.staffId ? String(item.staffId) : null,
     amount: Number(item.amount || 0),

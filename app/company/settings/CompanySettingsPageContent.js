@@ -11,6 +11,9 @@ import CompanySettingsShell from './CompanySettingsShell'
 import { COMPANY_SETTINGS_CONTENT } from './content/companySettingsContentMap'
 
 const TAB_META = Object.freeze({
+  'order-types': { title: 'Типы заказов', description: 'Типы мероприятий, собственные брифы и шаблоны приглашений.' },
+  booking: { title: 'График бронирования', description: 'Рабочие часы компании для помещений и выездных заказов.' },
+  invitations: { title: 'Пригласительные', description: 'Шаблоны брендированных страниц приглашений для гостей.' },
   general: {
     title: 'Общие',
     description: 'Базовые параметры компании и поведения кабинета.',

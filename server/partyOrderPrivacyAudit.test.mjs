@@ -39,6 +39,7 @@ function setup({ context = actor(), orderPatch = {}, transactions = [] } = {}) {
     partyError: (status, code, message, _kind, extra) => ({ status, body: { code, message, ...extra } }),
     withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     getPartyOrderModel: async () => Orders,
+    getPartyOrderTypes: async () => [],
     getPartyStaffModel: async () => ({ find: () => q([]), countDocuments: async () => 1 }),
     getPartyClientModel: async () => ({ countDocuments: async () => 1 }),
     getPartyLocationModel: async () => ({ exists: async () => true }),
@@ -130,6 +131,7 @@ test('read-only order team options are scoped and staff phones require an explic
     getPartyOrderModel: async () => ({ find: (filter) => { assert.equal(filter.tenantId, tenantId); assert.equal(JSON.stringify(filter).includes(locationId), true); return q([{ assignedStaff: [{ staffId: personId }] }]) } }),
       getPartyStaffModel: async () => ({ find: (filter) => { seen.push(filter); return q([{ _id: personId, firstName: 'Коллега', role: 'performer', phone: '79130000001' }]) } }),
       getPartyClientModel: async () => ({}), getPartyServiceModel: async () => ({ find: () => q([]) }), getPartyLocationModel: async () => ({}),
+      getPartyOrderTypes: async () => [],
     }
     const get = new Function(...Object.keys(deps), `${optionsCode}\nreturn GET`)(...Object.values(deps))
     const result = await get({})

@@ -44,7 +44,9 @@ const compile = (name, overrides = {}, environment = {}) => {
   )
   return compiledModule.exports.default
 }
-const Card = compile('PartyTaskCard')
+const OrderLinks = compile('PartyTaskOrderLinks', { 'next/dynamic': () => () => null, '@components/Modal': () => null, '@helpers/apiClient': { apiJson: async () => ({ data: {} }) } })
+OrderLinks.PartyTaskOrderOverlays = function PartyTaskOrderOverlays() { return null }
+const Card = compile('PartyTaskCard', { './PartyTaskOrderLinks': OrderLinks })
 const Board = compile('PartyTaskBoard', { './PartyTaskCard': Card })
 const props = {
   staffById: new Map([['staff1', 'Ирина']]),
@@ -222,6 +224,7 @@ const workspaceHarness = ({
   const Workspace = compile(
     componentName,
     {
+      './PartyTaskOrderLinks': OrderLinks,
       react: mockReact,
       'next/dynamic': () => () => null,
       '@helpers/apiClient': {
@@ -317,6 +320,22 @@ const deferred = () => {
   })
   return { promise, resolve, reject }
 }
+
+test('related order overlay survives asynchronous task search and is hidden for another company', async () => {
+  const harness = workspaceHarness({ narrow: false })
+  await harness.settle()
+  const related = { companyId: 'company1', orderId: 'order1' }
+  harness.find((node) => node.type === Board)[0].props.onOpenRelated('order', related)
+  const overlay = () => harness.find((node) => node.type === OrderLinks.PartyTaskOrderOverlays)[0]
+  assert.equal(overlay().props.selection.related, related)
+  harness.find((node) => node.props?.placeholder === 'Найти по названию или заказу')[0].props.onChange({ target: { value: 'Поиск' } })
+  harness.runTimers()
+  assert.equal(overlay().props.selection.related, related)
+  await harness.settle()
+  assert.equal(overlay().props.selection.related, related)
+  harness.setCompany('company2')
+  assert.equal(overlay().props.selection, null)
+})
 
 test('desktop workspace loads each board column separately and sends assignment filter to server', async () => {
   const harness = workspaceHarness({ narrow: false })

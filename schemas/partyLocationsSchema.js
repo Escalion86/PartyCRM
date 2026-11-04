@@ -40,6 +40,8 @@ const partyLocationsSchema = {
     default: 'exclusive',
   },
   preparationMinutes: { type: Number, default: 0, min: 0, max: 1440 },
+  hourlyRentalRate: { type: Number, default: 0, min: 0 },
+  workingSchedule: { type: Schema.Types.Mixed, default: null },
   cleanupMinutes: { type: Number, default: 0, min: 0, max: 1440 },
   venueBookingRevision: { type: Number, default: 0 },
   venueBookingManaged: { type: Boolean, default: false },

@@ -26,6 +26,7 @@ import StaffList from '@components/party/lists/StaffList'
 import LocationsList from '@components/party/lists/LocationsList'
 import ServicesList from '@components/party/lists/ServicesList'
 import OrderModal from '@components/party/modals/OrderModal'
+import PartyOrderWizard from '@components/party/orders/PartyOrderWizard'
 import OrderViewModal from '@components/party/modals/OrderViewModal'
 import OrderAdditionalEventsModal from '@components/party/modals/OrderAdditionalEventsModal'
 import OrderMessengerModal from '@components/party/modals/OrderMessengerModal'
@@ -725,8 +726,9 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         services,
         staff,
         orders,
+        noOwnPremises: companySettings.noOwnPremises,
       }),
-    [locations, services, staff, orders]
+    [locations, services, staff, orders, companySettings.noOwnPremises]
   )
   const onboardingProgress = useMemo(
     () => getPartyCompanyOnboardingProgress(onboardingSteps),
@@ -1824,7 +1826,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                       {!step.completed && canManage && (
                         <button
                           type="button"
-                          className="mt-3 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                          className="mt-3 cursor-pointer rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
                           onClick={() => {
                             if (step.modal === 'order') {
                               setOrderDraft(
@@ -1848,6 +1850,32 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                           }}
                         >
                           {step.action}
+                        </button>
+                      )}
+                      {step.id === 'location' && !step.completed && canManage && (
+                        <button
+                          type="button"
+                          disabled={saving}
+                          className="mt-3 block cursor-pointer rounded-md px-3 py-2 text-left text-sm font-semibold text-sky-700 hover:bg-sky-100 disabled:cursor-wait disabled:opacity-50"
+                          onClick={async () => {
+                            setSaving(true)
+                            try {
+                              const response = await apiJson(
+                                '/api/party/company-settings',
+                                buildCompanyRequestOptions(activeCompanyId, {
+                                  method: 'PATCH',
+                                  body: JSON.stringify({ noOwnPremises: true }),
+                                })
+                              )
+                              setCompanySettings(response.data.settings)
+                            } catch (err) {
+                              setError(err.message || 'Не удалось сохранить настройку')
+                            } finally {
+                              setSaving(false)
+                            }
+                          }}
+                        >
+                          У компании нет своего помещения
                         </button>
                       )}
                     </div>
@@ -2426,7 +2454,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       )}
 
       {activeModal === 'order' && (
-        <OrderModal
+        !orderDraft._id ? <PartyOrderWizard companyId={activeCompanyId} onClose={() => setActiveModal('')} onSaved={(order) => { setOrders((previous) => [order, ...previous]); setActiveModal('') }} /> : <OrderModal
           aiAvailable={companyAccess?.allowAi === true}
           open={true}
           orderDraft={orderDraft}

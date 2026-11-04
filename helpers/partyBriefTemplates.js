@@ -5,6 +5,11 @@ export const PARTY_BRIEF_FIELD_TYPES = Object.freeze({
   select: 'Выбор варианта',
   checkbox: 'Да / нет',
   date: 'Дата',
+  time: 'Время',
+  datetime: 'Дата и время',
+  money: 'Денежная сумма',
+  contact: 'Контакт',
+  note: 'Заметка менеджеру',
 })
 export const PARTY_LEGACY_BRIEF_FIELDS = Object.freeze(
   [
@@ -94,6 +99,7 @@ export const getPartyBriefMissingFields = (brief, template, servicesIds) =>
   getPartyApplicableBriefFields(template, servicesIds)
     .filter(
       (field) =>
+        field.type !== 'note' &&
         field.required !== false &&
         !hasPartyBriefAnswer(getPartyBriefAnswer(brief, field))
     )

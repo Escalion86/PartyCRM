@@ -45,8 +45,8 @@ export const normalizePartyVenueSettings = (
 }
 
 export const getPartyVenueWindow = (booking, location = {}) => {
-  const startValue = booking?.startsAt ?? booking?.eventDate
-  const endValue = booking?.endsAt ?? booking?.dateEnd
+  const startValue = booking?.rental?.startsAt ?? booking?.startsAt ?? booking?.eventDate
+  const endValue = booking?.rental?.endsAt ?? booking?.endsAt ?? booking?.dateEnd
   if (startValue == null || startValue === '') return null
   const startsAt = new Date(startValue)
   const endsAt = new Date(endValue)
@@ -67,6 +67,16 @@ export const getPartyVenueWindow = (booking, location = {}) => {
     )
   return { startsAt, endsAt, occupiedFrom, occupiedUntil }
 }
+
+export const getPartyVenueOrderIntervalFilter = ({ startBefore = new Date(8640000000000000), endAfter }) => ({
+  $or: [
+    { 'rental.startsAt': { $lt: startBefore }, 'rental.endsAt': { $gt: endAfter } },
+    { rental: null, eventDate: { $ne: null, $lt: startBefore }, $or: [
+      { dateEnd: { $gt: endAfter } },
+      { dateEnd: null, $expr: { $gt: [{ $add: ['$eventDate', { $multiply: [{ $cond: [{ $gt: ['$durationMinutes', 0] }, '$durationMinutes', 60] }, 60000] }] }, endAfter] } },
+    ] },
+  ],
+})
 
 export const getPartyVenueLockDays = ({ occupiedFrom, occupiedUntil }) => {
   const days = []

@@ -47,6 +47,9 @@ export const COMPANY_SETTINGS_TABS = Object.freeze([
     href: '/company/settings/brief',
     access: 'management',
   },
+  { slug: 'order-types', label: 'Типы заказов', href: '/company/settings/order-types', access: 'management' },
+  { slug: 'booking', label: 'График бронирования', href: '/company/settings/booking', access: 'management' },
+  { slug: 'invitations', label: 'Пригласительные', href: '/company/settings/invitations', access: 'management' },
   {
     slug: 'preparation-templates',
     label: 'Шаблоны задач',

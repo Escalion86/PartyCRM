@@ -336,10 +336,10 @@ test('Inbox retains explicit company B through new router props with disabled st
 
 test('the actual mobile create handler carries its company to another route and respects a rejected navigation', () => {
   const shell = read('../PartyAppShell.js')
-  const marker = 'onCreate={(href) => {'
+  const marker = 'const openNewOrder = (href) => {'
   const start = shell.indexOf(marker)
   assert.notEqual(start, -1)
-  const end = shell.indexOf('\n            }}', start)
+  const end = shell.indexOf('\n  }', start)
   assert.notEqual(end, -1)
   const body = shell.slice(start + marker.length, end)
   for (const allowed of [true, false]) {

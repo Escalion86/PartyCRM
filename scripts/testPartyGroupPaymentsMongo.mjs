@@ -13,6 +13,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { compileFunction } from 'node:vm'
 import mongoose, { Schema, Types } from 'mongoose'
+import { canAccessPartyTransaction } from '../server/partyTransactionAccess.js'
 
 const root = new URL('../', import.meta.url)
 const compile = async (file, deps, result) => {
@@ -279,9 +280,10 @@ try {
   const isValidObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || ''))
   const transactionValidators = await compile('server/partyTransactions.js', { ...deps, ...transactionCore, partyError, isValidObjectId }, '{validatePartyPayoutTransactionStaff,validatePartyTransactionOrder}')
   const loadTransactionRoute = (overrides = {}) => compile('app/api/party/transactions/route.js', {
-    ...deps, ...transactionCore, ...transactionValidators, partyError, isValidObjectId,
+    ...deps, ...transactionCore, ...transactionValidators, partyError, isValidObjectId, canAccessPartyTransaction,
+    assertPartyReportGate: async () => {},
     NextResponse: { json: (data, options) => Response.json(data, options) },
-    getPartyRequestContext: async () => ({ context: { tenantId, role: 'owner' } }),
+    getPartyRequestContext: async () => ({ context: { tenantId, role: 'owner', staff: { _id: String(new Types.ObjectId()), tenantId, role: 'owner', status: 'active' } } }),
     parseJsonBody: async (req) => req.json(),
     recordPartyOrderAudit: async () => {}, syncPartyOrderCalendarAfterCrud: async () => {},
     ...overrides,
@@ -315,9 +317,10 @@ try {
     await seedLegacy()
     const sourceTransaction = await Transactions.create({ tenantId, orderId: orderIds[1], amount: 0.45, type: 'income', category: 'client_payment', date: new Date('2025-01-02T03:04:05Z'), paymentMethod: 'cash', comment: 'Relocate exact cents' })
     const route = await compile('app/api/party/transactions/[id]/route.js', {
-      ...deps, ...transactionCore, ...transactionValidators, partyError, isValidObjectId,
+      ...deps, ...transactionCore, ...transactionValidators, partyError, isValidObjectId, canAccessPartyTransaction,
+      assertPartyReportGate: async () => {},
       NextResponse: { json: (data, options) => Response.json(data, options) },
-      getPartyRequestContext: async () => ({ context: { tenantId, role: 'owner' } }),
+      getPartyRequestContext: async () => ({ context: { tenantId, role: 'owner', staff: { _id: String(new Types.ObjectId()), tenantId, role: 'owner', status: 'active' } } }),
       parseJsonBody: async (req) => req.json(),
       recordPartyOrderAudit: async () => {}, syncPartyOrderCalendarAfterCrud: async () => {},
     }, '{PATCH}')

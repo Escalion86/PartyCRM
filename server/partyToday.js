@@ -28,8 +28,10 @@ import {
 } from './partyTasks'
 import { loadPartyInboxOverdue } from './partyInbox'
 import getPartyCompanyTariffAccessState from './getPartyCompanyTariffAccess'
+import { loadPartyExpectedPaymentCards } from './partyTodayExpectations'
 
 const descriptions = {
+  payment_expectations: ['Ожидаемые платежи и просрочки', 'Платежи с указанным крайним сроком, включая неоплаченные остатки частичных исполнений.', 'Открытых ожиданий платежей по проверенным данным нет.'],
   orders_new: [
     'Новые заявки',
     'Текущие заявки на начальном рабочем этапе компании, в том числе без даты.',
@@ -386,6 +388,8 @@ export const loadPartyToday = async ({ context, now = new Date() }) => {
         const result =
           key === 'tasks'
             ? await loadTaskCards(context, period)
+            : key === 'payment_expectations'
+              ? await loadPartyExpectedPaymentCards(context, period)
             : key === 'inbox'
               ? await loadInboxCards(context, period)
               : await loadOrders(context, period, key)

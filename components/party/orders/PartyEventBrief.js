@@ -1,7 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import PartyBriefContactField from './PartyBriefContactField'
+import { partyDateAtTime, partyZonedParts } from '@helpers/partyWorkingSchedule'
 import {
   getPartyApplicableBriefFields,
   getPartyArchivedBriefAnswers,
@@ -19,7 +21,7 @@ const display = (value) =>
       ? 'Да'
       : 'Нет'
     : typeof value === 'object' && value !== null
-      ? JSON.stringify(value, null, 2)
+      ? value.clientId ? [value.name, value.phone, value.email].filter(Boolean).join(' · ') || 'Контакт' : JSON.stringify(value, null, 2)
       : String(value ?? '')
 
 export const hasPartyEventBrief = (brief) =>
@@ -39,12 +41,13 @@ const useBriefTemplate = ({
   template,
   companyId,
   orderId,
+  orderTypeId,
   value,
   orderStatus,
 }) => {
   const [remote, setRemote] = useState({ key: '', template: null, error: '' })
   const [retry, setRetry] = useState(0)
-  const key = JSON.stringify([companyId, orderId, orderStatus, retry])
+  const key = JSON.stringify([companyId, orderId, orderTypeId, orderStatus, retry])
   const shouldFetch = Boolean(
     companyId && !template && orderStatus !== 'closed'
   )
@@ -52,7 +55,7 @@ const useBriefTemplate = ({
     if (!shouldFetch) return
     const controller = new AbortController()
     apiJson(
-      `/api/party/brief-template${orderId ? `?orderId=${encodeURIComponent(orderId)}` : ''}`,
+      `/api/party/brief-template${orderTypeId ? `?orderTypeId=${encodeURIComponent(orderTypeId)}` : orderId ? `?orderId=${encodeURIComponent(orderId)}` : ''}`,
       {
         cache: 'no-store',
         headers: { 'x-partycrm-company-id': companyId },
@@ -72,7 +75,7 @@ const useBriefTemplate = ({
           })
       })
     return () => controller.abort()
-  }, [shouldFetch, companyId, orderId, key])
+  }, [shouldFetch, companyId, orderId, orderTypeId, key])
   const current = remote.key === key
   return {
     reload: () => setRetry((value) => value + 1),
@@ -137,14 +140,24 @@ export function PartyEventBriefEditor({
   template: suppliedTemplate,
   companyId = '',
   orderId = '',
+  orderTypeId = '',
+  contactOptions,
+  onContactDirtyChange,
+  timeZone = 'Asia/Krasnoyarsk',
   orderStatus = 'draft',
   disabled = false,
   servicesIds,
 }) {
+  const dirtyContacts = useRef(new Map())
+  const reportContactDirty = useCallback((id, dirty) => {
+    dirtyContacts.current.set(id, dirty)
+    onContactDirtyChange?.([...dirtyContacts.current.values()].some(Boolean))
+  }, [onContactDirtyChange])
   const { template, error, loading, reload } = useBriefTemplate({
     template: suppliedTemplate,
     companyId,
     orderId,
+    orderTypeId,
     value,
     orderStatus,
   })
@@ -194,6 +207,13 @@ export function PartyEventBriefEditor({
         </legend>
         {fields.map((field) => {
           const answer = getPartyBriefAnswer(value, field)
+          if (field.type === 'note') return <div key={field.id} className="border-l-4 border-sky-300 bg-sky-50 p-3 text-sm leading-6 whitespace-pre-wrap text-sky-950 sm:col-span-2"><p className="font-semibold">{field.label}</p>{field.content ? <p>{field.content}</p> : null}</div>
+          if (field.type === 'contact') return <div key={field.id} className="min-w-0 text-sm font-medium text-slate-700"><span>{field.label}{field.required !== false ? ' *' : ''}</span><PartyBriefContactField value={answer} onChange={(next) => change(field, next)} companyId={companyId} orderId={orderId} disabled={disabled} options={contactOptions} fieldId={field.id} onDirtyChange={reportContactDirty} /></div>
+          let inputValue = answer ?? ''
+          if (field.type === 'datetime' && answer && Number.isFinite(Date.parse(answer))) {
+            const parts = partyZonedParts(answer, timeZone)
+            inputValue = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`
+          }
           return (
             <label
               key={field.id}
@@ -256,20 +276,24 @@ export function PartyEventBriefEditor({
                 <input
                   className={control}
                   type={
-                    field.type === 'number'
+                    ['number', 'money'].includes(field.type)
                       ? 'number'
                       : field.type === 'date'
                         ? 'date'
+                        : field.type === 'time' ? 'time'
+                        : field.type === 'datetime' ? 'datetime-local'
                         : 'text'
                   }
-                  step={field.type === 'number' ? 'any' : undefined}
+                  step={field.type === 'money' ? '0.01' : field.type === 'number' ? 'any' : undefined}
+                  min={field.type === 'money' ? 0 : undefined}
                   maxLength={field.type === 'text' ? 20000 : undefined}
-                  value={answer ?? ''}
+                  value={inputValue}
                   onChange={(event) =>
                     change(
                       field,
-                      field.type === 'number' && event.target.value !== ''
+                      ['number', 'money'].includes(field.type) && event.target.value !== ''
                         ? Number(event.target.value)
+                        : field.type === 'datetime' && event.target.value ? partyDateAtTime(event.target.value.slice(0, 10), event.target.value.slice(11, 16), timeZone).toISOString()
                         : event.target.value
                     )
                   }
@@ -324,7 +348,7 @@ export function PartyEventBriefView({
             field,
             answer: getPartyBriefAnswer(value, field),
           }))
-          .filter(({ answer }) => hasPartyBriefAnswer(answer))
+          .filter(({ field, answer }) => field.type === 'note' || hasPartyBriefAnswer(answer))
   return (
     <div className="space-y-3">
       {loading && (
@@ -363,7 +387,7 @@ export function PartyEventBriefView({
               {field.label}
             </dt>
             <dd className="mt-1 text-sm break-words whitespace-pre-wrap text-slate-900">
-              {display(answer)}
+              {field.type === 'note' ? field.content || field.label : display(answer)}
             </dd>
           </div>
         ))}
