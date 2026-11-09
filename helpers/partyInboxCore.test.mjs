@@ -3,7 +3,14 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const code = await readFile(new URL('./partyInboxCore.js', import.meta.url), 'utf8')
-const { resolvePartyInboxStatus, parsePartyInboxPatch, buildPartyInboxWorkflowUpdate } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`)
+const { resolvePartyInboxOrderId, resolvePartyInboxStatus, parsePartyInboxPatch, buildPartyInboxWorkflowUpdate } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`)
+
+test('an inbox state created for SLA keeps the order already linked by the source', () => {
+  const state = { orderId: null, status: 'needs_reply' }
+  assert.equal(resolvePartyInboxOrderId(state, { orderId: 'webhook-order' }), 'webhook-order')
+  assert.equal(resolvePartyInboxOrderId(state, { linkedOrderId: 'call-order' }), 'call-order')
+  assert.equal(resolvePartyInboxOrderId({ orderId: 'manual-order' }, { orderId: 'webhook-order' }), 'manual-order')
+})
 
 test('a new incoming reopens resolved and waiting conversations, even during saving', () => {
   for (const status of ['resolved', 'waiting_client', 'follow_up', 'in_progress']) {

@@ -12,12 +12,12 @@ const validDraft = (draft) => record(draft) &&
   record(draft.eventBrief) && record(draft.discount) && ['amount', 'percent'].includes(draft.discount.type) && numericInput(draft.discount.value) &&
   (draft.rental === null || (record(draft.rental) && ['startsAt', 'endsAt'].every((key) => typeof draft.rental[key] === 'string')))
 
-export const getPartyOrderWizardDraftScope = (context, order = {}) => {
+export const getPartyOrderWizardDraftScope = (context, order = {}, inboxId = '') => {
   const tenantId = String(context?.tenantId || '')
   const staffId = String(context?.staff?._id || '')
   if (!tenantId || !staffId) return null
   return {
-    key: `partycrm:order-wizard:${VERSION}:${tenantId}:${staffId}:${order._id || 'new'}`,
+    key: `partycrm:order-wizard:${VERSION}:${tenantId}:${staffId}:${order._id || (inboxId ? `inbox:${inboxId}` : 'new')}`,
     signature: JSON.stringify({
       role: context.role,
       positionId: context.position?._id || '',

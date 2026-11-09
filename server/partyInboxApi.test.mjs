@@ -26,6 +26,7 @@ function setup({ denied = false, referenceExists = true, telegramAllowed = true,
     isValidObjectId: (value) => /^[a-f\d]{24}$/i.test(String(value)),
     partyError: (status, code, message) => ({ status, body: { error: { code, message } } }),
     partyInboxSources: Object.fromEntries(['vk', 'avito', 'telegram', 'novofon'].map((channel) => [channel, { source: async () => source, messages: async () => ({ find: (filter) => { filters.push(filter); return query([]) }, findOne: (filter) => { filters.push(filter); return query({ _id: sourceId }) } }) }])),
+    mapPartyInboxItem: ({ row, state, resolvedIncomingToken }) => ({ id: row._id, revision: state?.revision, incomingToken: resolvedIncomingToken }),
     getPartyInboxStateModel: async () => ({ findOne: () => query(current), findOneAndUpdate: (filter, update) => { writes.push({ filter, update }); return query(conflict ? null : { ...update.$set, revision: 1 }) } }),
     getPartyClientModel: async () => reference,
     getPartyOrderModel: async () => reference,
@@ -104,6 +105,20 @@ test('a new incoming revision prevents an old sales change from being saved', as
   const request = { json: async () => ({ status: 'resolved', expectedRevision: 2, salesStage: 'lost', lostReason: 'Отказ' }) }
   assert.equal((await route.PATCH(request, { params: { id: `vk:${sourceId}` } })).status, 409)
   assert.equal(route.writes.length, 0)
+})
+
+test('a new message with the same workflow revision cannot be acknowledged by an old draft', async () => {
+  const route = setup({ current: { revision: 2 } })
+  const params = { id: `vk:${sourceId}` }
+  const request = (expectedIncomingToken) => ({ json: async () => ({ status: 'resolved', expectedRevision: 2, expectedIncomingToken }) })
+  assert.equal((await route.PATCH(request(''), { params })).status, 409)
+  assert.equal(route.writes.length, 0)
+  const detail = await route.GET(route.req, { params })
+  assert.equal(detail.body.data.item.incomingToken, sourceId)
+  const saved = await route.PATCH(request(detail.body.data.item.incomingToken), { params })
+  assert.equal(saved.status, 200)
+  assert.equal(saved.body.data.inboxItem.incomingToken, sourceId)
+  assert.equal(route.writes.length, 1)
 })
 
 test('a concurrent write after reading the state also returns conflict', async () => {

@@ -4,13 +4,13 @@ import { readFile } from 'node:fs/promises'
 
 const root = new URL('../', import.meta.url)
 const readModule = async (path) => import(`data:text/javascript;base64,${Buffer.from(await readFile(new URL(path, root), 'utf8')).toString('base64')}`)
-const { buildPartyInboxOverduePipeline, buildPartyInboxSalesStagePipeline } = await readModule('helpers/partyInboxQuery.js')
+const { buildPartyInboxChannelPipeline, buildPartyInboxOverduePipeline } = await readModule('helpers/partyInboxQuery.js')
 const now = new Date('2026-09-13T10:00:00Z')
 const date = (minutes) => new Date(+now + minutes * 60000)
 const tenantId = 'company-a'
 const channels = ['vk', 'avito', 'novofon']
 const sources = channels.map((channel) => ({ channel, collectionName: channel }))
-const field = (row, path) => path.split('.').reduce((value, key) => value?.[key], row)
+const field = (row, path) => path.split('.').reduce((value, key) => Array.isArray(value) && !/^\d+$/.test(key) ? value.map((item) => item[key]) : value?.[key], row)
 const equal = (left, right) => left == null && right == null || (left instanceof Date && right instanceof Date ? +left === +right : left === right)
 
 // A deliberately limited in-memory aggregation adapter. It executes the actual
@@ -21,6 +21,7 @@ function expr(value, row, vars = {}) {
   if (Array.isArray(value)) return value.map((item) => expr(item, row, vars))
   if (typeof value !== 'object') return value
   const [op, input] = Object.entries(value)[0]
+  if (op === '$regexMatch') return new RegExp(input.regex, input.options).test(expr(input.input, row, vars))
   const args = expr(input, row, vars)
   switch (op) {
     case '$and': return args.every(Boolean)
@@ -31,8 +32,10 @@ function expr(value, row, vars = {}) {
     case '$ifNull': return args[0] ?? args[1]
     case '$cond': return args[0] ? args[1] : args[2]
     case '$min': return args.reduce((left, right) => left < right ? left : right)
+    case '$concat': return args.join('')
     case '$concatArrays': return args.flat()
     case '$arrayElemAt': return args[0][args[1]]
+    case '$toString': return args == null ? null : String(args)
     default: throw new Error(`Unsupported expression ${op}`)
   }
 }
@@ -41,6 +44,7 @@ function matches(row, filter, vars) {
     if (key === '$expr') return expr(value, row, vars)
     if (key === '$or') return value.some((item) => matches(row, item, vars))
     const actual = field(row, key)
+    if (value?.$regex !== undefined) return typeof actual === 'string' && new RegExp(value.$regex, value.$options).test(actual)
     if (value && typeof value === 'object' && !(value instanceof Date)) return Object.entries(value).every(([op, expected]) => {
       if (op === '$in') return expected.some((item) => equal(item, actual))
       if (op === '$ne') return !equal(actual, expected)
@@ -134,7 +138,7 @@ test('sales stage filters before page boundaries and counts state-less historica
   add('legacy-state', 'vk', {}, { lastMessageAt: date(-1000) })
   add('old-won', 'vk', { salesStage: 'won' }, { lastMessageAt: date(-1100) })
   add('foreign-won', 'vk', { salesStage: 'won' }, { tenantId: 'company-b' })
-  const run = (salesStage, page = 0) => aggregate(collections.vk, buildPartyInboxSalesStagePipeline({ tenantId, channel: 'vk', stateCollectionName: 'states', salesStage, page }), collections)
+  const run = (salesStage, page = 0) => aggregate(collections.vk, buildPartyInboxChannelPipeline({ tenantId, channel: 'vk', stateCollectionName: 'states', salesStage, page }), collections)
   assert.deepEqual(run('new').map((row) => row._id), ['legacy-no-state', 'legacy-state'])
   assert.deepEqual(run('won').map((row) => row._id), ['old-won'])
   assert.equal(run('proposal').length, 101)
@@ -145,7 +149,7 @@ test('stage lookup isolates company and channel, and overdue stage applies befor
   const { collections, add } = fixtures()
   add('same-id', 'vk', { tenantId: 'company-b', salesStage: 'won' })
   collections.states.push({ _id: 'other-channel', sourceId: 'same-id', tenantId, channel: 'avito', salesStage: 'lost' })
-  const result = aggregate(collections.vk, buildPartyInboxSalesStagePipeline({ tenantId, channel: 'vk', stateCollectionName: 'states', salesStage: 'new' }), collections)
+  const result = aggregate(collections.vk, buildPartyInboxChannelPipeline({ tenantId, channel: 'vk', stateCollectionName: 'states', salesStage: 'new' }), collections)
   assert.equal(result.length, 1)
   for (let i = 0; i < 130; i++) add(`ignored-${i}`, 'vk', { salesStage: 'new', responseDueAt: date(-200) })
   add('target', 'avito', { salesStage: 'won', responseDueAt: date(-10) })
@@ -177,9 +181,9 @@ function service(collections) {
     getPartyVkConversationModel: async () => model('vk'), getPartyVkMessageModel: async () => model('vkMessages'),
     getPartyAvitoConversationModel: async () => model('avito'), getPartyAvitoMessageModel: async () => model('avitoMessages'),
     getPartyTelegramConversationModel: async () => model('telegram'), getPartyTelegramMessageModel: async () => model('telegramMessages'),
-    getPartyCallModel: async () => model('novofon'), getPartyInboxStateModel: async () => model('states'),
-    partyInboxKey: core.partyInboxKey, resolvePartyInboxStatus: core.resolvePartyInboxStatus,
-    getPartyInboxSlaView: sla.getPartyInboxSlaView, buildPartyInboxOverduePipeline, buildPartyInboxSalesStagePipeline,
+    getPartyCallModel: async () => model('novofon'), getPartyInboxStateModel: async () => model('states'), getPartyClientModel: async () => model('clients'),
+    partyInboxKey: core.partyInboxKey, resolvePartyInboxOrderId: core.resolvePartyInboxOrderId, resolvePartyInboxStatus: core.resolvePartyInboxStatus,
+    getPartyInboxSlaView: sla.getPartyInboxSlaView, buildPartyInboxChannelPipeline, buildPartyInboxOverduePipeline,
   }
   return { ...new Function(...Object.keys(deps), `${serviceCode}\nreturn { loadPartyInboxChannel, loadPartyInboxOverdue }`)(...Object.values(deps)), casts }
 }
@@ -221,6 +225,55 @@ test('real overdue loader returns 100 global mapped records and next page withou
   assert.deepEqual(await loader.loadPartyInboxOverdue({ tenantId, channels: [], now }), { hasMore: false, items: [] })
 })
 
+test('search finds historic messages and linked clients before pagination and keeps tenant and channel boundaries', async () => {
+  const { collections, add } = fixtures()
+  for (let i = 0; i < 110; i++) add(`newer-${i}`, 'vk', { salesStage: 'proposal' })
+  add('old-match', 'vk', { salesStage: 'proposal' }, { lastMessageAt: date(-10), lastMessageText: 'Другой текст' })
+  add('foreign-source', 'vk', { salesStage: 'proposal' }, { tenantId: 'company-b', clientName: 'Квест (дети)' })
+  add('foreign-message', 'vk', { salesStage: 'proposal' })
+  add('foreign-client', 'vk', { salesStage: 'proposal', clientId: 'foreign-client' })
+  add('other-stage', 'vk', { salesStage: 'lost' }, { clientName: 'Квест (дети)' })
+  add('linked-client', 'vk', { salesStage: 'proposal', clientId: 'linked-client' })
+  collections.vk.push({ _id: 'legacy-match', tenantId, clientName: 'Квест (дети)', lastMessageAt: date(-25) })
+  collections.vkMessages = [
+    { _id: 'older-message', tenantId, conversationId: 'old-match', text: 'Квест (дети)', sentAt: date(-15) },
+    { _id: 'foreign-hit', tenantId: 'company-b', conversationId: 'foreign-message', text: 'Квест (дети)', sentAt: date(-15) },
+  ]
+  collections.clients = [
+    { _id: 'linked-client', tenantId, firstName: 'Анна', secondName: 'Петрова', phone: '+7 (900) 100-11-22' },
+    { _id: 'foreign-client', tenantId: 'company-b', firstName: 'Квест (дети)', phone: '+7 (900) 100-11-22' },
+  ]
+  const loader = service(collections)
+  const query = { tenantId, channel: 'vk', salesStage: 'proposal' }
+  for (const [search, sourceId] of [['квест (дети)', 'old-match'], ['Анна Петрова', 'linked-client'], ['89001001122', 'linked-client']]) {
+    const result = await loader.loadPartyInboxChannel({ ...query, search })
+    assert.deepEqual(result.items.map((row) => row.sourceId), [sourceId])
+    assert.equal(result.hasMore, false)
+  }
+  assert.deepEqual((await loader.loadPartyInboxChannel({ ...query, salesStage: 'new', search: 'квест (дети)' })).items.map((row) => row.sourceId), ['legacy-match'])
+  assert.deepEqual((await loader.loadPartyInboxChannel({ ...query, search: '.*' })).items, [])
+})
+
+test('overdue and status filters use saved deadlines and the latest incoming message before pagination', async () => {
+  const { collections, add } = fixtures()
+  for (let i = 0; i < 110; i++) add(`ignored-${i}`, 'vk', { status: 'resolved', responseDueAt: date(-200) })
+  add('reopened', 'vk', { status: 'resolved', responseDueAt: date(-100), acknowledgedIncomingToken: 'old-message' })
+  add('confirmed', 'vk', { status: 'resolved', responseDueAt: date(-90), acknowledgedIncomingToken: 'confirmed-message' })
+  add('call', 'novofon', { status: 'follow_up', nextContactAt: date(-50), acknowledgedIncomingToken: 'call' }, { transcript: 'Согласовали ведущего', linkedOrderId: 'call-order' })
+  collections.vkMessages = [
+    { _id: 'new-message', tenantId, conversationId: 'reopened', direction: 'incoming', text: 'Согласовали ведущего', sentAt: date(-10) },
+    { _id: 'old-message', tenantId, conversationId: 'reopened', direction: 'incoming', text: 'Согласовали ведущего', sentAt: date(-20) },
+    { _id: 'confirmed-message', tenantId, conversationId: 'confirmed', direction: 'incoming', text: 'Согласовали ведущего', sentAt: date(-30) },
+  ]
+  const loader = service(collections)
+  const query = { tenantId, channels, now, search: 'ведущего' }
+  const reopened = await loader.loadPartyInboxOverdue({ ...query, status: 'needs_reply' })
+  assert.deepEqual(reopened.items.map((row) => [row.sourceId, row.status, row.incomingToken]), [['reopened', 'needs_reply', 'new-message']])
+  const call = await loader.loadPartyInboxOverdue({ ...query, status: 'follow_up' })
+  assert.deepEqual(call.items.map((row) => [row.sourceId, row.status, row.orderId]), [['call', 'follow_up', 'call-order']])
+  assert.deepEqual((await loader.loadPartyInboxChannel({ tenantId, channel: 'vk', status: 'needs_reply' })).items.map((row) => row.sourceId), ['reopened'])
+})
+
 const routeCode = (await readFile(new URL('app/api/party/inbox/route.js', root), 'utf8')).replace(/^import[\s\S]*?from '[^']+'\r?\n/gm, '').replace('export const dynamic', 'const dynamic').replace('export async function GET', 'async function GET')
 function listRoute({ denied = false, telegramAllowed = false } = {}) {
   const calls = []
@@ -233,6 +286,7 @@ function listRoute({ denied = false, telegramAllowed = false } = {}) {
     loadPartyInboxOverdue: async (args) => { calls.push({ scope: 'overdue', ...args }); return { items: [{ id: 'oldest' }], hasMore: true } },
     loadPartyInboxChannel: async (args) => { calls.push({ scope: 'all', ...args }); return { items: [], hasMore: false } },
     getPartyClientModel: async () => optionsModel, getPartyOrderModel: async () => optionsModel, getPartyStaffModel: async () => optionsModel,
+    PARTY_INBOX_CHANNELS: core.PARTY_INBOX_CHANNELS, PARTY_INBOX_SALES_STAGES: core.PARTY_INBOX_SALES_STAGES, PARTY_INBOX_STATUSES: core.PARTY_INBOX_STATUSES,
   }
   const GET = new Function(...Object.keys(deps), `${routeCode}\nreturn GET`)(...Object.values(deps))
   return { calls, get: (search = '') => GET({ url: `http://localhost/api/party/inbox?${search}` }) }
@@ -256,10 +310,24 @@ test('list GET overdue uses one global loader with tariff channels and keeps fir
   const route = listRoute({ telegramAllowed: true })
   const result = await route.get('scope=overdue&salesStage=lost')
   assert.equal(route.calls.length, 1)
-  assert.deepEqual(route.calls[0], { scope: 'overdue', tenantId, channels: ['vk', 'avito', 'telegram', 'novofon'], page: 0, salesStage: 'lost' })
+  assert.deepEqual(route.calls[0], { scope: 'overdue', tenantId, channels: ['vk', 'avito', 'telegram', 'novofon'], page: 0, salesStage: 'lost', search: '', status: '' })
   assert.deepEqual(result.body.data.items, [{ id: 'oldest' }])
   assert.equal(result.body.data.hasMore, true)
   assert.equal(result.body.data.scope, 'overdue')
   assert.ok(result.body.data.options)
   assert.equal(result.headers['Cache-Control'], 'private, no-store')
+})
+
+test('list GET validates and forwards search, channel and status before pagination without enabling an unavailable channel', async () => {
+  const route = listRoute()
+  for (const query of ['channel=invalid', 'status=__proto__', 'q=' + 'a'.repeat(121), 'q=%00']) {
+    assert.equal((await route.get(query)).status, 400)
+  }
+  assert.equal(route.calls.length, 0)
+  const result = await route.get('channel=avito&status=follow_up&q=%20текст%20&page=2')
+  assert.equal(result.status, 200)
+  assert.deepEqual(route.calls, [{ scope: 'all', tenantId, channel: 'avito', status: 'follow_up', search: 'текст', page: 2, salesStage: '' }])
+  assert.deepEqual(result.body.data.channels, channels)
+  assert.equal((await route.get('channel=telegram')).status, 200)
+  assert.equal(route.calls.length, 1)
 })

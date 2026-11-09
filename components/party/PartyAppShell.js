@@ -1093,7 +1093,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
             )}
           </div>
 
-          <div inert={mobileMenuOpen || undefined} className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pb-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] md:pb-0">
+          <div data-party-workspace-scroll inert={mobileMenuOpen || undefined} className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto pb-[calc(var(--party-mobile-nav-height,0px)+env(safe-area-inset-bottom))] md:pb-0">
             {children}
           </div>
         </section>

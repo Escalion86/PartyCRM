@@ -2,12 +2,12 @@ import {
   getPartyVkConversationModel, getPartyVkMessageModel,
   getPartyAvitoConversationModel, getPartyAvitoMessageModel,
   getPartyTelegramConversationModel, getPartyTelegramMessageModel,
-  getPartyCallModel,
+  getPartyCallModel, getPartyClientModel,
 } from './partyModels'
 import { getPartyInboxStateModel } from './partyInboxModels'
-import { partyInboxKey, resolvePartyInboxStatus } from '@helpers/partyInboxCore'
+import { partyInboxKey, resolvePartyInboxOrderId, resolvePartyInboxStatus } from '@helpers/partyInboxCore'
 import { getPartyInboxSlaView } from '@helpers/partyInboxSla'
-import { buildPartyInboxOverduePipeline, buildPartyInboxSalesStagePipeline } from '@helpers/partyInboxQuery'
+import { buildPartyInboxChannelPipeline, buildPartyInboxOverduePipeline } from '@helpers/partyInboxQuery'
 
 export const partyInboxSources = {
   vk: { source: getPartyVkConversationModel, messages: getPartyVkMessageModel },
@@ -29,9 +29,9 @@ const loadIncomingTokens = async ({ definition, Source, tenantId, ids }) => {
   return new Map(incoming.map((message) => [String(message._id), String(message.messageId)]))
 }
 
-const mapPartyInboxItem = ({ row, state, channel, tokens, now }) => {
+export const mapPartyInboxItem = ({ row, state, channel, tokens, now, resolvedIncomingToken }) => {
   const sourceId = String(row._id)
-  const incomingToken = channel === 'novofon' ? (row.direction === 'incoming' ? sourceId : '') : tokens.get(sourceId) || ''
+  const incomingToken = resolvedIncomingToken ?? (channel === 'novofon' ? (row.direction === 'incoming' ? sourceId : '') : tokens?.get(sourceId) || '')
   const sla = getPartyInboxSlaView(state, now)
   return {
     id: partyInboxKey(channel, sourceId), channel, sourceId,
@@ -52,39 +52,51 @@ const mapPartyInboxItem = ({ row, state, channel, tokens, now }) => {
     overdueAt: state?.overdueAt || null,
     slaOpen: sla.slaOpen,
     clientId: String((state ? state.clientId : row.clientId || row.linkedClientId) || ''),
-    orderId: String((state ? state.orderId : row.orderId || row.linkedOrderId) || ''),
+    orderId: resolvePartyInboxOrderId(state, row),
+    sourceOrderId: resolvePartyInboxOrderId(null, row),
   }
 }
 
-export const loadPartyInboxOverdue = async ({ tenantId, channels, page = 0, salesStage = '', now = new Date() }) => {
+export const loadPartyInboxOverdue = async ({ tenantId, channels, page = 0, salesStage = '', search = '', status = '', now = new Date() }) => {
   if (!channels.length) return { hasMore: false, items: [] }
-  const [State, models] = await Promise.all([
+  const [State, models, Clients] = await Promise.all([
     getPartyInboxStateModel(),
-    Promise.all(channels.map(async (channel) => ({ channel, Source: await partyInboxSources[channel].source() }))),
+    Promise.all(channels.map(async (channel) => {
+      const definition = partyInboxSources[channel]
+      const [Source, Messages] = await Promise.all([definition.source(), search || status ? definition.messages?.() : undefined])
+      return { channel, Source, Messages }
+    })),
+    search ? getPartyClientModel() : undefined,
   ])
   const states = await State.aggregate(buildPartyInboxOverduePipeline({
     tenantId: State.schema.path('tenantId').cast(tenantId),
-    sources: models.map(({ channel, Source }) => ({ channel, collectionName: Source.collection.name })),
-    page, salesStage, now,
+    sources: models.map(({ channel, Source, Messages }) => ({ channel, collectionName: Source.collection.name, messagesCollectionName: Messages?.collection.name })),
+    clientCollectionName: Clients?.collection.name, page, salesStage, search, status, now,
   }))
   const rows = states.slice(0, 100)
-  const tokensByChannel = new Map(await Promise.all(models.map(async ({ channel, Source }) => [channel, await loadIncomingTokens({
+  const tokensByChannel = status ? null : new Map(await Promise.all(models.map(async ({ channel, Source }) => [channel, await loadIncomingTokens({
     definition: partyInboxSources[channel], Source, tenantId,
     ids: rows.filter((state) => state.channel === channel).map((state) => state.sourceId),
   })])))
   return {
     hasMore: states.length > 100,
-    items: rows.map((state) => mapPartyInboxItem({ row: state.sourceRow, state, channel: state.channel, tokens: tokensByChannel.get(state.channel), now })),
+    items: rows.map((state) => mapPartyInboxItem({ row: state.sourceRow, state, channel: state.channel, tokens: tokensByChannel?.get(state.channel), resolvedIncomingToken: state.inboxIncomingToken, now })),
   }
 }
 
-export const loadPartyInboxChannel = async ({ tenantId, channel, page = 0, salesStage = '' }) => {
+export const loadPartyInboxChannel = async ({ tenantId, channel, page = 0, salesStage = '', search = '', status = '' }) => {
   const definition = partyInboxSources[channel]
-  const [Source, State] = await Promise.all([definition.source(), getPartyInboxStateModel()])
+  const [Source, State, Messages, Clients] = await Promise.all([
+    definition.source(), getPartyInboxStateModel(),
+    search || status ? definition.messages?.() : undefined,
+    search ? getPartyClientModel() : undefined,
+  ])
+  const filtered = Boolean(salesStage || search || status)
   const filter = { tenantId, ...(channel === 'novofon' ? { provider: 'novofon' } : {}) }
-  const sources = salesStage ? await Source.aggregate(buildPartyInboxSalesStagePipeline({
+  const sources = filtered ? await Source.aggregate(buildPartyInboxChannelPipeline({
     tenantId: Source.schema.path('tenantId').cast(tenantId), channel,
-    stateCollectionName: State.collection.name, salesStage, page,
+    stateCollectionName: State.collection.name, messagesCollectionName: Messages?.collection.name,
+    clientCollectionName: Clients?.collection.name, salesStage, search, status, page,
   })) : await Source.find(filter)
     .select('_id clientId orderId linkedClientId linkedOrderId clientName lastMessageText lastMessageAt unreadCount startedAt phone direction aiSummary createdAt')
     .sort(channel === 'novofon' ? { startedAt: -1, _id: -1 } : { lastMessageAt: -1, _id: -1 })
@@ -93,9 +105,9 @@ export const loadPartyInboxChannel = async ({ tenantId, channel, page = 0, sales
   const rows = sources.slice(0, 100)
   const ids = rows.map((row) => row._id)
   const [states, tokens] = await Promise.all([
-    salesStage ? rows.flatMap((row) => row.inboxState ? [row.inboxState] : []) : State.find({ tenantId, channel, sourceId: { $in: ids } }).lean(),
-    loadIncomingTokens({ definition, Source, tenantId, ids }),
+    filtered ? rows.flatMap((row) => row.inboxState ? [row.inboxState] : []) : State.find({ tenantId, channel, sourceId: { $in: ids } }).lean(),
+    status ? undefined : loadIncomingTokens({ definition, Source, tenantId, ids }),
   ])
   const statesById = new Map(states.map((state) => [String(state.sourceId), state]))
-  return { hasMore, items: rows.map((row) => mapPartyInboxItem({ row, state: statesById.get(String(row._id)), channel, tokens })) }
+  return { hasMore, items: rows.map((row) => mapPartyInboxItem({ row, state: statesById.get(String(row._id)), channel, tokens, resolvedIncomingToken: row.inboxIncomingToken })) }
 }

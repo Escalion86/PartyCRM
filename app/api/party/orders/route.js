@@ -628,9 +628,13 @@ export async function POST(req) {
   if (['fulfillment', 'pricingSnapshot', 'orderTypeSnapshot', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint'].some((field) => Object.hasOwn(body, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие для отметки проведения', 'validation')
   if (body.status === 'closed' || body.status === 'canceled') return partyError(400, 'partycrm_invalid_initial_status', 'Создайте заявку, затем используйте действие закрытия или отмены')
   if ((body.transactions || []).some((transaction) => transaction.category === 'payout')) return partyError(400, 'partycrm_use_payout_action', 'Выплату исполнителю проводите отдельным действием после сохранения заказа')
-  let initialPayment, initialIdentity, initialService
-  if (body.initialPayment !== undefined || body.initialExpectations !== undefined) {
+  let initialPayment, initialIdentity, initialService, linkInboxOrder
+  if (body.initialPayment !== undefined || body.initialExpectations !== undefined || body.inboxId !== undefined) {
     try {
+      if (body.inboxId !== undefined) {
+        const { preparePartyInboxOrderLink } = await import('@server/partyInboxOrder')
+        linkInboxOrder = await preparePartyInboxOrderLink({ context, inboxId: body.inboxId })
+      }
       initialService = await import('@server/partyOrderCreatePayment')
       initialPayment = body.initialPayment !== undefined ? initialService.parsePartyInitialPayment(body.initialPayment) : null
       initialIdentity = initialService.buildPartyOrderCreateIdentity({ key: req.headers.get('Idempotency-Key'), context, body })
@@ -645,6 +649,7 @@ export async function POST(req) {
   delete ordinaryBody.initialPayment
   delete ordinaryBody.initialExpectations
   delete ordinaryBody.completeBooking
+  delete ordinaryBody.inboxId
   const createBody = { ...ordinaryBody, ...(Array.isArray(body.assignedStaff) ? { assignedStaff: body.assignedStaff.map(({ staffId, role, payoutAmount }) => ({ staffId, role, payoutAmount })) } : {}) }
   const baseline = normalizeOrderPayload({})
   const changedFields = Object.fromEntries(Object.entries(createBody).filter(([key, value]) => !['_id', 'workflowStageId', 'bookingVersion'].includes(key) && JSON.stringify(value) !== JSON.stringify(baseline[key])))
@@ -733,7 +738,7 @@ export async function POST(req) {
         const { parsePartyInitialExpectations } = await import('@server/partyPaymentExpectations')
         expectations = parsePartyInitialExpectations({ context, payload: { ...limitedPayload, tenantId: context.tenantId }, values: body.initialExpectations })
       }
-      const outcome = await initialService.createPartyOrderWithPayment({ context, identity: initialIdentity, payment: initialPayment, expectations, payload: limitedPayload, checkConflicts: async (session) => {
+      const outcome = await initialService.createPartyOrderWithPayment({ context, identity: initialIdentity, payment: initialPayment, expectations, payload: limitedPayload, linkInboxOrder, checkConflicts: async (session) => {
         const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, session, checkLocation: false })
         if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по исполнителям'), { status: 409, code: 'partycrm_order_conflict', conflicts })
       } })

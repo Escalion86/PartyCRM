@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { formatMoney } from '@helpers/formatMoney'
 
 const formatDateTime = (value) => {
@@ -33,6 +34,8 @@ const getCallStatusLabel = (call) => {
 
 export default function CallsList({
   calls = [],
+  focusedCallId = '',
+  companyId = '',
   clientsById = new Map(),
   canManage = false,
   creatingCallId = '',
@@ -41,7 +44,7 @@ export default function CallsList({
   if (!calls.length) {
     return (
       <div className="p-6 text-sm text-center bg-white border border-sky-100 rounded-2xl text-slate-500">
-        Звонков Novofon пока нет.
+        {focusedCallId ? 'Звонок не найден или недоступен в этой компании.' : 'Звонков Novofon пока нет.'}
       </div>
     )
   }
@@ -83,10 +86,10 @@ export default function CallsList({
                 >
                   {isCreating ? 'Создаю...' : 'Создать заказ'}
                 </button>
-              ) : linkedOrderId ? (
-                <span className="px-3 py-2 text-sm font-semibold rounded-md bg-emerald-50 text-emerald-700">
-                  Заказ создан
-                </span>
+              ) : linkedOrderId && companyId ? (
+                <Link href={`/company/work?${new URLSearchParams({ companyId, orderId: linkedOrderId, mode: 'view' })}`} className="inline-flex min-h-11 cursor-pointer items-center self-start rounded-md bg-sky-50 px-3 text-sm font-semibold text-sky-700 underline">
+                  Открыть заказ
+                </Link>
               ) : null}
             </div>
 

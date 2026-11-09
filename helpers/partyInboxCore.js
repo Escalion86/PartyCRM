@@ -17,6 +17,9 @@ export const PARTY_INBOX_STATUSES = {
 
 export const partyInboxKey = (channel, sourceId) => `${channel}:${sourceId}`
 
+export const resolvePartyInboxOrderId = (state, source) =>
+  String(state?.orderId || source?.orderId || source?.linkedOrderId || '')
+
 // Only an incoming message reopens an explicitly handled conversation.
 // Reading it or receiving delivery updates must not change the workflow.
 export const resolvePartyInboxStatus = (state, incomingToken = '', direction = '') => {

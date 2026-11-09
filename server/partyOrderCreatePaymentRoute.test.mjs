@@ -9,20 +9,24 @@ import * as contacts from './partyOrderContactRoles.js'
 import * as assignments from '../helpers/partyOrderAssignments.js'
 import { parsePartyIsoDate } from '../helpers/partyIsoDate.js'
 import { getPartyWorkflow } from '../helpers/partyWorkflow.js'
+import { resolvePartyInboxOrderId } from '../helpers/partyInboxCore.js'
 
 const strip = (source) => source.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/^export /gm, '')
 // Resolve only the lazy module in the offline loader; the complete production
 // POST body and real normalizers/permission checks execute unchanged.
-const route = strip(await readFile(new URL('../app/api/party/orders/route.js', import.meta.url), 'utf8')).replace("await import('@server/partyOrderCreatePayment')", 'await loadInitialPaymentModule()')
+const route = strip(await readFile(new URL('../app/api/party/orders/route.js', import.meta.url), 'utf8'))
+  .replace("await import('@server/partyOrderCreatePayment')", 'await loadInitialPaymentModule()')
+  .replace("await import('@server/partyInboxOrder')", 'await loadInboxOrderModule()')
 const serviceSource = strip(await readFile(new URL('./partyOrderCreatePayment.js', import.meta.url), 'utf8'))
+const inboxSource = strip(await readFile(new URL('./partyInboxOrder.js', import.meta.url), 'utf8'))
 const helperDeps = { createHash, canPartyAccess: permissions.canPartyAccess, parsePartyIsoDate, getPartyOrderModel: () => {}, getPartyTransactionModel: () => {}, withPartyFinancialTransaction: () => {}, withPartyOrderVenueWrite: () => {}, supportsPartyVenueTransactions: async () => true }
 const core = new Function(...Object.keys(helperDeps), `${serviceSource};return {createPartyOrderPaymentService,parsePartyInitialPayment,buildPartyOrderCreateIdentity}`)(...Object.values(helperDeps))
-const tenantId = 'a'.repeat(24), actorId = 'b'.repeat(24), orderId = 'c'.repeat(24)
+const tenantId = 'a'.repeat(24), actorId = 'b'.repeat(24), orderId = 'c'.repeat(24), sourceId = 'd'.repeat(24)
 const owner = { tenantId, role: 'owner', staff: { _id: actorId, tenantId, role: 'owner', status: 'active' }, company: { settings: {} } }
 const body = { title: 'Мероприятие', serviceTitle: 'Шоу', contractAmount: 1000, initialPayment: { amount: '500.01', paymentMethod: 'cash' } }
 const actor = (grants) => ({ ...owner, role: 'performer', staff: { ...owner.staff, role: 'performer' }, position: { permissions: { orders: 'read', 'orders.create': 'edit', 'orders.title': 'edit', 'orders.serviceTitle': 'edit', 'finance.clientAmount': 'edit', 'finance.payments': 'edit', ...grants }, orderScope: {} } })
-function setup(context = owner) {
-  let orders = [], payments = [], serial = Promise.resolve()
+function setup(context = owner, { storedInboxState = null, sourceOrderId = null } = {}) {
+  let orders = [], payments = [], inboxState = storedInboxState, serial = Promise.resolve()
   const guards = [], effects = [], active = new Set()
   const q = (value) => ({ select() { return this }, session() { return this }, lean: async () => value })
   const Model = {
@@ -33,13 +37,26 @@ function setup(context = owner) {
   }
   const service = core.createPartyOrderPaymentService({ getOrders: async () => Model, getTransactions: async () => ({ create: async ([row], { session }) => { assert.ok(active.has(session)); payments.push(row) } }), financialTransaction: (tenant, callback) => {
     assert.equal(tenant, tenantId)
-    const operation = serial.then(async () => { const snapshot = structuredClone({ orders, payments }), session = {}; active.add(session); try { return await callback(session) } catch (error) { ({ orders, payments } = snapshot); throw error } finally { active.delete(session) } })
+    const operation = serial.then(async () => { const snapshot = structuredClone({ orders, payments, inboxState }), session = {}; active.add(session); try { return await callback(session) } catch (error) { ({ orders, payments, inboxState } = snapshot); throw error } finally { active.delete(session) } })
     serial = operation.catch(() => {}); return operation
   }, venueWrite: async ({ session, work }) => { assert.ok(active.has(session)); return work({ session }) } })
   const initial = { ...core, findPartyOrderCreateReplay: service.replay, createPartyOrderWithPayment: service.create }
+  const inboxDeps = {
+    ...permissions, resolvePartyInboxOrderId, PARTY_MANAGEMENT_ROLES: ['owner', 'admin'], isValidObjectId: (value) => /^[a-f\d]{24}$/i.test(String(value)),
+    partyInboxSources: { vk: { source: async () => ({ findOne: (filter) => q(filter.tenantId === tenantId && filter._id === sourceId ? { _id: sourceId, orderId: sourceOrderId } : null) }) } },
+    getPartyInboxStateModel: async () => ({
+      init: async () => {}, findOne: () => q(inboxState),
+      updateOne: async (filter, update, { session }) => {
+        assert.ok(active.has(session)); assert.deepEqual(filter, { tenantId, channel: 'vk', sourceId, orderId: null })
+        inboxState = { ...inboxState, ...update.$set, revision: (inboxState?.revision || 0) + update.$inc.revision }
+      },
+    }),
+  }
+  const inboxModule = new Function(...Object.keys(inboxDeps), `${inboxSource};return {preparePartyInboxOrderLink}`)(...Object.values(inboxDeps))
   const deps = {
     ...permissions, ...payloadHelpers, ...brief, ...contacts, ...assignments, getPartyWorkflow,
     loadInitialPaymentModule: async () => initial,
+    loadInboxOrderModule: async () => inboxModule,
     guardPartyOrderPatch: (...args) => { guards.push(args[1]); return permissions.guardPartyOrderPatch(...args) },
     NextResponse: { json: (body, options) => ({ status: options?.status || 200, body }) },
     getPartyRequestContext: async () => ({ context }), isValidObjectId: (value) => /^[a-f\d]{24}$/i.test(String(value)), parseJsonBody: async (request) => request.body,
@@ -52,8 +69,42 @@ function setup(context = owner) {
     recordPartyOrderAudit: async () => effects.push('audit'), syncPartyOrderCalendarAfterCrud: async () => effects.push('calendar'), sendPartyPerformerAssignmentPushes: async () => effects.push('push'), syncPartyOrderInventory: async () => { effects.push('inventory'); return {} }, filterPartyInventoryResult: async (context, result) => result,
   }
   const POST = new Function(...Object.keys(deps), `${route};return POST`)(...Object.values(deps))
-  return { guards, effects, get orders() { return orders }, get payments() { return payments }, post: (input = body, key = 'create_request_123') => POST({ body: structuredClone(input), headers: new Headers({ 'Idempotency-Key': key }) }) }
+  return { guards, effects, get orders() { return orders }, get payments() { return payments }, get inboxState() { return inboxState }, post: (input = body, key = 'create_request_123') => POST({ body: structuredClone(input), headers: new Headers({ 'Idempotency-Key': key }) }) }
 }
+
+test('creating from an inbox links atomically, replays the same request and rejects a second order', async () => {
+  const state = setup()
+  const input = { title: body.title, serviceTitle: body.serviceTitle, inboxId: `vk:${sourceId}` }
+  const [created, competing] = await Promise.all([state.post(input), state.post(input, 'competing_request_123')])
+  assert.equal(created.status, 201)
+  assert.equal(competing.status, 409)
+  assert.equal(competing.body.code, 'inbox_order_already_linked')
+  assert.equal(state.inboxState.orderId, orderId)
+  assert.equal(state.inboxState.revision, 1)
+  assert.equal(state.orders.length, 1)
+  assert.equal(Object.hasOwn(state.guards[0], 'inboxId'), false)
+  assert.equal((await state.post(input)).body.replayed, true)
+})
+
+test('an unavailable inbox item rolls back both the new order and the initial payment', async () => {
+  const state = setup()
+  const result = await state.post({ ...body, inboxId: `vk:${'e'.repeat(24)}` })
+  assert.equal(result.status, 404)
+  assert.equal(state.orders.length, 0)
+  assert.equal(state.payments.length, 0)
+  assert.equal(state.inboxState, null)
+})
+
+test('an existing source order prevents a duplicate even when the SLA state has no order id', async () => {
+  const storedInboxState = { orderId: null, revision: 1, responseDueAt: new Date() }
+  const state = setup(owner, { storedInboxState, sourceOrderId: 'f'.repeat(24) })
+  const result = await state.post({ ...body, inboxId: `vk:${sourceId}` })
+  assert.equal(result.status, 409)
+  assert.equal(result.body.code, 'inbox_order_already_linked')
+  assert.equal(state.orders.length, 0)
+  assert.equal(state.payments.length, 0)
+  assert.deepEqual(state.inboxState, storedInboxState)
+})
 
 test('actual main POST strips initialPayment before field permission checks and atomically creates one advance', async () => {
   const state = setup(actor({})), response = await state.post()

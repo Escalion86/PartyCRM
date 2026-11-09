@@ -469,6 +469,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [financeExportFrom, setFinanceExportFrom] = useState('')
   const [financeExportTo, setFinanceExportTo] = useState('')
   const [creatingCallOrderId, setCreatingCallOrderId] = useState('')
+  const [focusedCallId, setFocusedCallId] = useState('')
 
   const hasAccess = Boolean(context?.tenantId && context?.staff)
   const canManage = ['owner', 'admin'].includes(context?.role)
@@ -528,10 +529,13 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             ? window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
             : ''
         const canUseLegacyWorkspace = (membership) => membership.isAdmin && membership.status === 'active' && !isPartyRestrictedManagementContext(membership)
+        const url = new URL(window.location.href)
+        const callId = section === 'calls' ? url.searchParams.get('callId') || '' : ''
+        const callCompanyId = callId ? url.searchParams.get('company') || '' : ''
         let linkedCompanyId = ''
         try {
-          const link = readPartyLegacyOrderLink(window.location.href)
-          if (link?.companyId && availableMemberships.some((membership) => String(membership.tenantId) === link.companyId && canUseLegacyWorkspace(membership))) linkedCompanyId = link.companyId
+          const companyId = callCompanyId || readPartyLegacyOrderLink(url.href)?.companyId
+          if (companyId && availableMemberships.some((membership) => String(membership.tenantId) === companyId && canUseLegacyWorkspace(membership))) linkedCompanyId = companyId
         } catch {} // The link error is shown only after the normal workspace is ready.
         const requestedCompanyId = preferredCompanyId || linkedCompanyId || storedCompanyId
         const selectedMembership =
@@ -541,6 +545,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           availableMemberships.find(canUseLegacyWorkspace) ||
           availableMemberships[0]
         const selectedCompanyId = selectedMembership.tenantId
+        const canLoadFocusedCall = /^[a-f0-9]{24}$/i.test(callId) && (!callCompanyId || callCompanyId === String(selectedCompanyId))
         token.companyId = selectedCompanyId
 
         if (typeof window !== 'undefined') {
@@ -592,8 +597,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             '/api/party/orders',
             buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
           ),
-          apiJson(
-            '/api/party/calls',
+          callId && !canLoadFocusedCall ? { data: [] } : apiJson(
+            callId ? `/api/party/calls?${new URLSearchParams({ callId })}` : '/api/party/calls',
             buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
           ).catch((callsError) => {
             if (callsError.status === 403) return { data: [] }
@@ -616,6 +621,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         setServices(servicesResponse.data ?? [])
         setOrders(ordersResponse.data ?? [])
         setCalls(callsResponse.data ?? [])
+        setFocusedCallId(callId)
         setServiceGroups(serviceGroupsResponse.data ?? [])
         setCompanySettings(
           companySettingsResponse.data?.settings ??
@@ -639,7 +645,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         if (workspaceLoadToken.current === token) setLoading(false)
       }
     },
-    [setServiceGroups]
+    [section, setServiceGroups]
   )
 
   useEffect(() => {
@@ -2062,7 +2068,15 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                   Проверяйте AI-черновики заказов перед созданием событий.
                 </p>
               </div>
-              <span className="text-sm text-black/55">{calls.length}</span>
+              {focusedCallId ? (
+                <button type="button" className="cursor-pointer text-sm font-semibold text-sky-700 underline" onClick={() => {
+                  const url = new URL(window.location.href)
+                  url.searchParams.delete('callId')
+                  url.searchParams.delete('company')
+                  window.history.replaceState(window.history.state, '', url)
+                  loadWorkspace(activeCompanyId)
+                }}>Все звонки</button>
+              ) : <span className="text-sm text-black/55">{calls.length}</span>}
             </div>
             {companyAccess?.allowTelephony === false ? (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-6 text-amber-900">
@@ -2072,6 +2086,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             ) : (
               <CallsList
                 calls={calls}
+                focusedCallId={focusedCallId}
+                companyId={activeCompanyId}
                 clientsById={clientsById}
                 canManage={canManage}
                 creatingCallId={creatingCallOrderId}

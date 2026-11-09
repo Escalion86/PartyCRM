@@ -45,6 +45,7 @@ const selectionOf = (order) =>
 function Wizard({
   companyId,
   order = {},
+  inboxId,
   options,
   onSaved,
   onClose,
@@ -129,7 +130,7 @@ function Wizard({
   }, [dirty, onDirtyChange])
   const childChanged = useCallback((value) => setClientDirty(value), [])
   const contactChanged = useCallback((value) => setContactDirty(value), [])
-  const draftScope = getPartyOrderWizardDraftScope(context, order)
+  const draftScope = getPartyOrderWizardDraftScope(context, order, inboxId)
   const snapshot = useMemo(() => ({
     draft, step, reachedStep, rentalMinutes, initialPayment, expectations,
     clientForm, createdClients, attempt: attempt.current, unresolved,
@@ -333,7 +334,7 @@ function Wizard({
   const close = () => {
     if (
       !busy &&
-      requestPartyLeave({ kind: 'record', target: 'close-order-wizard' })
+      ((inboxId && !dirty) || requestPartyLeave({ kind: 'record', target: 'close-order-wizard' }))
     )
     {
       recovery.clear()
@@ -419,6 +420,7 @@ function Wizard({
         ...(existing
           ? { commercialRevision: order.commercialRevision || 0 }
           : {
+              ...(inboxId ? { inboxId } : {}),
               initialExpectations: expectations.map(
                 ({ localId: _local, ...payment }) => payment
               ),
@@ -1263,6 +1265,6 @@ export default function PartyOrderWizard({ options, ...props }) {
         )}
       </Modal>
     )
-  const scope = getPartyOrderWizardDraftScope(resolved.context, props.order)
+  const scope = getPartyOrderWizardDraftScope(resolved.context, props.order, props.inboxId)
   return <Wizard key={`${scope?.key || props.companyId}:${scope?.signature || ''}`} {...props} options={resolved} />
 }

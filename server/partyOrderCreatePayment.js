@@ -115,6 +115,7 @@ export const createPartyOrderPaymentService = ({
     expectations = [],
     payload,
     checkConflicts,
+    linkInboxOrder,
   }) => {
     if (
       payment && !canPartyAccess(context, {
@@ -199,6 +200,7 @@ export const createPartyOrderPaymentService = ({
           if (expectations.length) {
             await insertExpectations({ context, order: record, values: expectations, session })
           }
+          await linkInboxOrder?.(record, session)
           return record
         },
       })

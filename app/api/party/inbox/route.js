@@ -3,6 +3,7 @@ import { getPartyRequestContext, partyError } from '@server/partyApi'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
 import { loadPartyInboxChannel, loadPartyInboxOverdue } from '@server/partyInbox'
 import { getPartyClientModel, getPartyOrderModel, getPartyStaffModel } from '@server/partyModels'
+import { PARTY_INBOX_CHANNELS, PARTY_INBOX_SALES_STAGES, PARTY_INBOX_STATUSES } from '@helpers/partyInboxCore'
 
 export const dynamic = 'force-dynamic'
 
@@ -16,12 +17,20 @@ export async function GET(req) {
     const scope = params.get('scope') || 'all'
     if (!['all', 'overdue'].includes(scope)) return partyError(400, 'invalid_scope', 'Некорректная очередь', 'validation')
     const salesStage = params.get('salesStage') || ''
-    if (salesStage && !['new', 'qualification', 'proposal', 'negotiation', 'won', 'lost'].includes(salesStage)) return partyError(400, 'invalid_sales_stage', 'Некорректный этап продаж', 'validation')
+    if (salesStage && !Object.hasOwn(PARTY_INBOX_SALES_STAGES, salesStage)) return partyError(400, 'invalid_sales_stage', 'Некорректный этап продаж', 'validation')
+    const search = params.get('q')?.trim() || ''
+    if (search.length > 120 || /[\u0000-\u001f\u007f]/u.test(search)) return partyError(400, 'invalid_search', 'Введите до 120 символов в поле поиска', 'validation')
+    const channel = params.get('channel') || ''
+    if (channel && !PARTY_INBOX_CHANNELS.includes(channel)) return partyError(400, 'invalid_channel', 'Некорректный канал', 'validation')
+    const status = params.get('status') || ''
+    if (status && !Object.hasOwn(PARTY_INBOX_STATUSES, status)) return partyError(400, 'invalid_status', 'Некорректное состояние диалога', 'validation')
     const tariff = await getPartyCompanyTariffAccessState(context.tenantId)
-    const channels = ['vk', 'avito', ...(tariff.access?.allowTelegramIntegration ? ['telegram'] : []), 'novofon']
+    const channels = PARTY_INBOX_CHANNELS.filter((name) => name !== 'telegram' || tariff.access?.allowTelegramIntegration)
+    const selectedChannels = channel ? channels.filter((name) => name === channel) : channels
+    const filters = { tenantId: context.tenantId, page, salesStage, search, status }
     const results = scope === 'overdue'
-      ? [await loadPartyInboxOverdue({ tenantId: context.tenantId, channels, page, salesStage })]
-      : await Promise.all(channels.map((channel) => loadPartyInboxChannel({ tenantId: context.tenantId, channel, page, salesStage })))
+      ? [await loadPartyInboxOverdue({ ...filters, channels: selectedChannels })]
+      : await Promise.all(selectedChannels.map((name) => loadPartyInboxChannel({ ...filters, channel: name })))
     let options = null
     if (page === 0) {
       const [Clients, Orders, Staff] = await Promise.all([getPartyClientModel(), getPartyOrderModel(), getPartyStaffModel()])
