@@ -14,6 +14,8 @@ export default function PartyRoleNewClient({
   disabled = false,
   initialState = null,
   onStateChange,
+  onCancel,
+  onBusyChange,
 }) {
   const [open, setOpen] = useState(initialState?.open === true)
   const [draft, setDraft] = useState(() => initialState?.draft || ({
@@ -44,6 +46,7 @@ export default function PartyRoleNewClient({
   if (!can('clients.create') || !can('orders.clientId')) return null
   const submit = async () => {
     setBusy(true)
+    onBusyChange?.(true)
     setError('')
     try {
       const body = Object.fromEntries(
@@ -76,6 +79,7 @@ export default function PartyRoleNewClient({
       setError(cause.message)
     } finally {
       setBusy(false)
+      onBusyChange?.(false)
     }
   }
   if (!open)
@@ -164,7 +168,10 @@ export default function PartyRoleNewClient({
           type="button"
           className={button}
           disabled={busy || disabled}
-          onClick={() => setOpen(false)}
+          onClick={() => {
+            setOpen(false)
+            onCancel?.()
+          }}
         >
           Отмена
         </button>

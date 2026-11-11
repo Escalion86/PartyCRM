@@ -165,6 +165,32 @@ export async function runPartyBookingBrowserTest({
     await page.getByRole('button', { name: '+ Заказ', exact: true }).click()
     await page.getByRole('dialog').last().waitFor()
     const dialog = page.getByRole('dialog').last()
+    const clientTrigger = dialog.getByRole('button', { name: /^Основной клиент/ })
+    const clientPicker = page.getByRole('dialog', { name: 'Выбор клиента', exact: true })
+    const newClientDialog = page.getByRole('dialog', { name: 'Новый клиент', exact: true })
+    const clientSearch = clientPicker.getByLabel('Поиск клиента', { exact: true })
+    const clientOptionsPath = '/api/party/order-options/clients'
+    const searchClients = async (query) => {
+      const [response] = await Promise.all([
+        page.waitForResponse((candidate) => {
+          const url = new URL(candidate.url())
+          return url.pathname === clientOptionsPath &&
+            url.searchParams.get('q') === query &&
+            candidate.request().method() === 'GET'
+        }),
+        clientSearch.fill(query),
+      ])
+      assert.equal(response.ok(), true)
+      return (await response.json()).data
+    }
+    const selectExistingClient = async () => {
+      await clientTrigger.click()
+      const matches = await searchClients(`8 ${String(client.phone).slice(1)}`)
+      assert.ok(matches.some((person) => String(person._id) === String(client._id)))
+      await clientPicker.getByRole('button', { name: client.firstName }).click()
+      await clientPicker.waitFor({ state: 'hidden' })
+      assert.ok((await clientTrigger.textContent()).includes(client.firstName))
+    }
     const checkLayout = async () => {
       for (const width of [390, 1280]) {
         await page.setViewportSize({ width, height: 844 })
@@ -176,8 +202,52 @@ export async function runPartyBookingBrowserTest({
     }
     await dialog.getByRole('button', { name: 'Сохранить заявку', exact: true }).click()
     await page.waitForFunction(() => document.activeElement?.getAttribute('aria-invalid') === 'true')
-    await dialog.getByLabel('Основной клиент', { exact: true }).selectOption(String(client._id))
-    await dialog.getByLabel('Суть обращения').fill('Проверка короткой заявки и восстановления')
+    const leadComment = 'Проверка короткой заявки и восстановления'
+    await dialog.getByLabel('Суть обращения').fill(leadComment)
+    await clientTrigger.click()
+    await page.waitForFunction(() => document.activeElement?.type === 'search')
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 844 })
+      assert.ok(await clientPicker.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
+    }
+    await page.setViewportSize({ width: 390, height: 844 })
+    const newClientQuery = '8 (900) 000-04-67'
+    const newClientName = 'Клиент браузерной проверки'
+    assert.deepEqual(await searchClients(newClientQuery), [])
+    const createClient = clientPicker.getByRole('button', { name: 'Создать клиента', exact: true })
+    await createClient.click()
+    const clientPhone = newClientDialog.getByLabel('Телефон', { exact: true })
+    assert.equal((await clientPhone.inputValue()).replace(/\D/g, ''), '9000000467')
+    const clientName = newClientDialog.getByLabel('Имя', { exact: true })
+    await clientName.fill('Черновик имени')
+    await newClientDialog.getByRole('button', { name: 'Отмена', exact: true }).click()
+    assert.equal(await clientSearch.inputValue(), newClientQuery)
+    await page.waitForFunction(() => document.activeElement?.type === 'search')
+    await createClient.click()
+    assert.equal((await clientPhone.inputValue()).replace(/\D/g, ''), '9000000467')
+    assert.equal(await clientName.inputValue(), 'Черновик имени')
+    await clientName.fill(newClientName)
+    const [createdClientResponse] = await Promise.all([
+      page.waitForResponse((response) =>
+        new URL(response.url()).pathname === clientOptionsPath &&
+        response.request().method() === 'POST'
+      ),
+      newClientDialog.getByRole('button', { name: 'Создать и выбрать', exact: true }).click(),
+    ])
+    assert.equal(createdClientResponse.status(), 201)
+    const { data: createdClient } = await createdClientResponse.json()
+    const savedClient = await connection.db.collection('clients').findOne({
+      _id: new Types.ObjectId(createdClient._id),
+      tenantId: company._id,
+    })
+    assert.equal(savedClient?.firstName, newClientName)
+    assert.equal(String(savedClient?.phone), '79000000467')
+    await newClientDialog.waitFor({ state: 'hidden' })
+    assert.ok((await clientTrigger.textContent()).includes(newClientName))
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label')?.startsWith('Основной клиент:'))
+    await selectExistingClient()
+    assert.equal(await dialog.getByLabel('Суть обращения').inputValue(), leadComment)
+    console.log('PASS browser: client phone search, prefill, cancel and create-and-select')
     await dialog.getByText('Черновик сохранён в этой вкладке на сутки.', { exact: true }).waitFor()
     const acceptReload = (notice) => notice.accept()
     page.on('dialog', acceptReload)
@@ -185,8 +255,8 @@ export async function runPartyBookingBrowserTest({
     page.off('dialog', acceptReload)
     await page.getByRole('button', { name: '+ Заказ', exact: true }).click()
     await dialog.getByRole('button', { name: 'Восстановить черновик', exact: true }).click()
-    assert.equal(await dialog.getByLabel('Основной клиент', { exact: true }).inputValue(), String(client._id))
-    assert.equal(await dialog.getByLabel('Суть обращения').inputValue(), 'Проверка короткой заявки и восстановления')
+    assert.ok((await clientTrigger.textContent()).includes(client.firstName))
+    assert.equal(await dialog.getByLabel('Суть обращения').inputValue(), leadComment)
     const leadSaved = page.waitForResponse((response) => response.url().endsWith('/api/party/orders') && response.request().method() === 'POST')
     await dialog.getByRole('button', { name: 'Сохранить заявку', exact: true }).click()
     const leadResponse = await leadSaved
@@ -196,7 +266,7 @@ export async function runPartyBookingBrowserTest({
     assert.equal(String(lead.clientId), String(client._id))
     assert.equal(lead.eventDate, null)
     assert.equal(lead.orderTypeId, null)
-    assert.equal(lead.adminComment, 'Проверка короткой заявки и восстановления')
+    assert.equal(lead.adminComment, leadComment)
     await page.getByRole('dialog').getByRole('button', { name: 'К списку', exact: true }).click()
     await page.getByRole('dialog').waitFor({ state: 'hidden' })
     console.log('PASS browser: contact lead saves without type/place/time, restores after reload and focuses validation')
@@ -234,9 +304,7 @@ export async function runPartyBookingBrowserTest({
     await dialog.getByRole('button', { name: /^10:00 — 11:00$/ }).click()
     await checkLayout()
     await dialog.getByRole('button', { name: 'Далее', exact: true }).click()
-    await dialog
-      .getByLabel('Основной клиент', { exact: true })
-      .selectOption(String(client._id))
+    await selectExistingClient()
     await dialog.getByLabel(/^Пожелания/).fill('Длинный бриф: '.repeat(80))
     await checkLayout()
     await dialog.getByRole('button', { name: 'Далее', exact: true }).click()

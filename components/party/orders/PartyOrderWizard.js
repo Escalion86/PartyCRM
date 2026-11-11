@@ -16,7 +16,7 @@ import usePartyUnsavedChanges, {
 } from '@components/party/navigation/usePartyUnsavedChanges'
 import { PartyEventBriefEditor } from './PartyEventBrief'
 import { getPartyBriefAnswer, hasPartyBriefAnswer } from '@helpers/partyBriefTemplates'
-import PartyRoleNewClient from './PartyRoleNewClient'
+import PartyOrderClientPicker from './PartyOrderClientPicker'
 import PartyOrderAvailabilityPicker from './PartyOrderAvailabilityPicker'
 import PartyInitialExpectations from './PartyInitialExpectations'
 import usePartyOrderWizardDraft from './usePartyOrderWizardDraft'
@@ -91,6 +91,7 @@ function Wizard({
   const [step, setStep] = useState(canCaptureLead ? -1 : 0)
   const [reachedStep, setReachedStep] = useState(canCaptureLead ? -1 : 0)
   const [clientForm, setClientForm] = useState(null)
+  const [clientPickerOpen, setClientPickerOpen] = useState(false)
   const [clientFormVersion, setClientFormVersion] = useState(0)
   const [validationStep, setValidationStep] = useState(null)
   const stepSection = useRef(null)
@@ -178,6 +179,7 @@ function Wizard({
     setInitialPayment(saved.initialPayment)
     setExpectations(saved.expectations)
     setClientForm(saved.clientForm || null)
+    setClientPickerOpen(Boolean(saved.clientForm?.open && !saved.attempt && !saved.unresolved && [-1, 4].includes(saved.step)))
     setCreatedClients(saved.createdClients || [])
     setClientFormVersion((previous) => previous + 1)
     attempt.current = saved.attempt || null
@@ -466,46 +468,38 @@ function Wizard({
       setBusy(false)
     }
   }
-  const clientFields = (
-    <>
-      {can('orders.clientId') ? (
-        <label className="block text-sm">
-          Основной клиент
-          <select
-            aria-label="Основной клиент"
-            {...fieldError(leadMode ? -1 : 4)}
-            className={`${input} cursor-pointer`}
-            value={draft.clientId}
-            disabled={!can('orders.clientId', 'edit')}
-            onChange={(event) => edit({ clientId: event.target.value })}
-          >
-            <option value="">Выберите клиента</option>
-            {draft.clientId && !clients.some((item) => String(item._id) === draft.clientId) ? (
-              <option value={draft.clientId}>{order.client?.name || 'Сохранённый клиент'}</option>
-            ) : null}
-            {clients.map((person) => (
-              <option key={String(person._id)} value={String(person._id)}>
-                {person.name}{person.phone ? ` · ${person.phone}` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
-      <PartyRoleNewClient
-        key={clientFormVersion}
-        initialState={clientForm}
-        onStateChange={setClientForm}
-        companyId={companyId}
-        context={context}
-        disabled={disabled}
-        onDirtyChange={childChanged}
-        onCreated={(person) => {
+  const canReadClient = can('orders.clientId')
+  const canEditClient = can('orders.clientId', 'edit')
+  const clientPickerVisible = clientPickerOpen && canReadClient && canEditClient && (leadMode || step === 4)
+  const clientFields = canReadClient ? (
+    <PartyOrderClientPicker
+      key={clientFormVersion}
+      companyId={companyId}
+      context={context}
+      clients={clients}
+      selectedId={draft.clientId}
+      savedName={order.client?.name}
+      canEdit={canEditClient}
+      disabled={disabled}
+      open={clientPickerVisible}
+      fieldError={fieldError(leadMode ? -1 : 4)}
+      initialForm={clientForm}
+      onFormStateChange={setClientForm}
+      onDirtyChange={childChanged}
+      onOpen={() => setClientPickerOpen(true)}
+      onClose={() => {
+        setClientPickerOpen(false)
+        setClientForm(null)
+      }}
+      onChoose={(person) => {
+        const clientId = person ? String(person._id) : ''
+        if (person && !clients.some((item) => String(item._id) === clientId)) {
           setCreatedClients((previous) => [...previous, person])
-          edit({ clientId: String(person._id) })
-        }}
-      />
-    </>
-  )
+        }
+        edit({ clientId })
+      }}
+    />
+  ) : null
   const title = existing ? 'Параметры заказа' : leadMode ? 'Новая заявка' : 'Бронирование'
   const footer = (
     <div className="w-full space-y-3">
@@ -601,6 +595,7 @@ function Wizard({
       title={title}
       tone="party"
       size="full"
+      inactive={clientPickerVisible}
       onClose={close}
       disableBackdropClick={busy}
       footer={footer}

@@ -14,6 +14,8 @@ const Modal = ({
   footer,
   tone = 'default',
   size = 'md',
+  initialFocusRef,
+  inactive = false,
   disableBackdropClick = false,
   hasUnsavedChanges = false,
   unsavedChangesMessage = 'Есть несохранённые изменения. Закрыть окно без сохранения?',
@@ -45,7 +47,7 @@ const Modal = ({
     previousFocusRef.current = document.activeElement
     // Focus the overlay or first focusable element inside
     const timer = setTimeout(() => {
-      const focusable = overlayRef.current?.querySelector(
+      const focusable = initialFocusRef?.current || overlayRef.current?.querySelector(
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
       )
       if (focusable) focusable.focus()
@@ -55,7 +57,7 @@ const Modal = ({
       clearTimeout(timer)
       if (previousFocusRef.current) previousFocusRef.current.focus?.()
     }
-  }, [open])
+  }, [open, initialFocusRef])
 
   // ESC to close
   const handleKeyDown = useCallback(
@@ -131,6 +133,7 @@ const Modal = ({
       className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/50 focus:outline-none md:items-center"
       onClick={handleBackdropClick}
       onKeyDown={handleKeyDown}
+      inert={inactive || undefined}
       tabIndex={-1}
     >
       <div
