@@ -1,0 +1,44 @@
+[
+  {
+    "who": "owner",
+    "route": "/api/party/memberships",
+    "status": 200,
+    "shape": "memberships"
+  },
+  {
+    "who": "owner",
+    "route": "/api/party/orders",
+    "status": 200,
+    "shape": "array:6"
+  },
+  {
+    "who": "owner",
+    "route": "/api/party/tasks",
+    "status": 200,
+    "shape": "tasks,staff,roles,currentStaffId,currentRoleId,canCreate,canManage,nextCursor,locations"
+  },
+  {
+    "who": "owner",
+    "route": "/api/party/transactions",
+    "status": 200,
+    "shape": "array:5"
+  },
+  {
+    "who": "owner",
+    "route": "/api/party/resource-calendar?dateFrom=2026-11-02T00:00:00%2B07:00&dateTo=2026-11-09T00:00:00%2B07:00&type=location",
+    "status": 200,
+    "shape": "generatedAt,timeZone,dateFrom,dateTo,type,resourceSearch,resourceTypes,resources,items,partial,hasMore,notice"
+  },
+  {
+    "who": "performer",
+    "route": "/api/party/performer/orders",
+    "status": 200,
+    "shape": "array:5"
+  },
+  {
+    "who": "performer",
+    "route": "/api/party/tasks",
+    "status": 200,
+    "shape": "tasks,staff,roles,currentStaffId,currentRoleId,canCreate,canManage,nextCursor,locations"
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "taskCreated": true,
+  "paymentCreated": true,
+  "paymentReplayDoesNotDuplicate": true,
+  "amount": 15000,
+  "received": 5000,
+  "remaining": 10000,
+  "orderId": "58cbc983db7c575c04829dd5",
+  "taskId": "6ae98050ddd976b9c3acbf1c"
+}

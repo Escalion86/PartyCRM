@@ -1,0 +1,5 @@
+{
+  "replicaSet": "localrs",
+  "primary": "localhost:27017",
+  "transactionReadPassed": true
+}

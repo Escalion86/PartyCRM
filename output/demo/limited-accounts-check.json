@@ -1,0 +1,22 @@
+[
+  {
+    "who": "sales",
+    "login": true,
+    "orders": true,
+    "tasks": true,
+    "restrictedFields": true,
+    "forbiddenWritesRejected": true,
+    "settingsRedirect": true,
+    "allowedWrite": "order price/title"
+  },
+  {
+    "who": "artDirector",
+    "login": true,
+    "orders": true,
+    "tasks": true,
+    "restrictedFields": true,
+    "forbiddenWritesRejected": true,
+    "settingsRedirect": true,
+    "allowedWrite": "team and payout"
+  }
+]

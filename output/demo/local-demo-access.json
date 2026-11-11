@@ -1,0 +1,20 @@
+{
+  "companyId": "58cbc983db7c575c04829dd4",
+  "company": "Праздник рядом — ДЕМО",
+  "owner": {
+    "phone": "70000000101",
+    "password": "Demo-4oVovTYGBAUg"
+  },
+  "performer": {
+    "phone": "70000000102",
+    "password": "Demo-bARlb2trj4g2"
+  },
+  "sales": {
+    "phone": "70000000103",
+    "password": "Demo-ZVQ4OMa7ykYs"
+  },
+  "artDirector": {
+    "phone": "70000000104",
+    "password": "Demo-_T2J7lU4LW8R"
+  }
+}
