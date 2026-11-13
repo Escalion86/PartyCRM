@@ -17,6 +17,14 @@ test('a contact lead is recoverable without a type, address or event date', () =
   assert.deepEqual(decodePartyOrderWizardDraft(scope, encodePartyOrderWizardDraft(scope, value, now), now), value)
 })
 
+test('client creation preserves the editable name line and legacy drafts are still recoverable', () => {
+  const value = snapshot()
+  value.clientForm = { open: true, draft: { firstName: 'Анна', secondName: 'Иванова', thirdName: '', phone: null, email: '' } }
+  assert.deepEqual(decodePartyOrderWizardDraft(scope, encodePartyOrderWizardDraft(scope, value, now), now).clientForm, value.clientForm)
+  value.clientForm.fullName = 'Иванова Анна Сергеевна '
+  assert.deepEqual(decodePartyOrderWizardDraft(scope, encodePartyOrderWizardDraft(scope, value, now), now).clientForm, value.clientForm)
+})
+
 test('draft storage is isolated by company, employee and order', () => {
   assert.notEqual(scope.key, getPartyOrderWizardDraftScope({ ...context, tenantId: 'company-b' }).key)
   assert.notEqual(scope.key, getPartyOrderWizardDraftScope({ ...context, staff: { _id: 'staff-b' } }).key)

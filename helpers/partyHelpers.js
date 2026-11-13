@@ -153,7 +153,7 @@ export const EMPTY_PARTY_CLIENT = {
 }
 
 export const EMPTY_PARTY_SERVICE = {
-  availabilityConfigured: true,
+  availabilityConfigured: false,
   orderTypeIds: [],
   locationIds: [],
   offsiteAllowed: false,

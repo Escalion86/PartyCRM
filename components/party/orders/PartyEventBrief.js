@@ -8,13 +8,14 @@ import {
   getPartyApplicableBriefFields,
   getPartyArchivedBriefAnswers,
   getPartyBriefAnswer,
+  getPartyBriefMissingFields,
   getPartyDefaultBriefTemplate,
   hasPartyBriefAnswer,
   resolvePartyBriefTemplate,
 } from '@helpers/partyBriefTemplates'
 
 const control =
-  'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:bg-slate-50'
+  'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 aria-invalid:border-red-700 disabled:bg-slate-50'
 const display = (value) =>
   typeof value === 'boolean'
     ? value
@@ -147,6 +148,10 @@ export function PartyEventBriefEditor({
   orderStatus = 'draft',
   disabled = false,
   servicesIds,
+  booking = false,
+  onValidationChange,
+  invalidFieldId,
+  validationErrorId,
 }) {
   const dirtyContacts = useRef(new Map())
   const reportContactDirty = useCallback((id, dirty) => {
@@ -163,6 +168,14 @@ export function PartyEventBriefEditor({
   })
   const fields =
     loading || error ? [] : getPartyApplicableBriefFields(template, servicesIds)
+  const missingField = onValidationChange && !loading && !error
+    ? getPartyBriefMissingFields(value, template, servicesIds)[0]
+    : undefined
+  const missingId = missingField?.id
+  const missingLabel = missingField?.label
+  useEffect(() => {
+    onValidationChange?.({ loading, error, missingId, missingLabel })
+  }, [onValidationChange, loading, error, missingId, missingLabel])
   const change = (field, next) =>
     onChange?.({
       ...value,
@@ -172,8 +185,9 @@ export function PartyEventBriefEditor({
   return (
     <div className="space-y-4">
       <p className="text-sm text-slate-600">
-        Вопросы зависят от выбранных услуг. Заказ можно сохранить незаполненным;
-        обязательные вопросы проверяются при передаче, если это задано в настройках этапа.
+        {booking
+          ? 'Заполните обязательные поля для бронирования. Заявку можно сохранить с неполным брифом.'
+          : 'Вопросы зависят от выбранных услуг. Заказ можно сохранить незаполненным. Обязательные вопросы проверяются при передаче, если это задано в настройках этапа.'}
       </p>
       {loading && (
         <p role="status" className="text-sm text-slate-500">
@@ -207,8 +221,11 @@ export function PartyEventBriefEditor({
         </legend>
         {fields.map((field) => {
           const answer = getPartyBriefAnswer(value, field)
+          const fieldError = field.id === invalidFieldId
+            ? { 'aria-invalid': true, 'aria-describedby': validationErrorId }
+            : undefined
           if (field.type === 'note') return <div key={field.id} className="border-l-4 border-sky-300 bg-sky-50 p-3 text-sm leading-6 whitespace-pre-wrap text-sky-950 sm:col-span-2"><p className="font-semibold">{field.label}</p>{field.content ? <p>{field.content}</p> : null}</div>
-          if (field.type === 'contact') return <div key={field.id} className="min-w-0 text-sm font-medium text-slate-700"><span>{field.label}{field.required !== false ? ' *' : ''}</span><PartyBriefContactField value={answer} onChange={(next) => change(field, next)} companyId={companyId} orderId={orderId} disabled={disabled} options={contactOptions} fieldId={field.id} onDirtyChange={reportContactDirty} /></div>
+          if (field.type === 'contact') return <div key={field.id} className="min-w-0 text-sm font-medium text-slate-700"><span>{field.label}{field.required !== false ? ' *' : ''}</span><PartyBriefContactField value={answer} onChange={(next) => change(field, next)} companyId={companyId} orderId={orderId} disabled={disabled} options={contactOptions} fieldId={field.id} onDirtyChange={reportContactDirty} fieldError={fieldError} /></div>
           let inputValue = answer ?? ''
           if (field.type === 'datetime' && answer && Number.isFinite(Date.parse(answer))) {
             const parts = partyZonedParts(answer, timeZone)
@@ -222,7 +239,7 @@ export function PartyEventBriefEditor({
               {field.label}{' '}
               {field.required !== false ? (
                 <span
-                  aria-label="Обязательно при переходе"
+                  aria-label={booking ? 'Обязательно для бронирования' : 'Обязательно при переходе'}
                   className="text-red-600"
                 >
                   *
@@ -234,12 +251,14 @@ export function PartyEventBriefEditor({
                   rows={3}
                   maxLength={20000}
                   value={answer ?? ''}
+                  {...fieldError}
                   onChange={(event) => change(field, event.target.value)}
                 />
               ) : field.type === 'select' ? (
                 <select
                   className={`${control} cursor-pointer`}
                   value={answer ?? ''}
+                  {...fieldError}
                   onChange={(event) => change(field, event.target.value)}
                 >
                   <option value="">Выберите вариант</option>
@@ -259,6 +278,7 @@ export function PartyEventBriefEditor({
                 <select
                   className={`${control} cursor-pointer`}
                   value={typeof answer === 'boolean' ? String(answer) : ''}
+                  {...fieldError}
                   onChange={(event) =>
                     change(
                       field,
@@ -288,6 +308,7 @@ export function PartyEventBriefEditor({
                   min={field.type === 'money' ? 0 : undefined}
                   maxLength={field.type === 'text' ? 20000 : undefined}
                   value={inputValue}
+                  {...fieldError}
                   onChange={(event) =>
                     change(
                       field,

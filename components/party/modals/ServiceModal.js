@@ -30,9 +30,13 @@ export function ServiceCreateModal({
   onSubmit,
   saving,
   activeCompanyId,
+  serviceGroups: controlledServiceGroups,
+  setServiceGroups: setControlledServiceGroups,
 }) {
-  const serviceGroups = useAtomValue(serviceGroupsAtom)
-  const setServiceGroups = useSetAtom(serviceGroupsAtom)
+  const sharedServiceGroups = useAtomValue(serviceGroupsAtom)
+  const setSharedServiceGroups = useSetAtom(serviceGroupsAtom)
+  const serviceGroups = controlledServiceGroups ?? sharedServiceGroups
+  const setServiceGroups = setControlledServiceGroups ?? setSharedServiceGroups
   const [groupModalOpen, setGroupModalOpen] = useState(false)
   const [groupDraft, setGroupDraft] = useState({ title: '', order: 0 })
   const [groupSaving, setGroupSaving] = useState(false)
@@ -57,7 +61,7 @@ export function ServiceCreateModal({
 
   const groupOptions = [
     { value: '', label: 'Без группы' },
-    ...serviceGroups
+    ...[...serviceGroups]
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((g) => ({ value: g._id, label: g.title })),
   ]
@@ -84,19 +88,23 @@ export function ServiceCreateModal({
     }
   }, [groupDraft.title, requestHeaders, setServiceGroups, setServiceDraft])
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setSubmitError('')
     if (!serviceDraft.title?.trim()) {
       setSubmitError('Укажите название услуги')
       return
     }
-    onSubmit()
+    try {
+      await onSubmit()
+    } catch (error) {
+      setSubmitError(error.message || 'Не удалось сохранить услугу')
+    }
   }
 
   const footerContent = ({ requestClose }) => (
     <div className="flex flex-col w-full gap-1">
       {submitError && (
-        <div className="px-3 py-2 text-sm text-red-600 rounded bg-red-50">
+        <div role="alert" className="px-3 py-2 text-sm text-red-600 rounded bg-red-50">
           {submitError}
         </div>
       )}

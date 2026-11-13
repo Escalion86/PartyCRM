@@ -9,6 +9,12 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { apiJson } from '@helpers/apiClient'
 import { normalizeCompanyDictionary } from '@helpers/companySettings'
 import getPersonFullName from '@helpers/getPersonFullName'
+import {
+  formatPartyClientFullName,
+  getPartyClientNameError,
+  PARTY_CLIENT_NAME_PLACEHOLDER,
+  resolvePartyClientNameParts,
+} from '@helpers/partyClientFullName'
 import DateInput from '@components/DateInput'
 import PhoneInput from '@components/PhoneInput'
 import Input from '@components/Input'
@@ -272,9 +278,10 @@ export function ClientSelectModal({
 
   const filtered = clients.filter((c) => {
     const name = getPersonFullName(c, '').toLowerCase()
-    const phone = (c.phone || '').toLowerCase()
-    const q = search.toLowerCase()
-    return name.includes(q) || phone.includes(q)
+    const fullName = formatPartyClientFullName(c).toLowerCase()
+    const phone = String(c.phone || '')
+    const q = search.trim().toLowerCase()
+    return name.includes(q) || fullName.includes(q) || phone.includes(q)
   })
 
   const footerContent = (
@@ -367,7 +374,22 @@ export function ClientFormModal({
   onSimilarClientSelect,
   onMergeSimilarClient,
 }) {
-  const hasUnsavedChanges = useUnsavedChanges(clientDraft, open)
+  const [nameEdit, setNameEdit] = useState(null)
+  const nameKey = JSON.stringify([
+    clientDraft._id,
+    clientDraft.firstName,
+    clientDraft.secondName,
+    clientDraft.thirdName,
+  ])
+  const currentNameEdit = open && nameEdit?.key === nameKey ? nameEdit : null
+  if (nameEdit && !currentNameEdit) setNameEdit(null)
+  const fullName = currentNameEdit?.value ?? formatPartyClientFullName(clientDraft)
+  const nameParts = currentNameEdit ? resolvePartyClientNameParts(fullName, clientDraft) : null
+  const nameError = nameParts ? getPartyClientNameError(nameParts) : ''
+  const hasUnsavedChanges = useUnsavedChanges(
+    nameParts ? { ...clientDraft, ...nameParts } : clientDraft,
+    open
+  )
   const preferredChannelOptions = [
     { value: '', label: 'Не выбран' },
     { value: 'phone', label: 'Телефон' },
@@ -478,6 +500,7 @@ export function ClientFormModal({
   const getNormalizedDraft = () => {
     const normalized = {
       ...clientDraft,
+      ...nameParts,
       isLegalEntity: Boolean(isLegalEntity),
       significantDates: normalizeSignificantDates(clientDraft.significantDates),
     }
@@ -502,7 +525,7 @@ export function ClientFormModal({
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    onSubmit(getNormalizedDraft())
+    if (!nameError) onSubmit(getNormalizedDraft())
   }
 
   const footerContent = ({ requestClose }) => (
@@ -518,7 +541,7 @@ export function ClientFormModal({
         type="button"
         className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={saving}
-        onClick={() => onSubmit(getNormalizedDraft())}
+        onClick={handleSubmit}
       >
         {saving ? 'Сохранение...' : 'Сохранить'}
       </button>
@@ -584,23 +607,14 @@ export function ClientFormModal({
             </div>
           )}
           <Input
-            label="Имя"
-            value={clientDraft.firstName}
-            onChange={handleChange('firstName')}
+            label="ФИО"
+            help={PARTY_CLIENT_NAME_PLACEHOLDER}
+            value={fullName}
+            onChange={(value) => setNameEdit({ key: nameKey, value })}
+            error={Boolean(nameError)}
             {...compactFieldProps}
           />
-          <Input
-            label="Фамилия"
-            value={clientDraft.secondName}
-            onChange={handleChange('secondName')}
-            {...compactFieldProps}
-          />
-          <Input
-            label="Отчество"
-            value={clientDraft.thirdName}
-            onChange={handleChange('thirdName')}
-            {...compactFieldProps}
-          />
+          {nameError && <p role="alert" className="text-sm text-red-800">{nameError}</p>}
           <PhoneInput
             value={clientDraft.phone}
             onChange={(value) =>

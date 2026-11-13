@@ -12,6 +12,7 @@ export default function PartyBriefContactField({
   disabled,
   options: suppliedOptions,
   fieldId,
+  fieldError,
   onDirtyChange,
 }) {
   const [remote, setRemote] = useState(null)
@@ -64,7 +65,8 @@ export default function PartyBriefContactField({
       ) : null}
       <select
         aria-label="Выберите контакт для вопроса"
-        className="mt-1 min-h-11 w-full cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+        {...fieldError}
+        className="mt-1 min-h-11 w-full cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm aria-invalid:border-red-700"
         disabled={disabled || !options}
         value={value?.clientId || ''}
         onChange={(event) => choose(event.target.value)}

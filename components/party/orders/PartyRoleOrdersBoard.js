@@ -6,19 +6,11 @@ import {
   getPartyOrderBoardTransitions,
   projectPartyOrderBoardColumns,
 } from '@helpers/partyOrderBoard'
-import { getPartyOrderStage } from '@helpers/partyWorkflow'
 
 const button =
-  'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50'
-const dateText = (value) =>
-  value && Number.isFinite(+new Date(value))
-    ? new Date(value).toLocaleString('ru-RU', {
-        day: 'numeric',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : 'Дата не выбрана'
+  'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
+const boardDateOptions = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
+const defaultTimeZone = 'Asia/Krasnoyarsk'
 const statuses = {
   draft: 'Заявка',
   active: 'Подтверждён',
@@ -30,7 +22,10 @@ function OrderBoardCard({
   order,
   context,
   workflow,
-  stage,
+  visibleStageIds,
+  dateFormatter,
+  locationsById,
+  dragging,
   busy,
   selectedId,
   onOpen,
@@ -44,73 +39,83 @@ function OrderBoardCard({
     (can('orders.serviceTitle') && order.serviceTitle) ||
     'Заказ'
   const transitions = getPartyOrderBoardTransitions(context, workflow, order)
-  const currentStage = getPartyOrderStage(order, workflow)
+  const canDrag = transitions.some((target) => visibleStageIds.has(target.id))
+  const canSeeDate = can('orders.eventDate')
+  const eventDate = canSeeDate && order.eventDate ? new Date(order.eventDate) : null
+  const clientName = can('orders.client.name') && order.client?.name
+  const location = can('orders.locationId') && locationsById.get(String(order.locationId))
+  const offsite = can('orders.placeType') && order.placeType === 'client_address'
+  const place = offsite ? (can('orders.customAddress') && order.customAddress) || 'Выезд' : location?.title
+  const orderStatus = can('orders.status') && (statuses[order.status] || order.status)
+  const amount = can('finance.clientAmount') && Number.isFinite(order.contractAmount)
+  const tasks = can('tasks') && order.taskSummary?.openCount > 0 ? order.taskSummary : null
   return (
     <article
-      className={`min-w-0 rounded-xl border bg-white p-3 ${String(order._id) === selectedId ? 'border-sky-400 ring-1 ring-sky-200' : 'border-slate-200'}`}
+      data-party-order-board-id={String(order._id)}
+      className={`min-w-0 space-y-2 rounded-xl border bg-white px-3 pb-3 ${String(order._id) === selectedId ? 'border-sky-500 ring-1 ring-sky-200' : 'border-slate-200'} ${dragging ? 'opacity-60' : ''}`}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-1">
         <button
           type="button"
           disabled={busy}
-          className="min-h-11 min-w-0 flex-1 cursor-pointer text-left font-semibold break-words text-sky-950 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-11 min-w-0 flex-1 cursor-pointer rounded text-left text-sm font-semibold text-sky-950 underline-offset-4 [overflow-wrap:anywhere] hover:underline focus-visible:outline-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => onOpen(order)}
           aria-label={`Открыть заказ «${title}»`}
         >
           {title}
         </button>
-        {transitions.length ? (
+        {canDrag ? (
           <button
             type="button"
             draggable={!busy}
             disabled={busy}
-            className="flex min-h-11 min-w-11 cursor-grab items-center justify-center rounded-lg text-lg text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label={`Перетащить заказ «${title}»`}
-            title="Перетащите в разрешённый этап или выберите этап ниже"
+            className="flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-sky-700 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 [@media(pointer:coarse)]:hidden"
+            aria-label={`Перетащить заказ «${title}» или выбрать этап`}
+            title="Перетащите карточку или нажмите, чтобы выбрать этап"
+            onClick={(event) => event.currentTarget.closest('article')?.querySelector('select')?.focus()}
             onDragStart={(event) => onDragStart(event, order)}
             onDragEnd={onDragEnd}
           >
-            ⠿
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="5" cy="3" r="1.25" />
+              <circle cx="11" cy="3" r="1.25" />
+              <circle cx="5" cy="8" r="1.25" />
+              <circle cx="11" cy="8" r="1.25" />
+              <circle cx="5" cy="13" r="1.25" />
+              <circle cx="11" cy="13" r="1.25" />
+            </svg>
           </button>
         ) : null}
       </div>
-      {can('orders.eventDate') ? (
-        <p className="mt-1 text-sm text-slate-600">
-          {dateText(order.eventDate)}
-        </p>
-      ) : null}
-      {can('orders.client.name') && order.client?.name ? (
-        <p className="mt-1 text-sm break-words text-slate-600">
-          {order.client.name}
-        </p>
-      ) : null}
-      {can('tasks') && order.taskSummary?.openCount > 0 ? (
-        <p
-          className={`mt-2 text-xs font-medium ${order.taskSummary.overdueCount > 0 ? 'text-red-700' : 'text-sky-700'}`}
-        >
-          {order.taskSummary.overdueCount > 0
-            ? `Просрочено задач: ${order.taskSummary.overdueCount}`
-            : `Открытых задач: ${order.taskSummary.openCount}`}
-        </p>
-      ) : null}
-      <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-        {can('orders.status') && Object.hasOwn(order, 'status') ? (
-          <span>{statuses[order.status] || order.status}</span>
-        ) : null}
-        {can('finance.clientAmount') &&
-        Object.hasOwn(order, 'contractAmount') ? (
-          <span>
-            {Number(order.contractAmount || 0).toLocaleString('ru-RU')} ₽
-          </span>
-        ) : null}
-      </div>
+      {(canSeeDate || clientName || place) && (
+        <div className="space-y-1 text-xs leading-4 text-slate-600 [overflow-wrap:anywhere]">
+          {canSeeDate && (
+            <p className="font-medium text-slate-800 tabular-nums">
+              {eventDate && Number.isFinite(+eventDate) ? <time dateTime={eventDate.toISOString()}>{dateFormatter.format(eventDate)}</time> : 'Дата не выбрана'}
+            </p>
+          )}
+          {clientName && <p>{clientName}</p>}
+          {place && <p>{place}</p>}
+        </div>
+      )}
+      {(orderStatus || amount || tasks) && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs">
+          {orderStatus && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-slate-700">{orderStatus}</span>}
+          {amount && <span className="font-semibold text-slate-900 tabular-nums">{order.contractAmount.toLocaleString('ru-RU')} ₽</span>}
+          {tasks && (
+            <span className={`font-medium ${tasks.overdueCount > 0 ? 'text-red-700' : 'text-slate-600'}`}>
+              {tasks.overdueCount > 0 ? `Просрочено задач: ${tasks.overdueCount}` : `Открытых задач: ${tasks.openCount}`}
+            </span>
+          )}
+        </div>
+      )}
       {transitions.length ? (
-        <label className="mt-3 block text-xs text-slate-600">
+        <label className="block">
           <span className="sr-only">Передать заказ «{title}» на этап</span>
           <select
-            value={currentStage}
+            value=""
             disabled={busy}
-            className="min-h-11 w-full min-w-0 cursor-pointer rounded-lg border border-sky-200 bg-white px-2 py-2 text-sm text-sky-900 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-11 w-full min-w-0 cursor-pointer rounded-lg border border-slate-300 bg-white px-2 text-base text-sky-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
             onChange={(event) => {
               if (
                 transitions.some((target) => target.id === event.target.value)
@@ -118,7 +123,7 @@ function OrderBoardCard({
                 onTransition(order, event.target.value)
             }}
           >
-            <option value={currentStage}>{stage.title}</option>
+            <option value="" disabled>Переместить…</option>
             {transitions.map((target) => (
               <option key={target.id} value={target.id}>
                 {target.title}
@@ -135,7 +140,9 @@ export default function PartyRoleOrdersBoard({
   context,
   workflow,
   stages,
+  locations,
   board,
+  filtered = false,
   disabled,
   selectedId,
   onOpen,
@@ -147,24 +154,52 @@ export default function PartyRoleOrdersBoard({
     () => projectPartyOrderBoardColumns(board.columns, stages, workflow),
     [board.columns, stages, workflow]
   )
-  const busy = disabled || board.busy
+  const visibleStageIds = useMemo(() => new Set(stages.map((stage) => stage.id)), [stages])
+  const locationsById = useMemo(
+    () => new Map((locations ?? []).map((location) => [String(location._id), location])),
+    [locations]
+  )
+  const timeZone = context?.company?.settings?.timeZone || defaultTimeZone
+  const dateFormatter = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat('ru-RU', { ...boardDateOptions, timeZone })
+    } catch {
+      return new Intl.DateTimeFormat('ru-RU', { ...boardDateOptions, timeZone: defaultTimeZone })
+    }
+  }, [timeZone])
+  const busy = Boolean(disabled)
+  const canMove = canPartyAccess(context, { resource: 'orders', action: 'transition' })
+  const multipleColumns = stages.length > 1
   const targets = dragged
     ? getPartyOrderBoardTransitions(context, workflow, dragged)
     : []
   return (
     <section className="min-w-0 space-y-3" aria-label="Доска заказов">
-      <p className="text-xs text-slate-500">
-        Перетаскивайте за значок ⠿ или выбирайте этап в карточке. Переход
-        сохраняет проверку обязательного брифа и прав должности.
-      </p>
+      {(multipleColumns || (canMove && stages.length > 0)) && (
+        <p className={`text-xs text-slate-600 ${canMove ? '' : 'sm:hidden'}`}>
+          {multipleColumns && <span className="sm:hidden">Листайте колонки. </span>}
+          {canMove && (
+            <>
+              Выберите «Переместить…» в карточке.
+              {multipleColumns && <span className="ml-1 [@media(pointer:coarse)]:hidden">На компьютере можно перетащить карточку.</span>}
+            </>
+          )}
+        </p>
+      )}
       {!stages.length ? (
         <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
           Нет доступных этапов по выбранным условиям.
         </p>
       ) : null}
-      <div className="grid min-w-0 grid-cols-1 items-start gap-3 lg:flex lg:overflow-x-auto lg:pb-3">
+      <div
+        role="region"
+        aria-label="Колонки доски заказов"
+        tabIndex={stages.length ? 0 : undefined}
+        className="flex min-w-0 max-w-full snap-x snap-proximity items-start gap-3 overflow-x-auto overscroll-x-contain px-1 pb-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
+      >
         {stages.map((stage) => {
           const column = columns[stage.id] || { orders: [], busy: true }
+          const loadedCount = column.orders.length.toLocaleString('ru-RU')
           const accepts =
             !busy && targets.some((target) => target.id === stage.id)
           return (
@@ -172,7 +207,7 @@ export default function PartyRoleOrdersBoard({
               key={stage.id}
               aria-labelledby={`${id}-${stage.id}`}
               aria-busy={column.busy || column.busyMore}
-              className={`min-w-0 rounded-xl border bg-slate-50 p-3 lg:w-80 lg:shrink-0 ${accepts ? 'border-sky-500 outline-2 outline-sky-200' : 'border-slate-200'}`}
+              className={`w-[min(83vw,19rem)] max-w-full shrink-0 snap-start rounded-xl border p-3 ${accepts ? 'border-sky-500 bg-sky-50 outline-1 outline-sky-200' : 'border-slate-200 bg-slate-50'}`}
               onDragOver={(event) => {
                 if (accepts) {
                   event.preventDefault()
@@ -187,8 +222,8 @@ export default function PartyRoleOrdersBoard({
                     String(dragged._id)
                 )
                   return
-                onTransition(dragged, stage.id)
                 setDragged(null)
+                onTransition(dragged, stage.id)
               }}
             >
               <header className="mb-3 flex items-baseline justify-between gap-2">
@@ -198,13 +233,20 @@ export default function PartyRoleOrdersBoard({
                 >
                   {stage.title}
                 </h2>
-                <span className="shrink-0 text-xs text-slate-500">
-                  {column.busy
-                    ? 'Загрузка…'
-                    : column.error
-                      ? 'Не загружено'
-                      : `Загружено ${column.orders.length}${column.nextCursor ? '+' : ''}`}
-                </span>
+                {accepts ? (
+                  <span className="shrink-0 text-xs font-semibold text-sky-900">Переместить сюда</span>
+                ) : (
+                  <span className="shrink-0 text-xs text-slate-600 tabular-nums">
+                    {column.busy
+                      ? 'Загрузка…'
+                      : column.error
+                        ? 'Не загружено'
+                        : <>
+                          <span className="sr-only">Загружено заказов: {loadedCount}{column.nextCursor ? '. Можно загрузить ещё.' : ''}</span>
+                          <span aria-hidden="true">{loadedCount}{column.nextCursor ? '+' : ''}</span>
+                        </>}
+                  </span>
+                )}
               </header>
               {column.error ? (
                 <div
@@ -229,7 +271,10 @@ export default function PartyRoleOrdersBoard({
                     order={order}
                     context={context}
                     workflow={workflow}
-                    stage={stage}
+                    visibleStageIds={visibleStageIds}
+                    dateFormatter={dateFormatter}
+                    locationsById={locationsById}
+                    dragging={String(dragged?._id) === String(order._id)}
                     busy={busy}
                     selectedId={selectedId}
                     onOpen={onOpen}
@@ -240,16 +285,20 @@ export default function PartyRoleOrdersBoard({
                         String(record._id)
                       )
                       event.dataTransfer.effectAllowed = 'move'
+                      const card = event.currentTarget?.closest('article')
+                      if (card) event.dataTransfer.setDragImage?.(card, 20, 18)
                       setDragged(record)
                     }}
                     onDragEnd={() => setDragged(null)}
                   />
                 ))}
                 {!column.busy && !column.error && !column.orders.length ? (
-                  <p className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-500">
+                  <p className="rounded-lg border border-dashed border-slate-200 p-3 text-sm text-slate-600">
                     {column.nextCursor
-                      ? 'Совпадений пока нет. Можно проверить следующую страницу.'
-                      : 'Заказов по выбранным условиям нет.'}
+                      ? 'Совпадений пока нет.'
+                      : filtered
+                        ? 'По этим условиям заказов нет. Сбросьте фильтры.'
+                        : 'На этом этапе пока нет заказов.'}
                   </p>
                 ) : null}
               </div>
@@ -263,7 +312,7 @@ export default function PartyRoleOrdersBoard({
                   <button
                     type="button"
                     className={`${button} w-full bg-white`}
-                    disabled={busy}
+                    disabled={busy || column.busyMore}
                     onClick={() => board.loadMore(stage.id)}
                   >
                     {column.busyMore

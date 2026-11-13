@@ -105,7 +105,7 @@ const setup = ({
     boardCalls = [],
     left = [],
     replaced = []
-  const document = { activeElement: {}, body: {}, getElementById: () => null }
+  const document = { activeElement: {}, body: {}, getElementById: () => null, querySelector: () => null }
   const window = {
     location: { href, pathname: '/company/work', assign() {} },
     addEventListener() {},
@@ -198,7 +198,7 @@ const setup = ({
     {
       companyId: tenantId,
       initialOrderId,
-      legacyAdvancedPath: '/company/orders',
+      canSwitchOrderMode: false,
     }
   )
   host.render()
@@ -282,9 +282,12 @@ test('out-of-scope handoff shows confirmation without retaining a replacement or
   )
 })
 
-test('required brief failure offers the existing contextual order editor without changing stage', async () => {
+test('required brief failure opens the brief for editors without changing stage', async () => {
   const run = setup({
+    permissions: { 'orders.eventBrief': 'edit' },
     api: (url) => {
+      if (url === `/api/party/orders/${orderId}`)
+        return { data: { ...record, eventBrief: {} } }
       if (url.endsWith('/stage'))
         throw Object.assign(new Error('Заполните обязательные вопросы брифа'), {
           status: 409,
@@ -295,7 +298,7 @@ test('required brief failure offers the existing contextual order editor without
   await run.host.flush()
   await boardNode(run.host).props.onTransition(record, 'prepare')
   await run.host.flush()
-  const help = button(run.host, 'Открыть заказ и заполнить бриф')
+  const help = button(run.host, 'Открыть бриф')
   assert.ok(help)
   assert.match(textOf(run.host.value), /Заполните обязательные вопросы брифа/)
   await help.props.onClick()
@@ -304,6 +307,7 @@ test('required brief failure offers the existing contextual order editor without
     (node) => node.type?.name === 'RoleOrderEditor'
   )
   assert.equal(editor.props.order.workflowStageId, 'new')
+  assert.equal(editor.props.initialTab, 'brief')
   assert.ok(
     run.calls.some(
       (call) => call.url === `/api/party/order-options?orderId=${orderId}`

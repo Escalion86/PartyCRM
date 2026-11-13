@@ -63,10 +63,12 @@ const buildSearchStages = ({ tenantId, sources, clientCollectionName, search, so
           $expr: { $eq: ['$_id', '$$clientId'] },
           $or: [
             { firstName: text }, { secondName: text }, { thirdName: text }, { phone },
-            { $expr: { $regexMatch: {
-              input: { $concat: [{ $ifNull: ['$firstName', ''] }, ' ', { $ifNull: ['$secondName', ''] }, ' ', { $ifNull: ['$thirdName', ''] }] },
-              regex: text.$regex, options: text.$options,
-            } } },
+            ...[['$firstName', '$secondName'], ['$secondName', '$firstName']].map(([first, second]) => ({
+              $expr: { $regexMatch: {
+                input: { $concat: [{ $ifNull: [first, ''] }, ' ', { $ifNull: [second, ''] }, ' ', { $ifNull: ['$thirdName', ''] }] },
+                regex: text.$regex, options: text.$options,
+              } },
+            })),
           ],
         } },
         { $limit: 1 },

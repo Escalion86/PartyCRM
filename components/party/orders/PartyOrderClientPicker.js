@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons/faChevronDown'
 import { faPaste } from '@fortawesome/free-solid-svg-icons/faPaste'
@@ -14,28 +14,42 @@ const focusStyle = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus
 const buttonStyle = `min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-900 hover:bg-sky-50 ${focusStyle}`
 const nameOf = (client) => client?.name || 'Клиент без имени'
 const phoneOf = (client) => formatPhoneNumber(client?.phone) || String(client?.phone || '')
+const canCreateClient = (context) =>
+  canPartyAccess(context, { resource: 'orders', action: 'create' }) &&
+  canPartyAccess(context, { resource: 'clients.create', action: 'edit' }) &&
+  ['name', 'phone', 'email'].some((field) =>
+    canPartyAccess(context, { resource: `orders.client.${field}`, action: 'edit' })
+  )
+const newClientForm = (phone = null) => ({
+  open: true,
+  draft: { firstName: '', secondName: '', thirdName: '', phone, email: '' },
+})
 
 function ClientPickerDialog({
   companyId, context, clients, selectedId, onChoose, onClose,
-  initialForm, onFormStateChange, onDirtyChange,
+  initialForm, onFormStateChange, onDirtyChange, direct,
 }) {
   const [search, setSearch] = useState('')
   const [lookup, setLookup] = useState(null)
   const [retry, setRetry] = useState(0)
-  const [creating, setCreating] = useState(() => initialForm?.open ? initialForm : null)
+  const [creating, setCreating] = useState(() => {
+    if (!canCreateClient(context)) return null
+    if (initialForm?.open) return initialForm
+    return direct ? newClientForm() : null
+  })
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [clipboardMessage, setClipboardMessage] = useState('')
   const searchRef = useRef(null)
   const createRef = useRef(null)
+  const initialFocusRef = useRef(null)
   const cancelledForm = useRef(null)
   const query = search.trim()
   const canReadName = canPartyAccess(context, { resource: 'orders.client.name' })
   const canReadPhone = canPartyAccess(context, { resource: 'orders.client.phone' })
   const canReadEmail = canPartyAccess(context, { resource: 'orders.client.email' })
   const canSearch = canReadName || canReadPhone || canReadEmail
-  const canCreate = canPartyAccess(context, { resource: 'orders', action: 'create' }) &&
-    canPartyAccess(context, { resource: 'clients.create', action: 'edit' })
+  const canCreate = canCreateClient(context)
   const searchHint = [canReadName && 'имя', canReadPhone && 'телефон', !canReadName && !canReadPhone && canReadEmail && 'email'].filter(Boolean).join(' или ')
 
   useEffect(() => {
@@ -60,9 +74,11 @@ function ClientPickerDialog({
     }
   }, [canSearch, companyId, creating, query, retry])
 
-  useEffect(() => {
-    if (!creating) return
-    const frame = requestAnimationFrame(() => createRef.current?.querySelector('input:not(:disabled), button:not(:disabled)')?.focus())
+  useLayoutEffect(() => {
+    const createInput = createRef.current?.querySelector('input:not(:disabled), button:not(:disabled)')
+    initialFocusRef.current = createInput || searchRef.current
+    if (!createInput) return
+    const frame = requestAnimationFrame(() => createInput.focus())
     return () => cancelAnimationFrame(frame)
   }, [creating])
 
@@ -72,6 +88,9 @@ function ClientPickerDialog({
     setDirty(value)
     onDirtyChange(value)
   }, [onDirtyChange])
+  const publishFormState = useCallback((form) => {
+    onFormStateChange(direct ? { ...form, direct: true } : form)
+  }, [direct, onFormStateChange])
   const select = (client) => {
     onChoose(client)
     onClose()
@@ -92,12 +111,13 @@ function ClientPickerDialog({
       return
     }
     const phone = canPartyAccess(context, { resource: 'orders.client.phone', action: 'edit' }) ? normalizePhoneNumber(query) : null
-    setCreating({
-      open: true,
-      draft: { firstName: '', secondName: '', thirdName: '', phone: phone ? Number(phone) : null, email: '' },
-    })
+    setCreating(newClientForm(phone ? Number(phone) : null))
   }
   const cancelCreating = (keepDraft) => {
+    if (direct) {
+      onClose()
+      return
+    }
     cancelledForm.current = keepDraft && initialForm?.open ? { query, form: initialForm } : null
     setCreating(null)
     onFormStateChange(null)
@@ -110,7 +130,7 @@ function ClientPickerDialog({
       title={creating ? 'Новый клиент' : 'Выбор клиента'}
       tone="party"
       size="lg"
-      initialFocusRef={searchRef}
+      initialFocusRef={initialFocusRef}
       disableBackdropClick={busy}
       hasUnsavedChanges={Boolean(creating && dirty && !busy)}
       onClose={() => {
@@ -125,7 +145,7 @@ function ClientPickerDialog({
             context={context}
             companyId={companyId}
             initialState={creating}
-            onStateChange={onFormStateChange}
+            onStateChange={publishFormState}
             onDirtyChange={handleDirtyChange}
             onBusyChange={setBusy}
             onCancel={() => cancelCreating(true)}
@@ -187,8 +207,13 @@ function ClientPickerDialog({
 export default function PartyOrderClientPicker({
   companyId, context, clients, selectedId, savedName, canEdit, disabled, open,
   onOpen, onClose, onChoose, initialForm, onFormStateChange, onDirtyChange, fieldError,
+  showCreateButton = false,
 }) {
   const triggerRef = useRef(null)
+  const createTriggerRef = useRef(null)
+  const [directCreate, setDirectCreate] = useState(false)
+  const canCreate = canCreateClient(context)
+  const direct = canCreate && (directCreate || initialForm?.direct === true)
   const selected = clients.find((client) => String(client._id) === selectedId)
   const selectedName = selected ? nameOf(selected) : selectedId ? savedName || 'Сохранённый клиент' : ''
   const contact = phoneOf(selected) || selected?.email || ''
@@ -197,29 +222,49 @@ export default function PartyOrderClientPicker({
     <div className="min-w-0 sm:max-w-sm">
       <p className="mb-1 text-sm font-medium">Основной клиент</p>
       {canEdit ? (
-        <button
-          type="button"
-          ref={triggerRef}
-          aria-label={`Основной клиент: ${valueLabel}`}
-          aria-haspopup="dialog"
-          aria-expanded={open}
-          {...fieldError}
-          disabled={disabled}
-          className={`flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm hover:bg-sky-50 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60 ${focusStyle}`}
-          onClick={onOpen}
-        >
-          <span className="min-w-0 break-words">
-            <span className={selectedName ? 'font-semibold' : 'text-slate-600'}>{selectedName || 'Выбрать клиента'}</span>
-            {contact && <span className="block break-all text-slate-600 tabular-nums">{contact}</span>}
-          </span>
-          <FontAwesomeIcon icon={faChevronDown} className="shrink-0 text-slate-600" aria-hidden="true" />
-        </button>
+        <div className="flex flex-wrap items-start gap-2">
+          <button
+            type="button"
+            ref={triggerRef}
+            aria-label={`Основной клиент: ${valueLabel}`}
+            aria-haspopup="dialog"
+            aria-expanded={open && !direct}
+            {...fieldError}
+            disabled={disabled}
+            className={`flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm hover:bg-sky-50 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60 ${focusStyle}`}
+            onClick={onOpen}
+          >
+            <span className="min-w-0 break-words">
+              <span className={selectedName ? 'font-semibold' : 'text-slate-600'}>{selectedName || 'Выбрать клиента'}</span>
+              {contact && <span className="block break-all text-slate-600 tabular-nums">{contact}</span>}
+            </span>
+            <FontAwesomeIcon icon={faChevronDown} className="shrink-0 text-slate-600" aria-hidden="true" />
+          </button>
+          {showCreateButton && canCreate ? (
+            <button
+              type="button"
+              ref={createTriggerRef}
+              aria-haspopup="dialog"
+              aria-expanded={open && direct}
+              className={`${buttonStyle} disabled:cursor-not-allowed disabled:opacity-60`}
+              disabled={disabled}
+              onClick={() => {
+                setDirectCreate(true)
+                onOpen()
+              }}
+            >
+              Создать клиента
+            </button>
+          ) : null}
+        </div>
       ) : <p className="break-words text-sm">{selectedName || 'Клиент не выбран'}{contact ? ` · ${contact}` : ''}</p>}
       {open && canEdit && <ClientPickerDialog
         companyId={companyId} context={context} clients={clients} selectedId={selectedId}
-        onChoose={onChoose} onClose={() => {
+        direct={direct} onChoose={onChoose} onClose={() => {
+          const returnTrigger = direct ? createTriggerRef : triggerRef
+          setDirectCreate(false)
           onClose()
-          requestAnimationFrame(() => triggerRef.current?.focus())
+          requestAnimationFrame(() => (returnTrigger.current || triggerRef.current)?.focus())
         }} initialForm={initialForm}
         onFormStateChange={onFormStateChange} onDirtyChange={onDirtyChange}
       />}

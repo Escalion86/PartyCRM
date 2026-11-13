@@ -79,6 +79,10 @@ test('client search applies tenant and active filters before its bounded project
   assert.ok(new RegExp(name.regex, name.options).test('анна  петрова'))
   assert.equal(result.headers['Cache-Control'], 'private, no-store')
   assert.deepEqual(result.body.data, [{ _id: 'person', name: 'Анна Петрова', nameParts: { firstName: 'Анна', secondName: 'Петрова', thirdName: '' }, phone: 79138370020, email: 'customer@example.com' }])
+  await state.search('Петрова Анна')
+  const surnameFirst = state.reads[1].filter.$or[1].$expr.$regexMatch
+  assert.equal(surnameFirst.input.$concat[0].$ifNull[0], '$secondName')
+  assert.ok(new RegExp(surnameFirst.regex, surnameFirst.options).test('петрова анна'))
 })
 
 test('search guards permissions and avoids search, projection and ordering by hidden fields', async () => {
@@ -116,8 +120,9 @@ test('search treats query punctuation literally and bounds the request before to
   for (const query of ['a'.repeat(121), '\0']) assert.equal((await state.search(query)).status, 400)
   assert.equal(state.reads.length, 0)
   assert.equal((await state.search('.*')).status, 200)
-  const [name, email] = state.reads[0].filter.$or
+  const [name, surnameFirst, email] = state.reads[0].filter.$or
   assert.equal(name.$expr.$regexMatch.regex, '\\.\\*')
+  assert.equal(surnameFirst.$expr.$regexMatch.regex, '\\.\\*')
   assert.equal(email.email.$regex, '\\.\\*')
   assert.equal((await state.search()).status, 200)
   assert.deepEqual(state.reads[1].filter, { tenantId: 'tenant', status: { $ne: 'archived' } })

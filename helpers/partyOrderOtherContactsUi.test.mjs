@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { normalizePartyLegacyOrderDraft } from './partyLegacyOrderDraft.js'
 
 const source = (path) => readFile(join(process.cwd(), path), 'utf8')
 
@@ -17,7 +18,10 @@ test('party orders persist and edit additional contacts', async () => {
   assert.match(schema, /otherContacts:/)
   assert.match(route, /normalizeOtherContacts/)
   assert.match(route, /otherContacts:\s*normalizeOtherContacts\(body\.otherContacts\)/)
-  assert.match(workspace, /otherContacts:\s*Array\.isArray\(order\.otherContacts\)/)
+  assert.match(workspace, /normalizePartyLegacyOrderDraft as normalizeOrderDraft/)
+  const contacts = [{ clientId: 'client-1', comment: 'Организатор' }]
+  assert.deepEqual(normalizePartyLegacyOrderDraft({ otherContacts: contacts }).otherContacts, contacts)
+  assert.deepEqual(normalizePartyLegacyOrderDraft({}).otherContacts, [])
   assert.match(modal, /PartyOrderContactRolesEditor/)
   assert.match(modal, /primaryClientId=\{orderDraft\.clientId(?:\s*\|\|\s*null)?\}/)
   assert.match(modal, /otherContacts=\{orderDraft\.otherContacts/)

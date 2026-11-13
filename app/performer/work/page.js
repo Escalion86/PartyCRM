@@ -27,5 +27,10 @@ export default async function WorkPage() {
     id: String(membership.tenantId),
     title: membership.company?.title || 'Компания',
   }))
-  return <PartyRoleOrdersWorkspace companies={companies} />
+  return (
+    <PartyRoleOrdersWorkspace
+      companies={companies}
+      canSwitchOrderMode={sessionUser.role === 'dev'}
+    />
+  )
 }

@@ -5,6 +5,7 @@ import { apiJson } from '@helpers/apiClient'
 import usePartyUnsavedChanges, {
   requestPartyLeave,
 } from '@components/party/navigation/usePartyUnsavedChanges'
+import PartyOrderTypeCreateModal from '@components/party/orders/PartyOrderTypeCreateModal'
 import CompanySettingsBriefContent from './CompanySettingsBriefContent'
 
 const input =
@@ -15,7 +16,7 @@ export default function CompanySettingsOrderTypesContent({ activeCompanyId }) {
   const [types, setTypes] = useState([])
   const [templates, setTemplates] = useState([])
   const [selectedId, setSelectedId] = useState('')
-  const [title, setTitle] = useState('')
+  const [creating, setCreating] = useState(false)
   const [rename, setRename] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -23,7 +24,7 @@ export default function CompanySettingsOrderTypesContent({ activeCompanyId }) {
   const [retry, setRetry] = useState(0)
   const selected = types.find((item) => String(item._id) === selectedId)
   usePartyUnsavedChanges(
-    Boolean(title || (selected && rename !== selected.title)),
+    Boolean(selected && rename !== selected.title),
     { label: 'тип заказа', scope: activeCompanyId, pending: busy }
   )
   useEffect(() => {
@@ -43,8 +44,6 @@ export default function CompanySettingsOrderTypesContent({ activeCompanyId }) {
           setTemplates(invitations.data)
           setLoaded(true)
           setError('')
-          setSelectedId('')
-          setRename('')
         }
       })
       .catch((cause) => {
@@ -57,22 +56,13 @@ export default function CompanySettingsOrderTypesContent({ activeCompanyId }) {
     setError('')
     try {
       const result = await apiJson('/api/party/order-types', {
-        method: patch ? 'PATCH' : 'POST',
+        method: 'PATCH',
         headers: { 'x-partycrm-company-id': activeCompanyId },
-        body: JSON.stringify(
-          patch
-            ? { id: selectedId, expectedRevision: selected.revision, ...patch }
-            : { title }
-        ),
+        body: JSON.stringify({ id: selectedId, expectedRevision: selected.revision, ...patch }),
       })
       setTypes((previous) =>
-        patch
-          ? previous.map((item) =>
-              item._id === result.data._id ? result.data : item
-            )
-          : [...previous, result.data]
+        previous.map((item) => item._id === result.data._id ? result.data : item)
       )
-      setTitle('')
       setSelectedId(String(result.data._id))
       setRename(result.data.title)
     } catch (cause) {
@@ -92,23 +82,14 @@ export default function CompanySettingsOrderTypesContent({ activeCompanyId }) {
           {error}
         </p>
       ) : null}
-      <div className="flex flex-col items-end gap-2 sm:flex-row">
-        <label className="w-full text-sm">
-          Новый тип заказа
-          <input
-            className={input}
-            value={title}
-            maxLength={180}
-            disabled={busy}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="Например, День рождения"
-          />
-        </label>
+      <div className="flex justify-start">
         <button
-          className={`${button} shrink-0`}
+          className={`${button} bg-sky-700 text-white hover:bg-sky-800`}
           type="button"
-          disabled={busy || !title.trim()}
-          onClick={() => save()}
+          disabled={busy}
+          onClick={() => {
+            if (requestPartyLeave({ kind: 'record', target: 'new-type' })) setCreating(true)
+          }}
         >
           Добавить тип
         </button>
@@ -147,8 +128,11 @@ export default function CompanySettingsOrderTypesContent({ activeCompanyId }) {
         className={button}
         disabled={busy}
         onClick={() => {
-          if (requestPartyLeave({ kind: 'record', target: 'reload-types' }))
-            setRetry((value) => value + 1)
+          if (!requestPartyLeave({ kind: 'record', target: 'reload-types' })) return
+          setSelectedId('')
+          setRename('')
+          setLoaded(false)
+          setRetry((value) => value + 1)
         }}
       >
         Обновить список
@@ -209,6 +193,20 @@ export default function CompanySettingsOrderTypesContent({ activeCompanyId }) {
           />
         </div>
       ) : null}
+      {creating && (
+        <PartyOrderTypeCreateModal
+          companyId={activeCompanyId}
+          onClose={() => setCreating(false)}
+          onCreated={(type) => {
+            const id = String(type._id)
+            setTypes((previous) => [...previous.filter((item) => String(item._id) !== id), type])
+            setSelectedId(id)
+            setRename(type.title)
+            setCreating(false)
+            if (!loaded) setRetry((value) => value + 1)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -15,6 +15,7 @@ test('company without premises can finish onboarding with a persisted setting', 
     services: [{}],
     staff: [{ role: 'owner' }, { role: 'performer' }],
     orders: [{}],
+    hasOrderTypes: true,
   })
   assert.equal(steps[0].completed, true)
   assert.equal(getPartyCompanyOnboardingProgress(steps).finished, true)
@@ -37,9 +38,26 @@ test('getPartyCompanyOnboardingSteps marks company setup tasks', () => {
       ['location', true],
       ['service', false],
       ['staff', false],
+      ['order-type', false],
       ['order', false],
     ]
   )
+})
+
+test('catalog and staff steps remain repeatable after completion', () => {
+  const steps = getPartyCompanyOnboardingSteps({
+    locations: [{}],
+    services: [{}],
+    staff: [{ role: 'owner' }, { role: 'performer' }],
+    orders: [{}],
+    hasOrderTypes: true,
+  })
+
+  assert.deepEqual(
+    steps.filter((step) => step.completed && step.repeatable).map((step) => step.id),
+    ['location', 'service', 'staff', 'order-type']
+  )
+  assert.equal(getPartyCompanyOnboardingProgress(steps).finished, true)
 })
 
 test('getPartyCompanyOnboardingProgress counts completed setup tasks', () => {

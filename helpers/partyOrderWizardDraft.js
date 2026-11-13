@@ -5,6 +5,7 @@ const record = (value) => value && typeof value === 'object' && !Array.isArray(v
 const numericInput = (value) => ['string', 'number'].includes(typeof value) && Number.isFinite(Number(value))
 const validDraft = (draft) => record(draft) &&
   ['orderTypeId', 'locationId', 'customAddress', 'eventDate', 'clientId'].every((key) => typeof draft[key] === 'string') &&
+  (draft.clientAddress === undefined || (record(draft.clientAddress) && ['town', 'street', 'house', 'room', 'comment'].every((key) => typeof draft.clientAddress[key] === 'string'))) &&
   (draft.adminComment === undefined || typeof draft.adminComment === 'string') &&
   ['company_location', 'client_address'].includes(draft.placeType) &&
   Array.isArray(draft.serviceSelections) && draft.serviceSelections.length <= 500 &&

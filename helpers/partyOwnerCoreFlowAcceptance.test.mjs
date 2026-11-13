@@ -35,7 +35,7 @@ test('company owner can create location service client unlinked staff and order'
   assert.match(staffRoute, /linkStatus:\s*\[\s*'unlinked'/)
   assert.match(ordersRoute, /validateOrderReferences/)
   assert.match(ordersRoute, /findPartyOrderConflicts/)
-  assert.match(ordersRoute, /PartyOrders\.create\(\{/)
+  assert.match(ordersRoute, /PartyOrders\.create\(payload\)/)
   assert.match(ordersRoute, /syncPartyOrderCalendarAfterCrud/)
 
   assert.match(workspace, /const addLocation = useCallback/)

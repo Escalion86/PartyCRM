@@ -26,6 +26,7 @@ import StaffList from '@components/party/lists/StaffList'
 import LocationsList from '@components/party/lists/LocationsList'
 import ServicesList from '@components/party/lists/ServicesList'
 import OrderModal from '@components/party/modals/OrderModal'
+import PartyOrderTypeCreateModal from '@components/party/orders/PartyOrderTypeCreateModal'
 import PartyOrderWizard from '@components/party/orders/PartyOrderWizard'
 import OrderViewModal from '@components/party/modals/OrderViewModal'
 import OrderAdditionalEventsModal from '@components/party/modals/OrderAdditionalEventsModal'
@@ -57,6 +58,7 @@ import PartyAuditLog from '@components/party/audit/PartyAuditLog'
 import InventoryWarnings from '@components/party/inventory/InventoryWarnings'
 import { getPartyOrderPreparationReadiness } from '@helpers/partyOrderPreparation'
 import { readPartyLegacyOrderLink, loadPartyLegacyLinkedOrder } from '@helpers/partyLegacyOrderLink'
+import { normalizePartyLegacyOrderDraft as normalizeOrderDraft } from '@helpers/partyLegacyOrderDraft'
 import { isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
 import { publishPartyActiveCompanyId } from '@helpers/partyActiveCompany'
 
@@ -94,53 +96,6 @@ const getOrderTransactionTotal = (order, type) =>
 
 const hasOpenAdditionalEvents = (order) =>
   order.taskSummary ? Number(order.taskSummary.openCount || 0) > 0 : (order.additionalEvents ?? []).some((item) => !item.done)
-
-const getOrderDurationMinutes = (order) => {
-  const explicit = Number(order?.durationMinutes)
-  if (Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit)
-
-  const start = order?.eventDate ? new Date(order.eventDate) : null
-  const end = order?.dateEnd ? new Date(order.dateEnd) : null
-  if (
-    start &&
-    end &&
-    !Number.isNaN(start.getTime()) &&
-    !Number.isNaN(end.getTime()) &&
-    end > start
-  ) {
-    return Math.max(Math.round((end.getTime() - start.getTime()) / 60000), 1)
-  }
-
-  return 60
-}
-
-const normalizeOrderDraft = (order) => ({
-  ...order,
-  durationMinutes: String(getOrderDurationMinutes(order)),
-  contractAmount:
-    order.contractAmount ?? order.clientPayment?.totalAmount ?? '',
-  clientPayment: {
-    totalAmount: order.clientPayment?.totalAmount ?? order.contractAmount ?? '',
-    prepaidAmount: order.clientPayment?.prepaidAmount ?? '',
-    status: order.clientPayment?.status ?? 'none',
-  },
-  transactions: Array.isArray(order.transactions) ? order.transactions : [],
-  additionalEvents: Array.isArray(order.additionalEvents)
-    ? order.additionalEvents.map((item) => ({
-        ...item,
-        responsibleStaffId: item?.responsibleStaffId || '',
-      }))
-    : [],
-  otherContacts: Array.isArray(order.otherContacts) ? order.otherContacts : [],
-  clientAddress: {
-    town: order.clientAddress?.town ?? '',
-    street: order.clientAddress?.street ?? '',
-    house: order.clientAddress?.house ?? '',
-    room: order.clientAddress?.room ?? '',
-    comment: order.clientAddress?.comment ?? '',
-  },
-  responsibleStaffId: order.responsibleStaffId || '',
-})
 
 const getAssignedStaffIds = (order) =>
   new Set((order.assignedStaff ?? []).map((item) => String(item.staffId)))
@@ -427,7 +382,7 @@ const OrderFilterDropdown = ({
   )
 }
 
-export default function CompanyWorkspaceClient({ section = 'overview' }) {
+export default function CompanyWorkspaceClient({ section = 'overview', canSwitchOrderMode = false }) {
   const setServiceGroups = useSetAtom(serviceGroupsAtom)
   const [context, setContext] = useState(null)
   const [memberships, setMemberships] = useState([])
@@ -441,6 +396,8 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
   const [similarClients, setSimilarClients] = useState([])
   const [staff, setStaff] = useState([])
   const [services, setServices] = useState([])
+  const [hasOrderTypes, setHasOrderTypes] = useState(false)
+  const [onboardingCompanyId, setOnboardingCompanyId] = useState('')
   const [orders, setOrders] = useState([])
   const [calls, setCalls] = useState([])
   const [companySettings, setCompanySettings] = useState({})
@@ -473,6 +430,16 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
   const hasAccess = Boolean(context?.tenantId && context?.staff)
   const canManage = ['owner', 'admin'].includes(context?.role)
+  const openOrderEditor = (order) => {
+    if (!canSwitchOrderMode) {
+      const query = new URLSearchParams({ orderId: order._id, companyId: activeCompanyId, mode: 'edit' })
+      window.location.assign(`/company/work?${query}`)
+      return
+    }
+    setOrderDraft(normalizeOrderDraft(order))
+    setEditingOrderId(order._id)
+    setActiveModal('order-edit')
+  }
   const canUseStatistics = companyAccess?.allowStatistics !== false
   const currentStaffId = context?.staff?._id ? String(context.staff._id) : ''
   useEffect(() => {
@@ -514,6 +481,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           setClients([])
           setStaff([])
           setServices([])
+          setHasOrderTypes(false)
           setServiceGroups([])
           setOrders([])
           setCalls([])
@@ -572,6 +540,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           callsResponse,
           companySettingsResponse,
           serviceGroupsResponse,
+          orderTypesResponse,
         ] = await Promise.all([
           apiJson(
             '/api/party/locations',
@@ -612,6 +581,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             '/api/party/service-groups',
             buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
           ),
+          section === 'overview' ? apiJson(
+            '/api/party/order-types',
+            buildCompanyRequestOptions(selectedCompanyId, { cache: 'no-store' })
+          ).catch(() => ({ data: [] })) : { data: [] },
         ])
         if (workspaceLoadToken.current !== token) return
         setLocations(locationsResponse.data ?? [])
@@ -619,6 +592,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         setClients(clientsResponse.data ?? [])
         setStaff(staffResponse.data ?? [])
         setServices(servicesResponse.data ?? [])
+        setHasOrderTypes(Boolean(orderTypesResponse.data?.length))
         setOrders(ordersResponse.data ?? [])
         setCalls(callsResponse.data ?? [])
         setFocusedCallId(callId)
@@ -661,12 +635,14 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
     if (loading || !canManage || !activeCompanyId || !['orders', 'orders-past'].includes(section)) return
     const url = new URL(window.location.href)
     if (!url.searchParams.has('order')) return
+    const openEditor = canSwitchOrderMode && url.searchParams.get('mode') === 'edit'
     let link
     try { link = readPartyLegacyOrderLink(url.href) }
     catch (cause) { setError(cause.message) }
     url.searchParams.delete('order')
     url.searchParams.delete('company')
     url.searchParams.delete('create')
+    url.searchParams.delete('mode')
     window.history.replaceState(window.history.state, '', url)
     if (!link || activeModal) return
     const token = {}
@@ -679,12 +655,12 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       if (linkedOrderLoadToken.current !== token || workspaceLoadToken.current !== workspaceToken) return
       setOrderDraft(normalizeOrderDraft(order))
       setEditingOrderId(String(order._id))
-      setActiveModal('order-view')
+      setActiveModal(openEditor ? 'order-edit' : 'order-view')
     }).catch((cause) => {
       if (linkedOrderLoadToken.current === token && workspaceLoadToken.current === workspaceToken) setError(cause.message || 'Заказ по ссылке недоступен.')
     })
     return () => { if (linkedOrderLoadToken.current === token) linkedOrderLoadToken.current = null }
-  }, [activeCompanyId, activeModal, canManage, loading, orders, section])
+  }, [activeCompanyId, activeModal, canManage, canSwitchOrderMode, loading, orders, section])
 
   const reloadRelatedOrders = useCallback(async () => {
     const workspaceToken = workspaceLoadToken.current
@@ -732,9 +708,10 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         services,
         staff,
         orders,
+        hasOrderTypes,
         noOwnPremises: companySettings.noOwnPremises,
       }),
-    [locations, services, staff, orders, companySettings.noOwnPremises]
+    [locations, services, staff, orders, hasOrderTypes, companySettings.noOwnPremises]
   )
   const onboardingProgress = useMemo(
     () => getPartyCompanyOnboardingProgress(onboardingSteps),
@@ -1645,7 +1622,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       const response = await apiJson(
         `/api/party/services/${editingServiceId}`,
         buildCompanyRequestOptions(activeCompanyId, {
-          method: 'PATCH',
+          method: 'PUT',
           body: JSON.stringify(serviceDraft),
         })
       )
@@ -1784,7 +1761,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
 
         {section === 'overview' && (
           <>
-            {!onboardingProgress.finished && (
+            {(!onboardingProgress.finished || onboardingCompanyId === activeCompanyId) && (
               <div className="mb-6 rounded-2xl border border-sky-100 bg-white p-5">
                 <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div>
@@ -1829,11 +1806,18 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                           {step.completed ? 'Готово' : 'Нужно'}
                         </span>
                       </div>
-                      {!step.completed && canManage && (
+                      {canManage && (step.repeatable || !step.completed) && (
                         <button
                           type="button"
-                          className="mt-3 cursor-pointer rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-700"
+                          className={`mt-3 min-h-11 cursor-pointer rounded-md px-3 py-2 text-sm font-semibold ${
+                            step.completed
+                              ? 'border border-sky-200 bg-white text-sky-800 hover:bg-sky-50'
+                              : 'bg-sky-700 text-white hover:bg-sky-800'
+                          }`}
                           onClick={() => {
+                            if (step.repeatable) {
+                              setOnboardingCompanyId(activeCompanyId)
+                            }
                             if (step.modal === 'order') {
                               setOrderDraft(
                                 createEmptyOrderDraft(
@@ -2026,11 +2010,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
                   setEditingOrderId(order._id)
                   setActiveModal('order-view')
                 }}
-                onEdit={(order) => {
-                  setOrderDraft(normalizeOrderDraft(order))
-                  setEditingOrderId(order._id)
-                  setActiveModal('order-edit')
-                }}
+                onEdit={openOrderEditor}
                 onAdditionalEvents={(order) => {
                   setOrderDraft(normalizeOrderDraft(order))
                   setEditingOrderId(order._id)
@@ -2392,6 +2372,16 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
       </main>
 
       {/* Modals */}
+      {activeModal === 'order-type' && canManage && (
+        <PartyOrderTypeCreateModal
+          companyId={activeCompanyId}
+          onClose={() => setActiveModal('')}
+          onCreated={() => {
+            setHasOrderTypes(true)
+            setActiveModal('')
+          }}
+        />
+      )}
       {activeModal === 'upcoming-events' && (
         <PartyUpcomingEventsModal
           open={true}
@@ -2423,7 +2413,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
             setActiveModal('')
             setEditingOrderId('')
           }}
-          onEdit={() => setActiveModal('order-edit')}
+          onEdit={() => openOrderEditor(orderDraft)}
           onReviewReport={reviewPerformerReport}
           onUpdateOrder={(nextOrder) =>
             updateOrder(nextOrder).then((updatedOrder) => {
@@ -2483,6 +2473,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           companySettings={companySettings}
           activeCompanyId={activeCompanyId}
           canManage={canManage}
+          canSwitchOrderMode={canSwitchOrderMode}
           saving={saving}
           onClose={() => setActiveModal('')}
           onSubmit={orderDraft._id ? editOrder : addOrder}
@@ -2509,7 +2500,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
         />
       )}
 
-      {activeModal === 'order-edit' && (
+      {activeModal === 'order-edit' && canSwitchOrderMode && (
         <OrderModal
           aiAvailable={companyAccess?.allowAi === true}
           open={true}
@@ -2524,6 +2515,7 @@ export default function CompanyWorkspaceClient({ section = 'overview' }) {
           companySettings={companySettings}
           activeCompanyId={activeCompanyId}
           canManage={canManage}
+          canSwitchOrderMode={canSwitchOrderMode}
           saving={saving}
           onClose={() => {
             setActiveModal('')

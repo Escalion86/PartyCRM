@@ -145,6 +145,7 @@ const Input = forwardRef(
         ) : (
           <input
             type={type}
+            aria-label={typeof label === 'string' ? label : undefined}
             step={resolvedStep}
             className={cn(
               'peer h-7 flex-1 bg-transparent px-1 text-black placeholder-transparent focus:outline-none',

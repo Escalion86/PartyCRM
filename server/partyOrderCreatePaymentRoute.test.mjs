@@ -17,6 +17,8 @@ const strip = (source) => source.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\
 const route = strip(await readFile(new URL('../app/api/party/orders/route.js', import.meta.url), 'utf8'))
   .replace("await import('@server/partyOrderCreatePayment')", 'await loadInitialPaymentModule()')
   .replace("await import('@server/partyInboxOrder')", 'await loadInboxOrderModule()')
+  .replace("await import('@server/partyOrderBooking')", 'await loadBookingModule()')
+  .replace("await import('@server/partyPaymentExpectations')", 'await loadPaymentExpectationsModule()')
 const serviceSource = strip(await readFile(new URL('./partyOrderCreatePayment.js', import.meta.url), 'utf8'))
 const inboxSource = strip(await readFile(new URL('./partyInboxOrder.js', import.meta.url), 'utf8'))
 const helperDeps = { createHash, canPartyAccess: permissions.canPartyAccess, parsePartyIsoDate, getPartyOrderModel: () => {}, getPartyTransactionModel: () => {}, withPartyFinancialTransaction: () => {}, withPartyOrderVenueWrite: () => {}, supportsPartyVenueTransactions: async () => true }
@@ -25,7 +27,7 @@ const tenantId = 'a'.repeat(24), actorId = 'b'.repeat(24), orderId = 'c'.repeat(
 const owner = { tenantId, role: 'owner', staff: { _id: actorId, tenantId, role: 'owner', status: 'active' }, company: { settings: {} } }
 const body = { title: 'Мероприятие', serviceTitle: 'Шоу', contractAmount: 1000, initialPayment: { amount: '500.01', paymentMethod: 'cash' } }
 const actor = (grants) => ({ ...owner, role: 'performer', staff: { ...owner.staff, role: 'performer' }, position: { permissions: { orders: 'read', 'orders.create': 'edit', 'orders.title': 'edit', 'orders.serviceTitle': 'edit', 'finance.clientAmount': 'edit', 'finance.payments': 'edit', ...grants }, orderScope: {} } })
-function setup(context = owner, { storedInboxState = null, sourceOrderId = null } = {}) {
+function setup(context = owner, { storedInboxState = null, sourceOrderId = null, transactionsAvailable = true } = {}) {
   let orders = [], payments = [], inboxState = storedInboxState, serial = Promise.resolve()
   const guards = [], effects = [], active = new Set()
   const q = (value) => ({ select() { return this }, session() { return this }, lean: async () => value })
@@ -33,9 +35,20 @@ function setup(context = owner, { storedInboxState = null, sourceOrderId = null 
     init: async () => {},
     findOne: (filter) => q(orders.find((row) => Object.entries(filter).every(([key, value]) => String(row[key]) === String(value))) || null),
     countDocuments: async () => orders.length,
-    create: async ([data], { session }) => { assert.ok(active.has(session)); const row = { ...data, _id: orderId }; orders.push(row); return [row] },
+    create: async (data, { session } = {}) => {
+      const transactional = Array.isArray(data)
+      if (transactional) assert.ok(active.has(session))
+      const payload = transactional ? data[0] : data
+      if (payload.createRequestKey && orders.some((row) =>
+        row.tenantId === payload.tenantId && row.createRequestActorId === payload.createRequestActorId && row.createRequestKey === payload.createRequestKey
+      )) throw Object.assign(new Error('Duplicate request'), { code: 11000 })
+      const row = { ...payload, _id: orderId }
+      orders.push(row)
+      return transactional ? [row] : row
+    },
   }
-  const service = core.createPartyOrderPaymentService({ getOrders: async () => Model, getTransactions: async () => ({ create: async ([row], { session }) => { assert.ok(active.has(session)); payments.push(row) } }), financialTransaction: (tenant, callback) => {
+  const service = core.createPartyOrderPaymentService({ getOrders: async () => Model, getTransactions: async () => ({ create: async ([row], { session }) => { assert.ok(active.has(session)); payments.push(row) } }), getExpectations: async () => ({ init: async () => {} }), supportsTransactions: async () => transactionsAvailable, financialTransaction: (tenant, callback) => {
+    assert.ok(transactionsAvailable)
     assert.equal(tenant, tenantId)
     const operation = serial.then(async () => { const snapshot = structuredClone({ orders, payments, inboxState }), session = {}; active.add(session); try { return await callback(session) } catch (error) { ({ orders, payments, inboxState } = snapshot); throw error } finally { active.delete(session) } })
     serial = operation.catch(() => {}); return operation
@@ -57,6 +70,8 @@ function setup(context = owner, { storedInboxState = null, sourceOrderId = null 
     ...permissions, ...payloadHelpers, ...brief, ...contacts, ...assignments, getPartyWorkflow,
     loadInitialPaymentModule: async () => initial,
     loadInboxOrderModule: async () => inboxModule,
+    loadBookingModule: async () => ({ preparePartyOrderBooking: async ({ payload }) => ({ ...payload, bookingVersion: 1 }) }),
+    loadPaymentExpectationsModule: async () => ({ parsePartyInitialExpectations: ({ values }) => values }),
     guardPartyOrderPatch: (...args) => { guards.push(args[1]); return permissions.guardPartyOrderPatch(...args) },
     NextResponse: { json: (body, options) => ({ status: options?.status || 200, body }) },
     getPartyRequestContext: async () => ({ context }), isValidObjectId: (value) => /^[a-f\d]{24}$/i.test(String(value)), parseJsonBody: async (request) => request.body,
@@ -65,12 +80,53 @@ function setup(context = owner, { storedInboxState = null, sourceOrderId = null 
     getPartyStaffModel: async () => ({ find: () => q([]), countDocuments: async () => 1 }),
     getPartyClientModel: async () => ({ countDocuments: async () => 1 }), getPartyServiceModel: async () => ({ countDocuments: async () => 1 }), getPartyLocationModel: async () => ({ exists: async () => true }),
     getPartyCompanyTariffAccessState: async () => ({ access: {} }), filterPartyOrderPayloadByTariffAccess: (payload) => payload, canCreatePartyOrderByTariff: () => ({ ok: true }),
+    withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     findPartyOrderConflicts: async () => ({}), hasPartyOrderConflicts: () => false,
     recordPartyOrderAudit: async () => effects.push('audit'), syncPartyOrderCalendarAfterCrud: async () => effects.push('calendar'), sendPartyPerformerAssignmentPushes: async () => effects.push('push'), syncPartyOrderInventory: async () => { effects.push('inventory'); return {} }, filterPartyInventoryResult: async (context, result) => result,
   }
   const POST = new Function(...Object.keys(deps), `${route};return POST`)(...Object.values(deps))
   return { guards, effects, get orders() { return orders }, get payments() { return payments }, get inboxState() { return inboxState }, post: (input = body, key = 'create_request_123') => POST({ body: structuredClone(input), headers: new Headers({ 'Idempotency-Key': key }) }) }
 }
+
+test('a short lead with empty expectations saves and replays without transaction support', async () => {
+  const state = setup(owner, { transactionsAvailable: false })
+  const input = { bookingVersion: 1, completeBooking: false, adminComment: 'Уточнить программу', initialExpectations: [] }
+  const responses = await Promise.all([state.post(input), state.post(input)])
+  assert.deepEqual(responses.map(({ status }) => status).sort(), [200, 201])
+  assert.equal(responses.find(({ status }) => status === 200).body.replayed, true)
+  assert.equal(state.orders.length, 1)
+  assert.equal(state.orders[0].adminComment, input.adminComment)
+  assert.equal(state.payments.length, 0)
+  assert.deepEqual(state.effects, ['audit', 'calendar', 'push', 'inventory'])
+  const changed = await state.post({ ...input, adminComment: 'Другая заявка' })
+  assert.equal(changed.status, 409)
+  assert.equal(changed.body.code, 'partycrm_order_create_key_conflict')
+})
+
+test('an idempotency key remains supported if a short lead omits empty expectations', async () => {
+  const state = setup(owner, { transactionsAvailable: false })
+  const input = { bookingVersion: 1, completeBooking: false, adminComment: 'Подтвердить дату' }
+  assert.equal((await state.post(input)).status, 201)
+  assert.equal((await state.post(input)).body.replayed, true)
+  assert.equal(state.orders.length, 1)
+})
+
+test('timed bookings, advances, expected payments and inbox links still require transactions', async () => {
+  const state = setup(owner, { transactionsAvailable: false })
+  const lead = { bookingVersion: 1, completeBooking: false, adminComment: 'Уточнить программу' }
+  for (const input of [
+    { ...lead, eventDate: '2026-11-12T10:00:00.000Z', dateEnd: '2026-11-12T11:00:00.000Z', initialExpectations: [] },
+    body,
+    { ...lead, initialExpectations: [{ amount: 100 }] },
+    { ...lead, inboxId: `vk:${sourceId}` },
+  ]) {
+    const response = await state.post(input)
+    assert.equal(response.status, 503, JSON.stringify(input))
+    assert.equal(response.body.code, 'partycrm_initial_payment_transaction_required')
+  }
+  assert.equal(state.orders.length, 0)
+  assert.equal(state.payments.length, 0)
+})
 
 test('creating from an inbox links atomically, replays the same request and rejects a second order', async () => {
   const state = setup()

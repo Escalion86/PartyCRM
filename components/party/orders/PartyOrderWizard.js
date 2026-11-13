@@ -1,10 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
+import { faPencilAlt } from '@fortawesome/free-solid-svg-icons/faPencilAlt'
 import Modal from '@components/Modal'
-import Link from 'next/link'
 import { apiJson } from '@helpers/apiClient'
-import { canPartyAccess } from '@helpers/partyRolePermissions'
+import { formatAddressPoolShort, normalizePartyPoolAddress } from '@helpers/addressPool'
+import { canPartyAccess, isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
 import {
   calculatePartyBooking,
   isPartyServiceAvailable,
@@ -17,6 +20,10 @@ import usePartyUnsavedChanges, {
 import { PartyEventBriefEditor } from './PartyEventBrief'
 import { getPartyBriefAnswer, hasPartyBriefAnswer } from '@helpers/partyBriefTemplates'
 import PartyOrderClientPicker from './PartyOrderClientPicker'
+import PartyOrderTypeCreateModal from './PartyOrderTypeCreateModal'
+import PartyOrderAddressEditor from './PartyOrderAddressEditor'
+import PartyOrderServiceModal from './PartyOrderServiceModal'
+import PartyOrderScheduleModal from './PartyOrderScheduleModal'
 import PartyOrderAvailabilityPicker from './PartyOrderAvailabilityPicker'
 import PartyInitialExpectations from './PartyInitialExpectations'
 import usePartyOrderWizardDraft from './usePartyOrderWizardDraft'
@@ -47,6 +54,7 @@ function Wizard({
   order = {},
   inboxId,
   options,
+  refreshOrderTypes,
   onSaved,
   onClose,
   onDirtyChange,
@@ -55,6 +63,13 @@ function Wizard({
   const existing = Boolean(order._id)
   const can = (resource, action = 'read') =>
     canPartyAccess(context, { resource, action })
+  const canReadOrderType = can('orders.title')
+  const canEditOrderType = can('orders.title', 'edit')
+  const canManageCatalog = ['owner', 'admin'].includes(context.role) && !isPartyRestrictedManagementContext(context)
+  const canCreateOrderType = canEditOrderType && canManageCatalog
+  const canEditServices = can('orders.servicesIds', 'edit')
+  const canEditBrief = can('orders.eventBrief', 'edit')
+  const canEditAddress = can('orders.customAddress', 'edit') || can('orders.clientAddress', 'edit')
   const canCaptureLead = !existing && (can('orders.clientId', 'edit') || can('orders.adminComment', 'edit'))
   const timeZone = context.company?.settings?.timeZone || 'Asia/Krasnoyarsk'
   const [draft, setDraft] = useState(() => ({
@@ -67,9 +82,8 @@ function Wizard({
     locationId: order.locationId ? String(order.locationId) : '',
     customAddress:
       order.customAddress ||
-      Object.values(order.clientAddress || {})
-        .filter(Boolean)
-        .join(', '),
+      formatAddressPoolShort({ ...order.clientAddress, comment: '' }),
+    clientAddress: normalizePartyPoolAddress(order.clientAddress),
     serviceSelections: selectionOf(order),
     eventDate: order.eventDate || '',
     rental:
@@ -88,14 +102,44 @@ function Wizard({
   })
   const [expectations, setExpectations] = useState([])
   const [createdClients, setCreatedClients] = useState([])
+  const [orderTypeCatalog, setOrderTypeCatalog] = useState(null)
+  const [typeCreateOpen, setTypeCreateOpen] = useState(false)
+  const [serviceEditor, setServiceEditor] = useState(null)
+  const [catalogChanges, setCatalogChanges] = useState({})
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [updatedLocations, setUpdatedLocations] = useState({})
+  const [availabilityRefresh, setAvailabilityRefresh] = useState(0)
+  const typeCreateTrigger = useRef(null)
+  const typeCatalogRequest = useRef(null)
+  const serviceEditorTrigger = useRef(null)
+  const scheduleTrigger = useRef(null)
+  const orderTypes = orderTypeCatalog ?? options.orderTypes ?? []
   const [step, setStep] = useState(canCaptureLead ? -1 : 0)
   const [reachedStep, setReachedStep] = useState(canCaptureLead ? -1 : 0)
   const [clientForm, setClientForm] = useState(null)
   const [clientPickerOpen, setClientPickerOpen] = useState(false)
   const [clientFormVersion, setClientFormVersion] = useState(0)
   const [validationStep, setValidationStep] = useState(null)
+  const [invalidBriefField, setInvalidBriefField] = useState(null)
+  const [briefValidation, setBriefValidation] = useState(null)
+  const briefKey = JSON.stringify([draft.orderTypeId, draft.serviceSelections.map((item) => item.serviceId)])
+  const updateBriefValidation = useCallback(
+    (value) => setBriefValidation({ ...value, key: briefKey }),
+    [briefKey]
+  )
+  const briefCheck = briefValidation?.key === briefKey ? briefValidation : null
+  const briefError = canEditBrief
+    ? briefCheck?.missingLabel
+      ? `Заполните поле «${briefCheck.missingLabel}», чтобы продолжить бронирование.`
+      : step === 4 && (briefCheck?.error || !briefCheck || briefCheck.loading)
+        ? briefCheck?.error
+          ? 'Повторите загрузку брифа, чтобы продолжить.'
+          : 'Дождитесь загрузки брифа.'
+        : ''
+    : ''
   const stepSection = useRef(null)
   const stepHeading = useRef(null)
+  const stepProgress = useRef(null)
   const previousStep = useRef(step)
   const [rentalMinutes, setRentalMinutes] = useState(() =>
     order.rental
@@ -129,6 +173,21 @@ function Wizard({
     onDirtyChange?.(dirty)
     return () => onDirtyChange?.(false)
   }, [dirty, onDirtyChange])
+  useEffect(() => {
+    if (!refreshOrderTypes || !canReadOrderType) return
+    const controller = new AbortController()
+    typeCatalogRequest.current = controller
+    apiJson('/api/party/order-types', {
+      headers: { 'x-partycrm-company-id': companyId },
+      cache: 'no-store',
+      signal: controller.signal,
+    }).then(({ data }) => {
+      if (!controller.signal.aborted) setOrderTypeCatalog(data)
+    }).catch(() => {
+      // Keep the catalog already supplied with the order options.
+    })
+    return () => controller.abort()
+  }, [canReadOrderType, companyId, refreshOrderTypes])
   const childChanged = useCallback((value) => setClientDirty(value), [])
   const contactChanged = useCallback((value) => setContactDirty(value), [])
   const draftScope = getPartyOrderWizardDraftScope(context, order, inboxId)
@@ -144,20 +203,33 @@ function Wizard({
   const leadMode = step === -1
   const errorId = 'party-order-wizard-field-error'
   useEffect(() => {
-    if (previousStep.current !== step) stepHeading.current?.focus()
+    if (previousStep.current !== step) {
+      stepHeading.current?.focus()
+      stepProgress.current?.querySelector('[aria-current="step"]')?.scrollIntoView({
+        block: 'nearest',
+        inline: 'nearest',
+      })
+    }
     previousStep.current = step
   }, [step])
   const fieldError = (index) => ({
     'aria-invalid': validationStep === index && Boolean(error) || undefined,
     'aria-describedby': validationStep === index && error ? errorId : undefined,
   })
-  const reportValidation = (index, message) => {
+  const reportValidation = (index, message, fromBrief = false) => {
     setStep(index)
     setReachedStep((previous) => Math.max(previous, index))
     setValidationStep(index)
+    setInvalidBriefField(fromBrief || (index === 4 && message === briefError)
+      ? briefCheck?.missingId || ''
+      : null)
     setError(message)
     requestAnimationFrame(() => {
-      stepSection.current?.querySelector('[aria-invalid="true"]:not(fieldset), select:not(:disabled), input:not(:disabled), textarea:not(:disabled)')?.focus()
+      const section = stepSection.current
+      const target = section?.querySelector('[aria-invalid="true"]:not(fieldset):not(:disabled)') ||
+        section?.querySelector('select:not(:disabled), input:not(:disabled), textarea:not(:disabled)') ||
+        stepHeading.current
+      target?.focus()
     })
   }
   const navigateTo = (index) => {
@@ -170,9 +242,31 @@ function Wizard({
     setStep(index)
     setReachedStep((previous) => Math.max(previous, index))
   }
+  const startBooking = () => {
+    if (reachedStep < 0) {
+      const activeTypes = orderTypes.filter((type) => type.active !== false)
+      const availableLocations = options.locations.filter(
+        (location) => location.status === 'active' && location.bookingEnabled !== false
+      )
+      setDraft((previous) => ({
+        ...previous,
+        ...(canEditOrderType && !previous.orderTypeId && activeTypes.length === 1
+          ? { orderTypeId: String(activeTypes[0]._id) }
+          : {}),
+        ...(can('orders.locationId', 'edit') &&
+        previous.placeType === 'company_location' &&
+        !previous.locationId &&
+        availableLocations.length === 1
+          ? { locationId: String(availableLocations[0]._id) }
+          : {}),
+      }))
+    }
+    navigateTo(0)
+  }
   const restore = () => {
     const saved = recovery.recovery
     setDraft(saved.draft)
+    setBriefValidation(null)
     setStep(saved.step)
     setReachedStep(saved.reachedStep)
     setRentalMinutes(saved.rentalMinutes)
@@ -186,9 +280,7 @@ function Wizard({
     setUnresolved(Boolean(saved.attempt || saved.unresolved))
     recovery.accept()
   }
-  const location = options.locations.find(
-    (item) => String(item._id) === draft.locationId
-  )
+  const location = updatedLocations[draft.locationId] || options.locations.find((item) => String(item._id) === draft.locationId)
   const clients = [
     ...options.clients,
     ...createdClients.filter(
@@ -198,9 +290,9 @@ function Wizard({
   const servicesById = useMemo(
     () =>
       new Map(
-        options.services.map((service) => [String(service._id), service])
+        [...options.services.map((service) => [String(service._id), service]), ...Object.entries(catalogChanges)]
       ),
-    [options.services]
+    [options.services, catalogChanges]
   )
   const items = draft.serviceSelections.map((selection) => {
     const service = servicesById.get(String(selection.serviceId))
@@ -279,19 +371,30 @@ function Wizard({
     setError('')
     setValidationStep(null)
   }
-  const selectServices = (selections) => {
+  const selectServices = (selections, changedService) => {
     edit({ serviceSelections: selections })
     if (!draft.eventDate) {
       const nextDuration = selections.reduce(
-        (sum, item) =>
-          sum +
-          (Number(servicesById.get(String(item.serviceId))?.duration) || 0) *
-            Number(item.quantity || 0),
+        (sum, item) => {
+          const service = String(changedService?._id) === String(item.serviceId)
+            ? changedService : servicesById.get(String(item.serviceId))
+          return sum + (Number(service?.duration) || 0) * Number(item.quantity || 0)
+        },
         0
       )
       setRentalMinutes(Math.max(1, nextDuration || 60))
     }
   }
+  const addableServices = step === 2 && canEditServices
+    ? [...servicesById.values()].filter(
+      (service) => isPartyServiceAvailable(service, draft) &&
+        !draft.serviceSelections.some((item) => String(item.serviceId) === String(service._id))
+    )
+    : []
+  const addService = (serviceId) =>
+    selectServices([...draft.serviceSelections, { serviceId: String(serviceId), quantity: 1 }])
+  const serviceDetails = (service) =>
+    `${service.duration || 0} мин${canPrice ? ` · ${money(service.price)}` : ''}`
   const changeType = async (orderTypeId) => {
     if (childDirty) { setError('Сначала сохраните или отмените новый контакт.'); return }
     const archivedAnswers = [...(draft.eventBrief.archivedAnswers || [])]
@@ -307,6 +410,48 @@ function Wizard({
       finally { setBusy(false) }
     }
     edit({ orderTypeId, eventBrief: { customAnswers: {}, archivedAnswers } })
+  }
+  const closeTypeCreate = () => {
+    setTypeCreateOpen(false)
+    requestAnimationFrame(() => typeCreateTrigger.current?.focus())
+  }
+  const applyCreatedOrderType = async (type) => {
+    typeCatalogRequest.current?.abort()
+    const typeId = String(type._id)
+    setOrderTypeCatalog((previous) => [
+      ...(previous ?? options.orderTypes ?? []).filter((item) => String(item._id) !== typeId),
+      type,
+    ])
+    await changeType(typeId)
+    closeTypeCreate()
+  }
+  const openServiceEditor = (serviceId, trigger) => {
+    serviceEditorTrigger.current = trigger
+    setServiceEditor({ serviceId })
+  }
+  const closeServiceEditor = () => {
+    setServiceEditor(null)
+    requestAnimationFrame(() => serviceEditorTrigger.current?.focus())
+  }
+  const applySavedService = (service, created) => {
+    const serviceId = String(service._id)
+    setCatalogChanges((previous) => ({ ...previous, [serviceId]: service }))
+    if (!created || isPartyServiceAvailable(service, draft)) {
+      const selections = created ? [...draft.serviceSelections, { serviceId, quantity: 1 }] : draft.serviceSelections
+      selectServices(selections, service)
+    } else {
+      setError('Услуга сохранена. Проверьте её доступность для выбранного типа заказа и места.')
+    }
+    closeServiceEditor()
+  }
+  const closeSchedule = () => {
+    setScheduleOpen(false)
+    requestAnimationFrame(() => scheduleTrigger.current?.focus())
+  }
+  const applySavedSchedule = (updatedLocation) => {
+    if (updatedLocation) setUpdatedLocations((previous) => ({ ...previous, [String(updatedLocation._id)]: updatedLocation }))
+    setAvailabilityRefresh((value) => value + 1)
+    closeSchedule()
   }
   const timeError =
     draft.eventDate &&
@@ -326,13 +471,13 @@ function Wizard({
         ? 'Укажите помещение или адрес выезда.'
         : index === 2 && incompatible.length
           ? 'Уберите несовместимые услуги или измените тип и место.'
-          : index === 3 && draft.placeType === 'client_address' && !duration
+        : (index === 2 || index === 3) && draft.placeType === 'client_address' && !duration
             ? 'Добавьте услугу с указанной длительностью.'
           : index === 3 && (!draft.eventDate || timeError)
             ? timeError || 'Выберите свободное время.'
             : index === 4 && can('orders.clientId') && !draft.clientId
               ? 'Выберите или создайте клиента.'
-              : ''
+              : index === 4 ? briefError : ''
   const close = () => {
     if (
       !busy &&
@@ -391,6 +536,9 @@ function Wizard({
           : {}),
         ...(can('orders.customAddress', 'edit')
           ? { customAddress: draft.customAddress }
+          : {}),
+        ...(draft.placeType === 'client_address' && can('orders.clientAddress', 'edit') && draft.clientAddress
+          ? { clientAddress: draft.clientAddress }
           : {}),
         ...(can('orders.eventDate', 'edit')
           ? { eventDate: draft.eventDate || null }
@@ -462,7 +610,11 @@ function Wizard({
       )
         setUnresolved(true)
       else if (!unresolved) attempt.current = null
-      setError(cause.message || 'Не удалось сохранить заказ')
+      if (canEditBrief && cause.payload?.error?.code === 'partycrm_booking_brief_required') {
+        reportValidation(4, 'Заполните обязательные вопросы брифа, чтобы завершить бронирование.', true)
+      } else {
+        setError(cause.message || 'Не удалось сохранить заказ')
+      }
     } finally {
       saving.current = false
       setBusy(false)
@@ -480,9 +632,10 @@ function Wizard({
       selectedId={draft.clientId}
       savedName={order.client?.name}
       canEdit={canEditClient}
+      showCreateButton={leadMode && !draft.clientId}
       disabled={disabled}
       open={clientPickerVisible}
-      fieldError={fieldError(leadMode ? -1 : 4)}
+      fieldError={validationStep === 4 && invalidBriefField !== null ? undefined : fieldError(leadMode ? -1 : 4)}
       initialForm={clientForm}
       onFormStateChange={setClientForm}
       onDirtyChange={childChanged}
@@ -503,26 +656,25 @@ function Wizard({
   const title = existing ? 'Параметры заказа' : leadMode ? 'Новая заявка' : 'Бронирование'
   const footer = (
     <div className="w-full space-y-3">
-      {error ? (
+      {error && validationStep !== step ? (
         <p role="alert" className="text-sm text-red-800">
           {error}
         </p>
       ) : null}
       {unresolved ? (
         <p role="status" className="text-sm text-amber-950">
-          Связь прервалась. Заказ мог сохраниться; повторите проверку этой же
-          операции.
+          Связь прервалась. Заказ мог сохраниться. Нажмите «Проверить сохранение».
         </p>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <button
+        {!leadMode && <button
           type="button"
           className={button}
           disabled={disabled || childDirty || step === (canCaptureLead ? -1 : 0)}
           onClick={() => navigateTo(step - 1)}
         >
           Назад
-        </button>
+        </button>}
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -542,8 +694,8 @@ function Wizard({
             <button
               type="button"
               className={button}
-              disabled={disabled || childDirty || !options.orderTypes?.length}
-              onClick={() => navigateTo(0)}
+              disabled={disabled || childDirty || (!orderTypes.length && !canCreateOrderType)}
+              onClick={startBooking}
             >
               Оформить бронирование
             </button>
@@ -551,7 +703,7 @@ function Wizard({
             <button
               type="button"
               className={`${button} bg-sky-700 !text-white hover:bg-sky-800`}
-              disabled={disabled || childDirty || (step === 0 && !options.orderTypes?.length)}
+              disabled={disabled || childDirty || (step === 0 && !orderTypes.length)}
               onClick={() => {
                 const message = stepError(step)
                 if (message) reportValidation(step, message)
@@ -576,12 +728,10 @@ function Wizard({
           )}
         </div>
       </div>
-      <p className="text-xs leading-5 text-slate-600">
-        {leadMode ? 'Для заявки достаточно контакта или заметки. Место, программу и время можно уточнить позже.' : 'Заявку можно сохранить незаполненной. Завершение бронирования проверит все обязательные данные.'}
-      </p>
-      {recovery.storageState ? (
+      {leadMode ? <p className="text-xs leading-5 text-slate-600">Для заявки достаточно клиента или заметки.</p> : null}
+      {recovery.storageState === 'unavailable' ? (
         <p role="status" className="text-xs text-slate-600">
-          {recovery.storageState === 'saved' ? 'Черновик сохранён в этой вкладке на сутки.' : 'Автосохранение в этой вкладке недоступно. Сохраните заявку перед уходом.'}
+          Автосохранение в этой вкладке недоступно. Сохраните заявку перед уходом.
         </p>
       ) : null}
     </div>
@@ -595,7 +745,7 @@ function Wizard({
       title={title}
       tone="party"
       size="full"
-      inactive={clientPickerVisible}
+      inactive={clientPickerVisible || typeCreateOpen || Boolean(serviceEditor) || scheduleOpen}
       onClose={close}
       disableBackdropClick={busy}
       footer={footer}
@@ -611,11 +761,12 @@ function Wizard({
           </section>
         ) : null}
         {leadMode ? null : <ol
-          className="flex flex-wrap gap-2"
+          ref={stepProgress}
+          className="flex min-w-0 gap-1 overflow-x-auto px-1 pb-1"
           aria-label="Шаги оформления заказа"
         >
           {steps.map((label, index) => (
-            <li key={label}>
+            <li key={label} className="shrink-0">
               <button
                 type="button"
                 disabled={disabled || childDirty || index > reachedStep}
@@ -628,13 +779,8 @@ function Wizard({
             </li>
           ))}
         </ol>}
-        {!leadMode && (draft.orderTypeId || draft.clientId) ? (
-          <p className="text-sm text-slate-600">
-            {[clients.find((person) => String(person._id) === draft.clientId)?.name, options.orderTypes?.find((type) => String(type._id) === draft.orderTypeId)?.title, location?.title, draft.eventDate ? dateText(draft.eventDate) : ''].filter(Boolean).join(' · ')}
-          </p>
-        ) : null}
         <h2 ref={stepHeading} tabIndex={-1} className="text-xl font-semibold text-slate-950 outline-none">{leadMode ? 'Клиент и обращение' : steps[step]}</h2>
-        {validationStep === step && error ? <p id={errorId} className="text-sm text-red-800">{error}</p> : null}
+        {validationStep === step && error ? <p id={errorId} role="alert" className="text-sm text-red-800">{error}</p> : null}
         <fieldset ref={stepSection} disabled={disabled} className="min-w-0 space-y-4" aria-describedby={validationStep === step && error ? errorId : undefined}>
           {leadMode ? (
             <>
@@ -653,63 +799,62 @@ function Wizard({
                   <span className="mt-1 block text-xs text-slate-600">Внутренняя заметка менеджера.</span>
                 </label>
               ) : null}
-              {!options.orderTypes?.length ? (
-                <div className="space-y-2 text-sm text-slate-600">
-                  <p>Заявку можно сохранить сейчас. Для бронирования сначала нужно настроить типы заказов.</p>
-                  {['owner', 'admin'].includes(context.role) ? <Link className="inline-flex min-h-11 items-center font-semibold text-sky-800 underline" href="/company/settings/order-types">Настроить типы заказов</Link> : <p>Попросите владельца или администратора добавить типы.</p>}
-                </div>
-              ) : null}
+              {!orderTypes.length && (
+                <p className="text-sm text-slate-600">
+                  {canCreateOrderType ? 'Первый тип заказа можно добавить на шаге «Тип».' : 'Для бронирования попросите владельца или администратора добавить тип заказа.'}
+                </p>
+              )}
             </>
           ) : null}
           {step === 0 ? (
             <>
-              <label className="block text-sm">
-                Тип заказа
-                <select
-                  aria-label="Тип заказа"
-                  {...fieldError(0)}
-                  className={`${input} cursor-pointer`}
-                  value={draft.orderTypeId}
-                  disabled={!can('orders.title', 'edit')}
-                  onChange={(event) => changeType(event.target.value)}
-                >
-                  <option value="">Выберите тип</option>
-                  {draft.orderTypeId &&
-                  !options.orderTypes?.some(
-                    (item) => String(item._id) === draft.orderTypeId
-                  ) ? (
-                    <option value={draft.orderTypeId}>
-                      {order.orderTypeSnapshot ||
-                        order.title ||
-                        'Сохранённый тип'}
-                    </option>
-                  ) : null}
-                  {(options.orderTypes || []).map((type) => (
-                    <option value={String(type._id)} key={String(type._id)}>
-                      {type.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {!options.orderTypes?.length ? (
-                <p className="text-sm text-slate-600">
-                  В компании пока нет типов. Владелец или администратор может
-                  добавить их в настройках.
-                </p>
-              ) : (
-                <p className="text-sm text-slate-600">
-                  Тип станет заголовком заказа и определит услуги и вопросы
-                  брифа.
-                </p>
-              )}
-              {['owner', 'admin'].includes(context.role) ? (
-                <Link
-                  className="inline-flex min-h-11 items-center text-sm font-semibold text-sky-800 underline"
-                  href="/company/settings/order-types"
-                >
-                  Настроить типы заказов
-                </Link>
-              ) : null}
+              <div className="flex items-end gap-2">
+                <label className="min-w-0 flex-1 text-sm">
+                  Тип заказа
+                  <select
+                    aria-label="Тип заказа"
+                    {...fieldError(0)}
+                    className={`${input} cursor-pointer`}
+                    value={draft.orderTypeId}
+                    disabled={!canEditOrderType}
+                    onChange={(event) => changeType(event.target.value)}
+                  >
+                    <option value="">Выберите тип</option>
+                    {draft.orderTypeId &&
+                    !orderTypes.some((item) => String(item._id) === draft.orderTypeId) ? (
+                      <option value={draft.orderTypeId}>
+                        {order.orderTypeSnapshot || order.title || 'Сохранённый тип'}
+                      </option>
+                    ) : null}
+                    {orderTypes.map((type) => (
+                      <option value={String(type._id)} key={String(type._id)}>
+                        {type.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {canCreateOrderType && (
+                  <button
+                    ref={typeCreateTrigger}
+                    type="button"
+                    aria-label="Добавить тип заказа"
+                    title="Добавить тип заказа"
+                    aria-haspopup="dialog"
+                    aria-expanded={typeCreateOpen}
+                    className={`${button} inline-grid size-11 shrink-0 place-items-center`}
+                    onClick={() => setTypeCreateOpen(true)}
+                  >
+                    <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+              <p className="text-sm text-slate-600">
+                {orderTypes.length
+                  ? 'Тип станет заголовком заказа и определит услуги и вопросы брифа.'
+                  : canCreateOrderType
+                    ? 'Добавьте первый тип заказа кнопкой «+».'
+                    : 'Попросите владельца или администратора добавить тип заказа.'}
+              </p>
             </>
           ) : null}
           {step === 1 ? (
@@ -759,19 +904,19 @@ function Wizard({
                   </select>
                 </label>
               ) : (
-                <label className="block text-sm">
-                  Адрес выезда
-                  <textarea
-                    className={input}
-                    {...fieldError(1)}
-                    maxLength={500}
-                    value={draft.customAddress}
-                    disabled={!can('orders.customAddress', 'edit')}
-                    onChange={(event) =>
-                      edit({ customAddress: event.target.value })
-                    }
-                  />
-                </label>
+                <PartyOrderAddressEditor
+                  companyId={companyId}
+                  value={draft.clientAddress}
+                  addressLine={draft.customAddress}
+                  disabled={!canEditAddress}
+                  canManage={canManageCatalog}
+                  canEditDetails={can('orders.clientAddress', 'edit')}
+                  onChange={(clientAddress) => {
+                    const line = formatAddressPoolShort({ ...clientAddress, comment: '' })
+                    const previousLine = formatAddressPoolShort({ ...draft.clientAddress, comment: '' })
+                    edit({ clientAddress, customAddress: line || (previousLine ? '' : draft.customAddress) })
+                  }}
+                />
               )}
             </>
           ) : null}
@@ -855,20 +1000,18 @@ function Wizard({
                           }
                         />
                       </label>
-                      <button
-                        className={button}
-                        type="button"
-                        disabled={!can('orders.servicesIds', 'edit')}
-                        onClick={() =>
-                          selectServices(
-                            draft.serviceSelections.filter(
-                              (_, position) => position !== index
-                            )
-                          )
-                        }
-                      >
-                        Убрать
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        {canManageCatalog && canEditServices && service && (
+                          <button type="button" className={button} aria-label={`Редактировать услугу ${item.title}`}
+                            onClick={(event) => openServiceEditor(String(item.serviceId), event.currentTarget)}>
+                            <FontAwesomeIcon icon={faPencilAlt} aria-hidden="true" />
+                          </button>
+                        )}
+                        <button className={button} type="button" disabled={!canEditServices}
+                          onClick={() => selectServices(draft.serviceSelections.filter((_, position) => position !== index))}>
+                          Убрать
+                        </button>
+                      </div>
                     </div>
                   )
                 })}
@@ -884,42 +1027,57 @@ function Wizard({
                   ))}
                 </div>
               ) : null}
-              <label className="block text-sm">
+              <div className="flex items-end gap-2">
+              {addableServices.length === 1 ? (
+                <button
+                  type="button"
+                  className={`${button} min-w-0 flex-1 text-left [overflow-wrap:anywhere]`}
+                  onClick={() => addService(addableServices[0]._id)}
+                >
+                  Добавить «{addableServices[0].title}»
+                  <span className="block text-xs font-normal text-slate-600">{serviceDetails(addableServices[0])}</span>
+                </button>
+              ) : addableServices.length > 1 ? (
+              <label className="min-w-0 flex-1 text-sm">
                 Добавить услугу
                 <select
                   aria-label="Добавить услугу"
                   className={`${input} cursor-pointer`}
                   value=""
-                  disabled={!can('orders.servicesIds', 'edit')}
                   onChange={(event) => {
-                    if (event.target.value)
-                      selectServices([
-                        ...draft.serviceSelections,
-                        { serviceId: event.target.value, quantity: 1 },
-                      ])
+                    if (event.target.value) addService(event.target.value)
                   }}
                 >
                   <option value="">Выберите доступную услугу</option>
-                  {options.services
-                    .filter(
-                      (service) =>
-                        isPartyServiceAvailable(service, draft) &&
-                        !draft.serviceSelections.some(
-                          (item) =>
-                            String(item.serviceId) === String(service._id)
-                        )
-                    )
-                    .map((service) => (
+                  {addableServices.map((service) => (
                       <option
                         key={String(service._id)}
                         value={String(service._id)}
                       >
-                        {service.title} · {service.duration || 0} мин
-                        {canPrice ? ` · ${money(service.price)}` : ''}
+                        {service.title} · {serviceDetails(service)}
                       </option>
                     ))}
                 </select>
               </label>
+              ) : null}
+              {canManageCatalog && canEditServices && (
+                <button type="button" className={`${button} inline-grid size-11 shrink-0 place-items-center`} aria-label="Создать услугу" title="Создать услугу" aria-haspopup="dialog"
+                  onClick={(event) => openServiceEditor('', event.currentTarget)}>
+                  <FontAwesomeIcon icon={faPlus} aria-hidden="true" />
+                </button>
+              )}
+              </div>
+              {canManageCatalog && canEditServices && servicesById.size > 0 && (
+                <details className="text-sm">
+                  <summary className="min-h-11 cursor-pointer py-3 font-medium">Редактировать услугу из справочника</summary>
+                  <select aria-label="Услуга для редактирования" className={`${input} cursor-pointer`} value="" onChange={(event) => {
+                    if (event.target.value) openServiceEditor(event.target.value, event.currentTarget)
+                  }}>
+                    <option value="">Выберите услугу</option>
+                    {Array.from(servicesById.values()).map((service) => <option key={String(service._id)} value={String(service._id)}>{service.title}</option>)}
+                  </select>
+                </details>
+              )}
               <p className="text-sm font-semibold">
                 Программа: {duration} мин
                 {draft.placeType === 'company_location'
@@ -962,8 +1120,13 @@ function Wizard({
                 </label>
               ) : (
                 <p className="text-sm">
-                  Длительность программы: {duration || 60} мин
+                  Длительность программы: {duration} мин
                 </p>
+              )}
+              {canManageCatalog && can('orders.eventDate', 'edit') && (
+                <button ref={scheduleTrigger} className={button} type="button" aria-haspopup="dialog" onClick={() => setScheduleOpen(true)}>
+                  {location?.workingSchedule ? 'Настроить график помещения' : 'Настроить график бронирования'}
+                </button>
               )}
               <PartyOrderAvailabilityPicker
                 companyId={companyId}
@@ -973,8 +1136,9 @@ function Wizard({
                 durationMinutes={
                   draft.placeType === 'company_location'
                     ? Number(rentalMinutes)
-                    : duration || 60
+                    : duration
                 }
+                refreshKey={availabilityRefresh}
                 selectedStart={draft.rental?.startsAt || draft.eventDate}
                 timeZone={timeZone}
                 disabled={
@@ -1051,7 +1215,11 @@ function Wizard({
                   servicesIds={draft.serviceSelections.map(
                     (item) => item.serviceId
                   )}
-                  disabled={disabled || !can('orders.eventBrief', 'edit')}
+                  booking
+                  onValidationChange={canEditBrief ? updateBriefValidation : undefined}
+                  invalidFieldId={validationStep === 4 ? invalidBriefField : undefined}
+                  validationErrorId={errorId}
+                  disabled={disabled || !canEditBrief}
                 />
               ) : null}
             </>
@@ -1060,7 +1228,7 @@ function Wizard({
             <>
               <div className="space-y-2 rounded-xl border border-slate-200 p-4">
                 <p className="font-semibold">
-                  {options.orderTypes?.find(
+                  {orderTypes.find(
                     (type) => String(type._id) === draft.orderTypeId
                   )?.title ||
                     order.orderTypeSnapshot ||
@@ -1086,10 +1254,12 @@ function Wizard({
                         <dd>{money(calculation.rentalKopecks / 100)}</dd>
                       </div>
                     ) : null}
-                    <div className="flex justify-between gap-3">
-                      <dt>Скидка</dt>
-                      <dd>{money(calculation.discountKopecks / 100)}</dd>
-                    </div>
+                    {calculation.discountKopecks > 0 ? (
+                      <div className="flex justify-between gap-3">
+                        <dt>Скидка</dt>
+                        <dd>{money(calculation.discountKopecks / 100)}</dd>
+                      </div>
+                    ) : null}
                     <div className="flex justify-between gap-3 text-lg font-semibold">
                       <dt>Договорная сумма</dt>
                       <dd>{money(calculation.totalKopecks / 100)}</dd>
@@ -1098,46 +1268,46 @@ function Wizard({
                 ) : null}
               </div>
               {can('finance.clientAmount', 'edit') ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-sm">
-                    Скидка
-                    <select
-                      aria-label="Способ задания скидки"
-                      className={`${input} cursor-pointer`}
-                      value={draft.discount.type}
-                      onChange={(event) =>
-                        edit({
-                          discount: {
-                            ...draft.discount,
-                            type: event.target.value,
-                          },
-                        })
-                      }
-                    >
-                      <option value="amount">Суммой, ₽</option>
-                      <option value="percent">Процентом, %</option>
-                    </select>
-                  </label>
-                  <label className="text-sm">
-                    Размер скидки
-                    <input
-                      type="number"
-                      min={0}
-                      max={draft.discount.type === 'percent' ? 100 : undefined}
-                      step="0.01"
-                      className={input}
-                      value={draft.discount.value}
-                      onChange={(event) =>
-                        edit({
-                          discount: {
-                            ...draft.discount,
-                            value: event.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </label>
-                </div>
+                <details className="rounded-lg border border-slate-200 px-3">
+                  <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-slate-800">
+                    Добавить скидку
+                    {Number(draft.discount.value) > 0 ? (
+                      <span className="font-normal text-slate-600">
+                        {' · '}{draft.discount.type === 'percent' ? `${draft.discount.value}%` : money(draft.discount.value)}
+                      </span>
+                    ) : null}
+                  </summary>
+                  <div className="grid gap-3 pb-3 sm:grid-cols-2">
+                    <label className="text-sm">
+                      Скидка
+                      <select
+                        aria-label="Способ задания скидки"
+                        className={`${input} cursor-pointer`}
+                        value={draft.discount.type}
+                        onChange={(event) =>
+                          edit({ discount: { ...draft.discount, type: event.target.value } })
+                        }
+                      >
+                        <option value="amount">Суммой, ₽</option>
+                        <option value="percent">Процентом, %</option>
+                      </select>
+                    </label>
+                    <label className="text-sm">
+                      Размер скидки
+                      <input
+                        type="number"
+                        min={0}
+                        max={draft.discount.type === 'percent' ? 100 : undefined}
+                        step="0.01"
+                        className={input}
+                        value={draft.discount.value}
+                        onChange={(event) =>
+                          edit({ discount: { ...draft.discount, value: event.target.value } })
+                        }
+                      />
+                    </label>
+                  </div>
+                </details>
               ) : null}
               {calculationError ? (
                 <p role="alert" className="text-sm text-red-800">
@@ -1145,48 +1315,43 @@ function Wizard({
                 </p>
               ) : null}
               {!existing && can('finance.payments', 'edit') ? (
-                <fieldset className="grid min-w-0 gap-3 sm:grid-cols-2">
-                  <legend className="mb-2 font-semibold">
-                    Уже полученный аванс
-                  </legend>
-                  <label className="text-sm">
-                    Получено, ₽
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      className={input}
-                      value={initialPayment.amount}
-                      onChange={(event) =>
-                        setInitialPayment({
-                          ...initialPayment,
-                          amount: event.target.value,
-                        })
-                      }
-                    />
-                  </label>
-                  <label className="text-sm">
-                    Способ оплаты
-                    <select
-                      className={`${input} cursor-pointer`}
-                      value={initialPayment.paymentMethod}
-                      onChange={(event) =>
-                        setInitialPayment({
-                          ...initialPayment,
-                          paymentMethod: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="transfer">Перевод</option>
-                      <option value="cash">Наличные</option>
-                      <option value="account">Расчётный счёт</option>
-                    </select>
-                  </label>
-                  <p className="text-xs text-slate-600 sm:col-span-2">
-                    Заполняйте только при фактическом получении денег. Для
-                    обещанного платежа добавьте ожидание ниже.
-                  </p>
-                </fieldset>
+                <details className="rounded-lg border border-slate-200 px-3">
+                  <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-slate-800">
+                    Записать полученный аванс
+                    {initialPayment.amount !== '' ? (
+                      <span className="font-normal text-slate-600">{' · '}{money(initialPayment.amount)}</span>
+                    ) : null}
+                  </summary>
+                  <div className="grid min-w-0 gap-3 pb-3 sm:grid-cols-2">
+                    <label className="text-sm">
+                      Получено, ₽
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        className={input}
+                        value={initialPayment.amount}
+                        onChange={(event) =>
+                          setInitialPayment({ ...initialPayment, amount: event.target.value })
+                        }
+                      />
+                    </label>
+                    <label className="text-sm">
+                      Способ оплаты
+                      <select
+                        className={`${input} cursor-pointer`}
+                        value={initialPayment.paymentMethod}
+                        onChange={(event) =>
+                          setInitialPayment({ ...initialPayment, paymentMethod: event.target.value })
+                        }
+                      >
+                        <option value="transfer">Перевод</option>
+                        <option value="cash">Наличные</option>
+                        <option value="account">Расчётный счёт</option>
+                      </select>
+                    </label>
+                  </div>
+                </details>
               ) : null}
               {!existing ? (
                 <PartyInitialExpectations
@@ -1206,6 +1371,9 @@ function Wizard({
           ) : null}
         </fieldset>
       </div>
+      {typeCreateOpen && <PartyOrderTypeCreateModal companyId={companyId} onClose={closeTypeCreate} onCreated={applyCreatedOrderType} />}
+      {serviceEditor && <PartyOrderServiceModal companyId={companyId} serviceId={serviceEditor.serviceId} onClose={closeServiceEditor} onSaved={applySavedService} />}
+      {scheduleOpen && <PartyOrderScheduleModal companyId={companyId} location={location?.workingSchedule ? location : null} onClose={closeSchedule} onSaved={applySavedSchedule} />}
     </Modal>
   )
 }
@@ -1261,5 +1429,5 @@ export default function PartyOrderWizard({ options, ...props }) {
       </Modal>
     )
   const scope = getPartyOrderWizardDraftScope(resolved.context, props.order, props.inboxId)
-  return <Wizard key={`${scope?.key || props.companyId}:${scope?.signature || ''}`} {...props} options={resolved} />
+  return <Wizard key={`${scope?.key || props.companyId}:${scope?.signature || ''}`} {...props} options={resolved} refreshOrderTypes={Boolean(options)} />
 }

@@ -1,10 +1,19 @@
 'use client'
 
-import { useEffect, useRef, useCallback, useId, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useCallback, useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import cn from 'classnames'
+
+const isAvailableFocusTarget = (element) =>
+  element && typeof element.focus === 'function' &&
+  !element.matches(':disabled') && !element.closest('[inert]') &&
+  element.getClientRects().length > 0
+
+const getTabStops = (container) => Array.from(container?.querySelectorAll(
+  'button, [href], input, select, textarea, summary, [tabindex]'
+) || []).filter((element) => element.tabIndex >= 0 && isAvailableFocusTarget(element))
 
 const Modal = ({
   open = false,
@@ -24,20 +33,48 @@ const Modal = ({
   const dialogRef = useRef(null)
   const dialogTitleId = useId()
   const previousFocusRef = useRef(null)
-  const [showCloseConfirmation, setShowCloseConfirmation] = useState(false)
+  const closeTriggerRef = useRef(null)
+  const [closeConfirmation, setCloseConfirmation] = useState(null)
   const closeConfirmationTitleId = useId()
   const closeConfirmationDescriptionId = useId()
+  const confirmationOpen = open && Boolean(closeConfirmation) && hasUnsavedChanges
+  if (closeConfirmation && !confirmationOpen) setCloseConfirmation(null)
 
-  const requestClose = useCallback(() => {
+  const requestClose = useCallback((event) => {
     if (hasUnsavedChanges) {
-      setShowCloseConfirmation(true)
+      if (confirmationOpen) return
+      const trigger = event?.type === 'click' && event.currentTarget?.tabIndex >= 0
+        ? event.currentTarget
+        : document.activeElement
+      setCloseConfirmation({ trigger })
       return
     }
     onClose?.()
-  }, [hasUnsavedChanges, onClose])
+  }, [confirmationOpen, hasUnsavedChanges, onClose])
+
+  useLayoutEffect(() => {
+    if (!open) {
+      closeTriggerRef.current = null
+      return
+    }
+    if (confirmationOpen) {
+      closeTriggerRef.current = closeConfirmation.trigger
+      return
+    }
+    if (inactive || !closeTriggerRef.current) return
+    const trigger = closeTriggerRef.current
+    closeTriggerRef.current = null
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const target = dialog.contains(trigger) && isAvailableFocusTarget(trigger)
+      ? trigger
+      : getTabStops(dialog)[0] || dialog
+    target.focus()
+    if (!dialog.contains(document.activeElement)) dialog.focus()
+  }, [closeConfirmation, confirmationOpen, inactive, open])
 
   const confirmClose = useCallback(() => {
-    setShowCloseConfirmation(false)
+    setCloseConfirmation(null)
     onClose?.()
   }, [onClose])
 
@@ -65,38 +102,35 @@ const Modal = ({
       if (e.key === 'Escape') {
         e.preventDefault()
         e.stopPropagation()
-        if (showCloseConfirmation) {
-          setShowCloseConfirmation(false)
+        if (confirmationOpen) {
+          setCloseConfirmation(null)
           return
         }
-        requestClose()
+        requestClose(e)
       }
       if (e.key === 'Tab') {
         e.stopPropagation()
-        const container = showCloseConfirmation
+        const container = confirmationOpen
           ? overlayRef.current?.querySelector('[role="alertdialog"]')
           : dialogRef.current
-        const focusable = Array.from(container?.querySelectorAll(
-          'button, [href], input, select, textarea, summary, [tabindex]'
-        ) || []).filter((element) =>
-          element.tabIndex >= 0 && !element.disabled &&
-          !element.closest('[inert]') && element.getClientRects().length > 0
-        )
+        const focusable = getTabStops(container)
         const first = focusable[0]
         const last = focusable[focusable.length - 1]
+        const active = document.activeElement
+        const atBoundary = active === container || !container?.contains(active)
         if (!first) {
           e.preventDefault()
           container?.focus()
-        } else if (e.shiftKey && (document.activeElement === first || !container.contains(document.activeElement))) {
+        } else if (e.shiftKey && (active === first || atBoundary)) {
           e.preventDefault()
           last.focus()
-        } else if (!e.shiftKey && (document.activeElement === last || !container.contains(document.activeElement))) {
+        } else if (!e.shiftKey && (active === last || atBoundary)) {
           e.preventDefault()
           first.focus()
         }
       }
     },
-    [requestClose, showCloseConfirmation]
+    [confirmationOpen, requestClose]
   )
 
   // Backdrop click
@@ -104,7 +138,7 @@ const Modal = ({
     (e) => {
       if (disableBackdropClick) return
       if (e.target === overlayRef.current) {
-        requestClose()
+        requestClose(e)
       }
     },
     [disableBackdropClick, requestClose]
@@ -141,6 +175,7 @@ const Modal = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? dialogTitleId : undefined}
+        inert={confirmationOpen || undefined}
         tabIndex={-1}
         className={cn(
           'relative z-10 flex w-full flex-col bg-white shadow-xl',
@@ -195,13 +230,14 @@ const Modal = ({
         )}
       </div>
 
-      {showCloseConfirmation && hasUnsavedChanges ? (
+      {confirmationOpen ? (
         <div className="absolute inset-0 z-20 grid place-items-center bg-black/35 p-4">
           <div
             role="alertdialog"
             aria-modal="true"
             aria-labelledby={closeConfirmationTitleId}
             aria-describedby={closeConfirmationDescriptionId}
+            tabIndex={-1}
             className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-5 shadow-2xl"
           >
             <h2
@@ -221,7 +257,7 @@ const Modal = ({
                 type="button"
                 autoFocus
                 className="cursor-pointer rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                onClick={() => setShowCloseConfirmation(false)}
+                onClick={() => setCloseConfirmation(null)}
               >
                 Продолжить редактирование
               </button>

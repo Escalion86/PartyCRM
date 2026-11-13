@@ -58,7 +58,7 @@ export const buildPartyOrderCreateIdentity = ({ key, context, body }) => {
   const actor = String(context.staff?._id || '')
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/.test(String(key || '')) || !actor)
     fail(
-      'Для сохранения заказа с авансом нужен ключ операции',
+      'Для сохранения заказа нужен ключ операции',
       400,
       'partycrm_order_create_key_invalid'
     )

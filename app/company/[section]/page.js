@@ -33,7 +33,7 @@ export const metadata = {
 
 export const dynamic = 'force-dynamic'
 
-export default async function CompanySectionPage({ params }) {
+export default async function CompanySectionPage({ params, searchParams }) {
   const resolvedParams = await params
   const section = resolvedParams?.section
 
@@ -55,5 +55,15 @@ export default async function CompanySectionPage({ params }) {
     redirect('/company/master')
   }
 
-  return <CompanyPageShell section={section} />
+  const canSwitchOrderMode = sessionUser.role === 'dev'
+  if (!canSwitchOrderMode && ['orders', 'orders-past'].includes(section)) {
+    const query = await searchParams
+    if (query?.mode === 'edit' && typeof query.order === 'string') {
+      const target = new URLSearchParams({ orderId: query.order, mode: 'edit' })
+      if (typeof query.company === 'string') target.set('companyId', query.company)
+      redirect(`/company/work?${target}`)
+    }
+  }
+
+  return <CompanyPageShell section={section} canSwitchOrderMode={canSwitchOrderMode} />
 }

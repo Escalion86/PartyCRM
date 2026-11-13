@@ -33,6 +33,7 @@ const compiled = transformSync(source, {
 const createBoard = (h, hooks) =>
   new Function(
     'h',
+    'React',
     ...Object.keys(hooks),
     'canPartyAccess',
     'getPartyOrderBoardTransitions',
@@ -41,6 +42,7 @@ const createBoard = (h, hooks) =>
     `${compiled}\nreturn PartyRoleOrdersBoard`
   )(
     h,
+    React,
     ...Object.values(hooks),
     canPartyAccess,
     getPartyOrderBoardTransitions,
@@ -120,7 +122,7 @@ test('board SSR shows only explicitly permitted order fields and accessible alte
   assert.match(html, /Передать заказ/)
   assert.match(html, /Перетащить заказ/)
   assert.doesNotMatch(html, /Скрытый клиент|987654|30 окт|Подтверждён/)
-  assert.match(html, /Загружено 1/)
+  assert.match(html, /class="sr-only">Загружено заказов: 1<\/span><span aria-hidden="true">1<\/span>/)
   assert.match(html, /min-h-11/)
 })
 
@@ -133,6 +135,7 @@ test('read-only stage cards have no drag handle or transition select', () => {
   )
   assert.doesNotMatch(html, /draggable|<select/)
   assert.match(html, /Открыть заказ/)
+  assert.match(html, /Листайте колонки/)
 })
 
 test('hidden-status cards expose controls only with an explicit server capability', () => {
@@ -190,7 +193,18 @@ test('failed stage and sparse continuation are distinguished from an empty resul
   assert.match(html, /Не загружено/)
   assert.match(html, /Совпадений пока нет/)
   assert.match(html, /Продолжить поиск/)
-  assert.doesNotMatch(html, /Заказов по выбранным условиям нет/)
+  assert.match(html, /Загружено заказов: 0\. Можно загрузить ещё\.<\/span><span aria-hidden="true">0\+<\/span>/)
+  assert.doesNotMatch(html, /На этом этапе пока нет заказов|По этим условиям заказов нет/)
+})
+
+test('empty columns suggest resetting filters only when filters are active', () => {
+  const unfiltered = renderToStaticMarkup(React.createElement(SSRBoard, props()))
+  const filtered = renderToStaticMarkup(React.createElement(SSRBoard, props({ filtered: true })))
+
+  assert.match(unfiltered, /На этом этапе пока нет заказов/)
+  assert.doesNotMatch(unfiltered, /Сбросьте фильтры/)
+  assert.match(filtered, /По этим условиям заказов нет\. Сбросьте фильтры/)
+  assert.doesNotMatch(filtered, /На этом этапе пока нет заказов/)
 })
 
 test('ordinary selection and actual drag/drop handlers invoke the same transition callback', () => {

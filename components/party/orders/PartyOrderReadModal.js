@@ -162,7 +162,7 @@ export default function PartyOrderReadModal({
             {order.client?.name ? (
               <div>
                 <dt className="text-sm text-slate-600">Клиент</dt>
-                <dd className="mt-1 font-semibold">{order.client.name}</dd>
+                <dd className="mt-1 font-semibold [overflow-wrap:anywhere]">{order.client.name}</dd>
               </div>
             ) : null}
             {order.client?.phone ? (
@@ -181,7 +181,7 @@ export default function PartyOrderReadModal({
             {location || order.customAddress ? (
               <div>
                 <dt className="text-sm text-slate-600">Место</dt>
-                <dd className="mt-1 font-semibold">
+                <dd className="mt-1 font-semibold [overflow-wrap:anywhere]">
                   {location?.title || order.customAddress}
                 </dd>
               </div>
@@ -193,10 +193,10 @@ export default function PartyOrderReadModal({
               <ul className="divide-y divide-slate-100">
                 {order.orderItems.map((item, index) => (
                   <li
-                    className="flex justify-between gap-3 py-2"
+                    className="flex min-w-0 items-baseline justify-between gap-3 py-2"
                     key={`${item.serviceId}:${index}`}
                   >
-                    <span>
+                    <span className="min-w-0 [overflow-wrap:anywhere]">
                       {item.title} × {item.quantity}
                       {item.durationMinutes
                         ? ` · ${item.durationMinutes * item.quantity} мин`
@@ -212,13 +212,13 @@ export default function PartyOrderReadModal({
           ) : order.serviceSelections?.length ? (
             <ul>
               {order.serviceSelections.map((item) => (
-                <li key={item.serviceId}>
+                <li key={item.serviceId} className="[overflow-wrap:anywhere]">
                   {item.title} × {item.quantity}
                 </li>
               ))}
             </ul>
           ) : order.serviceTitle ? (
-            <p>{order.serviceTitle}</p>
+            <p className="[overflow-wrap:anywhere]">{order.serviceTitle}</p>
           ) : null}
           {order.contractAmount !== undefined ? (
             <p className="text-lg font-semibold">

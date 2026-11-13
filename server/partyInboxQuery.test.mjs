@@ -245,7 +245,7 @@ test('search finds historic messages and linked clients before pagination and ke
   ]
   const loader = service(collections)
   const query = { tenantId, channel: 'vk', salesStage: 'proposal' }
-  for (const [search, sourceId] of [['квест (дети)', 'old-match'], ['Анна Петрова', 'linked-client'], ['89001001122', 'linked-client']]) {
+  for (const [search, sourceId] of [['квест (дети)', 'old-match'], ['Анна Петрова', 'linked-client'], ['Петрова Анна', 'linked-client'], ['89001001122', 'linked-client']]) {
     const result = await loader.loadPartyInboxChannel({ ...query, search })
     assert.deepEqual(result.items.map((row) => row.sourceId), [sourceId])
     assert.equal(result.hasMore, false)

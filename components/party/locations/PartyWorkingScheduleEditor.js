@@ -79,17 +79,20 @@ export default function PartyWorkingScheduleEditor({
   onChange,
   disabled = false,
   inheritLabel = 'Использовать график компании',
+  enableLabel,
 }) {
   return (
     <fieldset className="min-w-0 space-y-3" disabled={disabled}>
-      <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium">
+      {enableLabel && value == null ? (
+        <button type="button" className={button} onClick={() => onChange(blank())}>{enableLabel}</button>
+      ) : <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium">
         <input
           type="checkbox"
           checked={value == null}
           onChange={(event) => onChange(event.target.checked ? null : blank())}
         />
         {inheritLabel}
-      </label>
+      </label>}
       {value ? (
         <>
           <p className="text-xs text-slate-600">

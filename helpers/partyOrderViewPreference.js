@@ -12,25 +12,26 @@ const keyFor = (companyId, staffId) =>
   companyId && staffId
     ? `partycrm.orderView.v1:${encodeURIComponent(companyId)}:${encodeURIComponent(staffId)}`
     : null
-const normalize = (value) => ({
-  view: ['calendar', 'board'].includes(value?.view) ? value.view : 'list',
+const normalize = (value, fallbackView = defaults.view) => ({
+  view: ['list', 'calendar', 'board'].includes(value?.view) ? value.view : fallbackView,
   calendarView: ['month', 'week', 'day'].includes(value?.calendarView)
     ? value.calendarView
     : 'month',
 })
 
-export const readPartyOrderViewPreference = (companyId, staffId, storage) => {
+export const readPartyOrderViewPreference = (companyId, staffId, storage, fallbackView = defaults.view) => {
   try {
     const key = keyFor(companyId, staffId)
     return key
       ? normalize(
           JSON.parse(
             (storage || globalThis.localStorage)?.getItem(key) || 'null'
-          )
+          ),
+          fallbackView
         )
-      : { ...defaults }
+      : normalize(null, fallbackView)
   } catch {
-    return { ...defaults }
+    return normalize(null, fallbackView)
   }
 }
 

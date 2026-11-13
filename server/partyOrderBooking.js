@@ -389,7 +389,7 @@ export const preparePartyOrderBooking = async ({
           result.servicesIds
         ).length
       )
-        partyBookingFailure('Заполните обязательные вопросы брифа')
+        partyBookingFailure('Заполните обязательные вопросы брифа', 400, 'partycrm_booking_brief_required')
     }
   }
   return result

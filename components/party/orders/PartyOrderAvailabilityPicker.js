@@ -15,6 +15,7 @@ export default function PartyOrderAvailabilityPicker({
   selectedStart,
   timeZone,
   disabled,
+  refreshKey,
   onSelect,
 }) {
   const [month, setMonth] = useState(() =>
@@ -32,6 +33,7 @@ export default function PartyOrderAvailabilityPicker({
     placeType,
     locationId,
     durationMinutes,
+    refreshKey,
     retry,
   ])
   const valid = Boolean(

@@ -5,6 +5,7 @@ import { PartyOrderContactRolesEditor } from '@components/party/orders/PartyOrde
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import PartyOrderWizard from '@components/party/orders/PartyOrderWizard'
 import PartyOrderExtensions from '@components/party/orders/PartyOrderExtensions'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import { useSetAtom } from 'jotai'
 import { apiJson } from '@helpers/apiClient'
 import {
@@ -130,8 +131,11 @@ export default function OrderModal({
   companySettings,
   activeCompanyId,
   canManage = false,
+  canSwitchOrderMode = false,
+  onSwitchToOrdinary,
   aiAvailable = false,
   saving,
+  saveWarning = '',
   onClose,
   onSubmit,
   onCompanySettingsChange,
@@ -175,6 +179,11 @@ export default function OrderModal({
   const [submitError, setSubmitError] = useState('')
   const [focusSection, setFocusSection] = useState('')
   const hasUnsavedChanges = useUnsavedChanges(orderDraft, open)
+  usePartyUnsavedChanges(open && hasUnsavedChanges, {
+    label: 'заказ',
+    scope: activeCompanyId,
+    pending: open && saving,
+  })
   const hasUnsavedAdditionalEventChanges = useUnsavedChanges(
     editingAdditionalEventDraft,
     editingAdditionalEvent !== null
@@ -742,22 +751,46 @@ export default function OrderModal({
           {submitError}
         </div>
       )}
-      <div className="flex w-full items-center justify-end gap-1">
-        <button
-          type="button"
-          className="cursor-pointer rounded border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-          onClick={requestClose}
-        >
-          Отмена
-        </button>
-        <button
-          type="button"
-          className="cursor-pointer rounded bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={handleSubmit}
-          disabled={saving}
-        >
-          {saving ? 'Сохранение...' : isEdit ? 'Сохранить' : 'Добавить заказ'}
-        </button>
+      {saveWarning && (
+        <p role="status" className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          {saveWarning}
+        </p>
+      )}
+      <div className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        {isEdit && canManage && onSwitchToOrdinary ? (
+          <button
+            type="button"
+            className="inline-flex min-h-11 min-w-0 cursor-pointer items-center justify-self-start rounded-lg border border-sky-200 px-2 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-50 disabled:opacity-60 sm:px-3"
+            onClick={onSwitchToOrdinary}
+            disabled={saving}
+          >
+            Обычный режим
+          </button>
+        ) : isEdit && canManage && canSwitchOrderMode && activeCompanyId && orderDraft._id ? (
+          <a
+            className="inline-flex min-h-11 min-w-0 cursor-pointer items-center justify-self-start rounded-lg border border-sky-200 px-2 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-50 sm:px-3"
+            href={`/company/work?${new URLSearchParams({ companyId: activeCompanyId, orderId: orderDraft._id, mode: 'edit' })}`}
+          >
+            Обычный режим
+          </a>
+        ) : null}
+        <div className="col-start-2 flex gap-2">
+          <button
+            type="button"
+            className="cursor-pointer rounded border border-gray-300 px-2.5 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 sm:px-4"
+            onClick={requestClose}
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer rounded bg-sky-600 px-2.5 py-2 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4"
+            onClick={handleSubmit}
+            disabled={saving}
+          >
+            {saving ? 'Сохранение...' : isEdit ? 'Сохранить' : 'Добавить заказ'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -770,6 +803,7 @@ export default function OrderModal({
       title={title}
       tone="party"
       size="full"
+      inactive={bookingOpen}
       footer={footerContent}
     >
       {canManage &&
@@ -849,7 +883,7 @@ export default function OrderModal({
         <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
             <div data-order-group="Услуги" className="grid gap-2">
-              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => setBookingOpen(true)}>Изменить тип, место, услуги и время</button> : null}
+              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => setBookingOpen(true)}>Заполнение заявки по этапам</button> : null}
               <PartyOrderTypePicker
                 value={orderDraft.title || ''}
                 onChange={(val) => handleChange('title', val || '')}

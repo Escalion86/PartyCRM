@@ -6,12 +6,17 @@ import { apiJson } from '@helpers/apiClient'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import { normalizePhoneNumber } from '@helpers/phoneInput'
 import { canPartyAccess } from '@helpers/partyRolePermissions'
+import {
+  formatPartyClientFullName,
+  getPartyClientNameError,
+  PARTY_CLIENT_NAME_PLACEHOLDER,
+  resolvePartyClientNameParts,
+} from '@helpers/partyClientFullName'
 
 const control =
   'mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-50'
 const button =
   'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50'
-const parts = { firstName: 'Имя', secondName: 'Фамилия', thirdName: 'Отчество' }
 const phoneKey = (value) =>
   normalizePhoneNumber(value) || String(value ?? '').replace(/\D/g, '')
 
@@ -25,8 +30,9 @@ export default function PartyRoleOrderClientEditor({
   onDirtyChange,
 }) {
   const [open, setOpen] = useState(false)
+  const nameParts = client?.nameParts
   const baseline = {
-    name: client?.nameParts || order.client?.name || '',
+    name: nameParts ? formatPartyClientFullName(nameParts) : order.client?.name || '',
     phone: client?.phone ?? order.client?.phone ?? null,
     email: client?.email ?? order.client?.email ?? '',
   }
@@ -38,20 +44,16 @@ export default function PartyRoleOrderClientEditor({
       resource: `orders.client.${field}`,
       action: 'edit',
     })
-  const nameParts = baseline.name && typeof baseline.name === 'object'
   const canEditName = canEdit('name') && (!order.clientId || nameParts)
   const patch = {}
-  if (
-    canEditName &&
-    JSON.stringify(draft.name) !== JSON.stringify(baseline.name)
-  ) {
-    patch.name = nameParts
-      ? Object.fromEntries(
-          Object.keys(parts)
-            .filter((key) => draft.name[key] !== baseline.name[key])
-            .map((key) => [key, draft.name[key] || ''])
-        )
-      : draft.name
+  if (canEditName && draft.name.trim() !== baseline.name.trim()) {
+    if (nameParts) {
+      const changes = Object.entries(resolvePartyClientNameParts(draft.name, nameParts))
+        .filter(([key, value]) => value !== (nameParts[key] || ''))
+      if (changes.length) patch.name = Object.fromEntries(changes)
+    } else {
+      patch.name = draft.name.trim()
+    }
   }
   if (canEdit('phone') && phoneKey(draft.phone) !== phoneKey(baseline.phone))
     patch.phone = draft.phone
@@ -79,6 +81,11 @@ export default function PartyRoleOrderClientEditor({
   const save = async (event) => {
     event.preventDefault()
     if (busy || disabled || !dirty) return
+    const nameError = nameParts && patch.name ? getPartyClientNameError(patch.name) : ''
+    if (nameError) {
+      setError(nameError)
+      return
+    }
     if (
       Object.hasOwn(patch, 'phone') &&
       patch.phone != null &&
@@ -129,8 +136,7 @@ export default function PartyRoleOrderClientEditor({
           <p className="text-sm font-semibold">Контакт заказчика</p>
           {canEdit('name') && order.clientId && !nameParts ? (
             <p className="text-xs text-slate-500">
-              Для изменения ФИО обновите данные клиента. Имя, фамилия и отчество
-              сохраняются отдельно.
+              Изменить ФИО можно в карточке клиента.
             </p>
           ) : null}
           <fieldset
@@ -138,41 +144,19 @@ export default function PartyRoleOrderClientEditor({
             className="grid min-w-0 gap-3 sm:grid-cols-2"
           >
             {canEditName ? (
-              nameParts ? (
-                Object.entries(parts).map(([key, label]) => (
-                  <label key={key} className="block text-sm">
-                    {label}
-                    <input
-                      aria-label={label}
-                      className={control}
-                      maxLength={160}
-                      value={draft.name[key] || ''}
-                      onChange={(event) =>
-                        setDraft((previous) => ({
-                          ...previous,
-                          name: { ...previous.name, [key]: event.target.value },
-                        }))
-                      }
-                    />
-                  </label>
-                ))
-              ) : (
-                <label className="block text-sm">
-                  Имя клиента
-                  <input
-                    aria-label="Имя клиента"
-                    className={control}
-                    maxLength={240}
-                    value={draft.name}
-                    onChange={(event) =>
-                      setDraft((previous) => ({
-                        ...previous,
-                        name: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-              )
+              <label className="block text-sm sm:col-span-2">
+                ФИО
+                <input
+                  className={control}
+                  maxLength={nameParts ? undefined : 240}
+                  placeholder={PARTY_CLIENT_NAME_PLACEHOLDER}
+                  value={draft.name}
+                  onChange={(event) => {
+                    setDraft((previous) => ({ ...previous, name: event.target.value }))
+                    setError('')
+                  }}
+                />
+              </label>
             ) : null}
             {canEdit('phone') ? (
               <PhoneInput

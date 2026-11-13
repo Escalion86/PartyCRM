@@ -3,6 +3,7 @@ export const getPartyCompanyOnboardingSteps = ({
   services = [],
   staff = [],
   orders = [],
+  hasOrderTypes = false,
   noOwnPremises = false,
 } = {}) => [
   {
@@ -12,6 +13,7 @@ export const getPartyCompanyOnboardingSteps = ({
     completed: locations.length > 0 || noOwnPremises === true,
     action: 'Новая точка',
     modal: 'location',
+    repeatable: true,
   },
   {
     id: 'service',
@@ -20,6 +22,7 @@ export const getPartyCompanyOnboardingSteps = ({
     completed: services.length > 0,
     action: 'Новая услуга',
     modal: 'service',
+    repeatable: true,
   },
   {
     id: 'staff',
@@ -28,6 +31,16 @@ export const getPartyCompanyOnboardingSteps = ({
     completed: staff.length > 1,
     action: 'Новый сотрудник',
     modal: 'staff',
+    repeatable: true,
+  },
+  {
+    id: 'order-type',
+    title: 'Настроить типы заказов',
+    description: 'Тип заказа, например день рождения или мастер-класс, задаёт название заказа, доступные услуги и вопросы брифа.',
+    completed: hasOrderTypes,
+    action: 'Добавить тип заказа',
+    modal: 'order-type',
+    repeatable: true,
   },
   {
     id: 'order',

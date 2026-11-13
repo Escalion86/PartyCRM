@@ -1,4 +1,5 @@
 import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
+import { formatAddressPoolShort, normalizePartyPoolAddress } from '@helpers/addressPool'
 import { NextResponse } from 'next/server'
 import { withPartyOrderVenueWrite } from '@server/partyVenueBookings'
 import { getPartyOrderPermanentDeleteBlocker } from '@server/partyOrderPermanentDelete'
@@ -258,6 +259,12 @@ export async function PATCH(req, { params }) {
   // An explicit end-time edit must not be ignored in favour of the old duration.
   if (Object.hasOwn(body, 'dateEnd') && !Object.hasOwn(body, 'durationMinutes')) {
     bodyWithBackwardCompatibleBrief.durationMinutes = undefined
+  }
+  if (body.bookingVersion === 1 && Object.hasOwn(changedPatch, 'clientAddress') && !Object.hasOwn(body, 'customAddress')) {
+    const addressLine = (address) => formatAddressPoolShort({ ...normalizePartyPoolAddress(address), comment: '' })
+    if (addressLine(body.clientAddress) !== addressLine(currentOrder.clientAddress)) {
+      bodyWithBackwardCompatibleBrief.customAddress = ''
+    }
   }
   let payload = normalizeOrderPayload(bodyWithBackwardCompatibleBrief)
   try {

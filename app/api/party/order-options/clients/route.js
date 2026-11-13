@@ -24,15 +24,20 @@ const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const clientSearchFilter = (query, fields) => {
   const matches = []
-  if (fields.name) matches.push({ $expr: { $regexMatch: {
-    input: { $concat: [
-      { $ifNull: ['$firstName', ''] }, ' ',
-      { $ifNull: ['$secondName', ''] }, ' ',
-      { $ifNull: ['$thirdName', ''] },
-    ] },
-    regex: query.split(/\s+/u).map(escapeRegex).join('\\s+'),
-    options: 'i',
-  } } })
+  if (fields.name) {
+    const regex = query.split(/\s+/u).map(escapeRegex).join('\\s+')
+    for (const [first, second] of [['$firstName', '$secondName'], ['$secondName', '$firstName']]) {
+      matches.push({ $expr: { $regexMatch: {
+        input: { $concat: [
+          { $ifNull: [first, ''] }, ' ',
+          { $ifNull: [second, ''] }, ' ',
+          { $ifNull: ['$thirdName', ''] },
+        ] },
+        regex,
+        options: 'i',
+      } } })
+    }
+  }
   if (fields.phone && /^[\d+()\s.\-‐‑‒–—]+$/u.test(query)) {
     const normalized = normalizePhoneNumber(query)
     const digits = query.replace(/\D/g, '')

@@ -2,11 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { faPencilAlt, faTrash } from '@fortawesome/free-solid-svg-icons'
-import CardButton from '@components/CardButton'
-import PartyCard, {
-  PartyCardActions,
-  PartyCardHeader,
-} from '@components/party/PartyCard'
+import IconActionButton from '@components/IconActionButton'
 import { formatMoney } from '@helpers/formatMoney'
 import { useAtomValue } from 'jotai'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
@@ -42,52 +38,52 @@ const ChevronIcon = ({ open }) => (
 )
 
 const ServiceCard = ({ service, canManage, onEdit, onDelete }) => {
+  const title = service.title || 'Без названия'
+  const details = (
+    <>
+      <span className="block text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">{title}</span>
+      {(service.specialization || service.duration > 0) && (
+        <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
+          {service.specialization && (
+            <span>{specializationLabels[service.specialization] || service.specialization}</span>
+          )}
+          {service.duration > 0 && <span>{service.duration} мин</span>}
+        </span>
+      )}
+    </>
+  )
+
   return (
-    <PartyCard onClick={() => onEdit && onEdit(service)}>
-      <PartyCardHeader>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-semibold">
-            {service.title || 'Без названия'}
-          </p>
-          <div className="mt-1 flex flex-wrap items-center gap-3">
-            {service.specialization && (
-              <span className="rounded bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
-                {specializationLabels[service.specialization] ||
-                  service.specialization}
-              </span>
+    <article className="relative flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-3 py-2">
+      {onEdit ? (
+        <button
+          type="button"
+          className="min-h-11 min-w-0 flex-[1_1_10rem] cursor-pointer rounded-md text-left focus-visible:outline-2 focus-visible:outline-sky-700 after:absolute after:inset-0"
+          onClick={() => onEdit(service)}
+        >
+          {details}
+        </button>
+      ) : (
+        <div className="min-w-0 flex-[1_1_10rem]">{details}</div>
+      )}
+      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
+        {service.price > 0 && (
+          <span className="whitespace-nowrap text-sm font-semibold text-slate-900 tabular-nums">
+            {formatMoney(service.price)}
+          </span>
+        )}
+        {canManage && (
+          <div className="relative z-10 flex shrink-0 gap-1">
+            {onEdit && (
+              <IconActionButton icon={faPencilAlt} onClick={() => onEdit(service)} title="Редактировать услугу" size="md" />
             )}
-            {service.duration > 0 && (
-              <span className="text-sm text-black/60">
-                {service.duration} мин
-              </span>
+            {onDelete && (
+              <IconActionButton icon={faTrash} onClick={() => onDelete(service._id)} title="Удалить услугу" variant="danger" size="md" />
             )}
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-4">
-          {service.price > 0 && (
-            <span className="text-lg font-bold text-emerald-700">
-              {formatMoney(service.price)}
-            </span>
-          )}
-          {canManage && (
-            <PartyCardActions>
-              <CardButton
-                icon={faPencilAlt}
-                onClick={() => onEdit && onEdit(service)}
-                color="orange"
-                tooltipText="Редактировать"
-              />
-              <CardButton
-                icon={faTrash}
-                onClick={() => onDelete && onDelete(service._id)}
-                color="red"
-                tooltipText="Удалить"
-              />
-            </PartyCardActions>
-          )}
-        </div>
-      </PartyCardHeader>
-    </PartyCard>
+        )}
+      </div>
+    </article>
   )
 }
 

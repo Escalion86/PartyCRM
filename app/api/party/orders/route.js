@@ -628,21 +628,26 @@ export async function POST(req) {
   if (['fulfillment', 'pricingSnapshot', 'orderTypeSnapshot', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint'].some((field) => Object.hasOwn(body, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие для отметки проведения', 'validation')
   if (body.status === 'closed' || body.status === 'canceled') return partyError(400, 'partycrm_invalid_initial_status', 'Создайте заявку, затем используйте действие закрытия или отмены')
   if ((body.transactions || []).some((transaction) => transaction.category === 'payout')) return partyError(400, 'partycrm_use_payout_action', 'Выплату исполнителю проводите отдельным действием после сохранения заказа')
-  let initialPayment, initialIdentity, initialService, linkInboxOrder
-  if (body.initialPayment !== undefined || body.initialExpectations !== undefined || body.inboxId !== undefined) {
+  const hasInitialExpectations = body.initialExpectations !== undefined
+  if (hasInitialExpectations && (!Array.isArray(body.initialExpectations) || body.initialExpectations.length > 50)) {
+    return partyError(400, 'partycrm_booking_invalid', 'Допускается до 50 ожидаемых платежей при создании', 'validation')
+  }
+  const requestKey = req.headers?.get('Idempotency-Key')
+  let initialPayment, createIdentity, createService, linkInboxOrder
+  if (requestKey || body.initialPayment !== undefined || hasInitialExpectations || body.inboxId !== undefined) {
     try {
       if (body.inboxId !== undefined) {
         const { preparePartyInboxOrderLink } = await import('@server/partyInboxOrder')
         linkInboxOrder = await preparePartyInboxOrderLink({ context, inboxId: body.inboxId })
       }
-      initialService = await import('@server/partyOrderCreatePayment')
-      initialPayment = body.initialPayment !== undefined ? initialService.parsePartyInitialPayment(body.initialPayment) : null
-      initialIdentity = initialService.buildPartyOrderCreateIdentity({ key: req.headers.get('Idempotency-Key'), context, body })
+      createService = await import('@server/partyOrderCreatePayment')
+      initialPayment = body.initialPayment !== undefined ? createService.parsePartyInitialPayment(body.initialPayment) : null
+      createIdentity = createService.buildPartyOrderCreateIdentity({ key: requestKey, context, body })
       if (initialPayment && !canPartyAccess(context, { resource: 'finance.payments', action: 'edit' })) return partyError(403, 'partycrm_initial_payment_forbidden', 'Нет права записывать аванс', 'permission')
-      const replay = await initialService.findPartyOrderCreateReplay({ context, identity: initialIdentity })
+      const replay = await createService.findPartyOrderCreateReplay({ context, identity: createIdentity })
       if (replay) return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, replay), replayed: true })
     } catch (cause) {
-      return partyError(cause.status || 500, cause.code || 'partycrm_initial_payment_failed', cause.status ? cause.message : 'Не удалось подготовить сохранение заказа с авансом')
+      return partyError(cause.status || 500, cause.code || 'partycrm_initial_payment_failed', cause.status ? cause.message : 'Не удалось подготовить сохранение заказа')
     }
   }
   const ordinaryBody = { ...body }
@@ -731,26 +736,42 @@ export async function POST(req) {
 
   let order
   try {
-    if (initialService) {
+    const hasPaymentExpectations = Boolean(body.initialExpectations?.length)
+    // Keep the existing serialized conflict checks for scheduled orders.
+    const hasScheduledTime = Boolean(limitedPayload.eventDate && limitedPayload.dateEnd)
+    if (initialPayment || hasPaymentExpectations || linkInboxOrder || (createIdentity && hasScheduledTime)) {
       let expectations = []
-      if (body.initialExpectations !== undefined && (!Array.isArray(body.initialExpectations) || body.initialExpectations.length > 50)) throw Object.assign(new Error('Допускается до 50 ожидаемых платежей при создании'), { status: 400, code: 'partycrm_booking_invalid' })
-      if (body.initialExpectations?.length) {
+      if (hasPaymentExpectations) {
         const { parsePartyInitialExpectations } = await import('@server/partyPaymentExpectations')
         expectations = parsePartyInitialExpectations({ context, payload: { ...limitedPayload, tenantId: context.tenantId }, values: body.initialExpectations })
       }
-      const outcome = await initialService.createPartyOrderWithPayment({ context, identity: initialIdentity, payment: initialPayment, expectations, payload: limitedPayload, linkInboxOrder, checkConflicts: async (session) => {
+      const outcome = await createService.createPartyOrderWithPayment({ context, identity: createIdentity, payment: initialPayment, expectations, payload: limitedPayload, linkInboxOrder, checkConflicts: async (session) => {
         const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, session, checkLocation: false })
         if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по исполнителям'), { status: 409, code: 'partycrm_order_conflict', conflicts })
       } })
       order = outcome.order
       if (outcome.replayed) return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, order), replayed: true })
-    } else order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, nextOrder: limitedPayload, work: async ({ session, legacy }) => {
-      const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, session, checkLocation: legacy })
-      if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
-      const payload = { ...limitedPayload, tenantId: context.tenantId }
-      return session ? (await PartyOrders.create([payload], { session }))[0] : PartyOrders.create({ ...limitedPayload, tenantId: context.tenantId })
-    } })
+    } else {
+      if (hasInitialExpectations && (limitedPayload.transactions?.length || Number(limitedPayload.clientPayment?.prepaidAmount || 0))) {
+        return partyError(400, 'partycrm_initial_payment_invalid', 'Укажите полученный аванс только в поле «Аванс при создании»', 'validation')
+      }
+      if (createIdentity) await PartyOrders.init()
+      order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, nextOrder: limitedPayload, work: async ({ session, legacy }) => {
+        const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, session, checkLocation: legacy })
+        if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
+        const payload = { ...limitedPayload, ...createIdentity, tenantId: context.tenantId }
+        return session ? (await PartyOrders.create([payload], { session }))[0] : PartyOrders.create(payload)
+      } })
+    }
   } catch (cause) {
+    if (cause.code === 11000 && createIdentity) {
+      try {
+        const replay = await createService.findPartyOrderCreateReplay({ context, identity: createIdentity })
+        if (replay) return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, replay), replayed: true })
+      } catch (replayError) {
+        cause = replayError
+      }
+    }
     return partyError(cause.status || 500, cause.code || 'partycrm_order_save_failed', cause.status ? cause.message : 'Не удалось сохранить заказ', 'validation', cause.conflicts ? { conflicts: maskPartyOrderConflicts(context, cause.conflicts) } : {})
   }
 

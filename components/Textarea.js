@@ -31,6 +31,7 @@ const Textarea = ({
       tone={tone}
     >
       <textarea
+        aria-label={typeof label === 'string' ? label : undefined}
         className={cn('flex-1 px-1 text-black outline-none', inputClassName)}
         rows={rows}
         value={value}
