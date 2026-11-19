@@ -114,7 +114,7 @@ const routeSource = (
 )
   .replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '')
   .replaceAll('export const ', 'const ')
-  .replace('export async function GET', 'async function GET')
+  .replaceAll('export async function ', 'async function ')
 
 const setup = ({
   context = owner,
@@ -211,6 +211,8 @@ const setup = ({
     `${serviceSource}\nreturn {loadPartyToday}`
   )(...Object.values({ ...deps, ...taskFunctions }))
   const routeDeps = {
+    ...todayHelpers,
+    isValidObjectId: deps.isValidObjectId,
     getPartyRequestContext: async () => {
       if (contextFailure) throw contextFailure
       return { context, error: contextError }

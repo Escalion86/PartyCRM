@@ -24,6 +24,8 @@ const PartyFinancialOverview = dynamic(
 function CompanyTicketing({ companyId, initialSessionId, timeZone }) {
   const catalog = useTicketingCatalog(companyId)
   const [tab, setTab] = useState(initialSessionId ? 'schedule' : 'sell')
+  const [historySessionId, setHistorySessionId] = useState('')
+  const historyHeading = useRef(null)
   const [visited, setVisited] = useState(
     initialSessionId ? ['schedule'] : ['sell']
   )
@@ -160,7 +162,20 @@ function CompanyTicketing({ companyId, initialSessionId, timeZone }) {
                 companyId={companyId}
                 catalog={data}
                 revision={catalog.revision}
+                timeZone={timeZone}
                 onChanged={catalog.reload}
+                onOpenDirectSales={(sessionId) => {
+                  if (
+                    !requestPartyLeave({
+                      kind: 'record',
+                      target: `ticket-sales-${sessionId}`,
+                    })
+                  )
+                    return
+                  setHistorySessionId(sessionId)
+                  choose('history')
+                  requestAnimationFrame(() => historyHeading.current?.focus())
+                }}
                 programList={data.programsHasMore ? programList : null}
               />
             ) : null}
@@ -175,12 +190,38 @@ function CompanyTicketing({ companyId, initialSessionId, timeZone }) {
           ) : null}
           <div hidden={effectiveTab !== 'history'}>
             {visited.includes('history') || effectiveTab === 'history' ? (
-              <TicketingHistory
-                companyId={companyId}
-                catalog={data}
-                revision={catalog.revision}
-                onChanged={catalog.reload}
-              />
+              <>
+                {historySessionId ? (
+                  <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+                    <h2 ref={historyHeading} tabIndex={-1} className="font-semibold">
+                      Прямые продажи выбранного сеанса
+                    </h2>
+                    <button
+                      type="button"
+                      className={ticketButton}
+                      onClick={() => {
+                        if (
+                          requestPartyLeave({
+                            kind: 'record',
+                            target: 'ticket-sales-all',
+                          })
+                        )
+                          setHistorySessionId('')
+                      }}
+                    >
+                      Показать все продажи
+                    </button>
+                  </div>
+                ) : null}
+                <TicketingHistory
+                  key={historySessionId}
+                  companyId={companyId}
+                  catalog={data}
+                  revision={catalog.revision}
+                  onChanged={catalog.reload}
+                  sessionId={historySessionId}
+                />
+              </>
             ) : null}
           </div>
         </>

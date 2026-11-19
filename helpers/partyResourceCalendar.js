@@ -1,4 +1,5 @@
 import { canPartyAccess } from './partyRolePermissions.js'
+import { isPartyCompanyModuleEnabled } from './partyCompanyModules.js'
 import { canPartyInventoryAccess } from './partyInventoryAccess.js'
 import { parsePartyOrderCalendarQuery } from './partyOrderCalendarQuery.js'
 import { isPartyTicketingEnabled } from './partyTicketing.js'
@@ -20,7 +21,7 @@ export const getPartyResourceCalendarAccess = (context) => {
   const types = []
   if (base && can('locations') && can('orders.locationId')) types.push({ id: 'location', title: 'Площадки' })
   if (base && can('staff') && can('orders.assignedStaff')) types.push({ id: 'staff', title: 'Сотрудники' })
-  if (base && context?.company?.settings?.modules?.inventory?.enabled !== false &&
+  if (base && isPartyCompanyModuleEnabled(context?.company, 'inventory') &&
       ['inventory.catalog', 'inventory.stock', 'inventory.reservations'].every((resource) => canPartyInventoryAccess(context, { resource })))
     types.push({ id: 'inventory', title: 'Реквизит' })
   return { allowed: types.length > 0, types, tickets: isPartyTicketingEnabled(context?.company) && can('tickets') }

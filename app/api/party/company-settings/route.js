@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
+import { PARTY_COMPANY_MODULES, isValidPartyCompanyModulesPatch } from '@helpers/partyCompanyModules'
 import { getPartyCompanyModel } from '@server/partyModels'
 import { getPartyRequestContext, parseJsonBody, partyError } from '@server/partyApi'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
 import { isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
 import { serializePartyRestrictedCompanySettings } from '@server/partyMembershipResponse'
 import { supportsPartyVenueTransactions } from '@server/partyVenueBookings'
+import { validatePartyCompanyBranding } from '@helpers/partyCompanyBranding'
 import {
   preservePartyGoogleCalendarSettings,
   serializePartyCompanySettingsForResponse,
@@ -65,13 +67,12 @@ export async function PATCH(req) {
   if (error) return error
 
   const body = await parseJsonBody(req)
-  if (Object.hasOwn(body, 'modules') && (
-    !body.modules || typeof body.modules !== 'object' || Array.isArray(body.modules) ||
-    (Object.hasOwn(body.modules, 'ticketing') && (
-      !body.modules.ticketing || typeof body.modules.ticketing !== 'object' || Array.isArray(body.modules.ticketing) ||
-      (Object.hasOwn(body.modules.ticketing, 'enabled') && typeof body.modules.ticketing.enabled !== 'boolean')
-    ))
-  )) return partyError(400, 'partycrm_invalid_modules', 'Проверьте настройку билетного модуля', 'validation')
+  if (Object.hasOwn(body, 'branding')) {
+    const brandingError = validatePartyCompanyBranding(body.branding)
+    if (brandingError) return partyError(400, 'partycrm_invalid_branding', brandingError, 'validation')
+  }
+  if (Object.hasOwn(body, 'modules') && !isValidPartyCompanyModulesPatch(body.modules))
+    return partyError(400, 'partycrm_invalid_modules', 'Проверьте настройки блоков компании', 'validation')
   const PartyCompanies = await getPartyCompanyModel()
   const company = await PartyCompanies.findById(context.tenantId)
     .select({
@@ -113,9 +114,17 @@ export async function PATCH(req) {
   // Keep schedule writes in their validated, revision-guarded endpoint. Dotted
   // updates also preserve a schedule changed since this settings read.
   const updateSet = Object.fromEntries(Object.entries(nextSettings)
-    .filter(([key]) => isGenericSetting(key) && key !== 'modules')
+    .filter(([key]) => isGenericSetting(key) && !['modules', 'branding'].includes(key))
     .map(([key, value]) => [`settings.${key}`, value]))
-  if (Object.hasOwn(filteredBody.modules?.ticketing || {}, 'enabled')) updateSet['settings.modules.ticketing.enabled'] = nextSettings.modules.ticketing.enabled
+  if (Object.hasOwn(filteredBody, 'branding')) {
+    for (const key of ['palette', 'logoUrl']) {
+      if (Object.hasOwn(filteredBody.branding, key)) updateSet[`settings.branding.${key}`] = nextSettings.branding[key]
+    }
+  }
+  for (const { key } of PARTY_COMPANY_MODULES) {
+    if (Object.hasOwn(filteredBody.modules?.[key] || {}, 'enabled'))
+      updateSet[`settings.modules.${key}.enabled`] = nextSettings.modules[key].enabled
+  }
   const companySet = {}
   for (const key of ['title', 'legalTitle', 'phone', 'email']) {
     if (!Object.hasOwn(nextCompany, key) || !Object.hasOwn(companyPatch ?? {}, key)) {

@@ -1,0 +1,49 @@
+.workspace {
+  background-color: var(--party-brand-canvas);
+  color-scheme: light;
+  accent-color: var(--party-brand-accent);
+  caret-color: var(--party-brand-accent);
+}
+
+.workspace ::selection {
+  background: var(--party-brand-border);
+  color: var(--party-brand-ink);
+}
+
+.workspace :global(.bg-sky-50) { background-color: var(--party-brand-soft); }
+.workspace :global(.bg-sky-100) { background-color: var(--party-brand-border); }
+.workspace :global(.bg-sky-500),
+.workspace :global(.bg-sky-600),
+.workspace :global(.bg-sky-700) { background-color: var(--party-brand-accent); }
+.workspace :global(.bg-sky-800) { background-color: var(--party-brand-hover); }
+.workspace :global(.text-sky-100),
+.workspace :global(.text-sky-200) { color: var(--party-brand-light); }
+.workspace :global(.text-sky-600),
+.workspace :global(.text-sky-700) { color: var(--party-brand-accent); }
+.workspace :global(.text-sky-800),
+.workspace :global(.text-sky-900),
+.workspace :global(.text-sky-950) { color: var(--party-brand-ink); }
+.workspace :global(.border-sky-100),
+.workspace :global(.border-sky-200),
+.workspace :global(.border-sky-300) { border-color: var(--party-brand-border); }
+.workspace :global(.border-sky-400),
+.workspace :global(.border-sky-500) { border-color: var(--party-brand-accent); }
+.workspace :global(.ring-sky-200),
+.workspace :global(.ring-sky-300) { --tw-ring-color: var(--party-brand-border); }
+.workspace :global(.ring-sky-500) { --tw-ring-color: var(--party-brand-accent); }
+.workspace :global(.hover\:bg-sky-50):hover { background-color: var(--party-brand-soft); }
+.workspace :global(.hover\:bg-sky-700):hover,
+.workspace :global(.hover\:bg-sky-800):hover { background-color: var(--party-brand-hover); }
+.workspace :global(.focus\:ring-sky-200):focus { --tw-ring-color: var(--party-brand-accent); }
+.workspace :global(.focus\:ring-sky-500):focus,
+.workspace :global(.focus\:border-sky-500):focus { border-color: var(--party-brand-accent); --tw-ring-color: var(--party-brand-accent); }
+.workspace :global(.focus-within\:border-sky-500):focus-within,
+.workspace :global(.hover\:border-sky-400):hover { border-color: var(--party-brand-accent); }
+.workspace :global(.hover\:text-sky-800):hover { color: var(--party-brand-hover); }
+.workspace :global(.focus-visible\:ring-sky-500):focus-visible { --tw-ring-color: var(--party-brand-accent); }
+.workspace :global(.focus-visible\:outline-sky-600):focus-visible { outline-color: var(--party-brand-accent); }
+.workspace :global(.focus-visible\:outline-sky-200):focus-visible { outline-color: var(--party-brand-light); }
+
+.workspace :global(button:disabled),
+.workspace :global(button[aria-disabled='true']) { cursor: not-allowed; }
+.workspace :global(.disabled\:bg-slate-300):disabled { background-color: #cbd5e1; }

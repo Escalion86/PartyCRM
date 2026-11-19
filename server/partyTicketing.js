@@ -6,6 +6,7 @@ import { ticketFailure, ticketId, ticketInteger, ticketDate, ticketText, ticketS
 import { loadPartyTicketModels } from './partyTicketModels'
 import { getPartyLocationModel, getPartyClientModel } from './partyModels'
 import { withPartyVenueMutation, reservePartyVenue, assertPartyVenueEntryAllowed } from './partyVenueBookings'
+import { createPartyTicketChannels } from './partyTicketChannels'
 
 const fullManager = (context) => context.role === 'owner' || context.role === 'admin' && !context.position
 const locationScope = (context, includeTemplates = false) => {
@@ -25,7 +26,7 @@ const missing = () => ticketFailure('Запись не найдена или н�
 const revisionOf = (payload, entity) => { if (ticketInteger(payload.expectedRevision) !== entity.revision) ticketFailure('Запись изменилась. Обновите данные и повторите действие', 409, 'partycrm_ticketing_stale') }
 const cleanId = (value) => value ? String(value) : null
 const plain = (value) => value?.toObject ? value.toObject() : value
-const capsFor = (context) => ({ read: allowed(context, '', 'read'), manage: allowed(context, 'manage'), sell: allowed(context, 'sell'), payments: allowed(context, 'payments'), refund: allowed(context, 'refund'), checkin: allowed(context, 'checkin'), contacts: allowed(context, 'contacts', 'read'), contactsEdit: allowed(context, 'contacts'), finance: allowed(context, 'finance', 'read'), discounts: allowed(context, 'discounts') })
+const capsFor = (context) => ({ read: allowed(context, '', 'read'), manage: allowed(context, 'manage'), sell: allowed(context, 'sell'), payments: allowed(context, 'payments'), refund: allowed(context, 'refund'), checkin: allowed(context, 'checkin'), contacts: allowed(context, 'contacts', 'read'), contactsEdit: allowed(context, 'contacts'), finance: allowed(context, 'finance', 'read'), discounts: allowed(context, 'discounts'), channelRead: allowed(context, 'finance', 'read'), channelSell: allowed(context, 'finance', 'read') && allowed(context, 'sell'), channelRefund: allowed(context, 'finance', 'read') && allowed(context, 'refund') })
 const canSeeSaleMoney = (context) => ['sell', 'payments', 'refund', 'finance'].some((key) => allowed(context, key, key === 'finance' ? 'read' : 'edit'))
 const programDto = (record) => {
   const row = plain(record)
@@ -134,6 +135,9 @@ export const createPartyTicketingService = (dependencies = {}) => {
   }
   const execute = async (models, context, action, payload, session, operationId) => {
     const tenantId = context.tenantId
+    if (action === 'channel.record') {
+      return createPartyTicketChannels({ models, loadVisible, now }).record(context, payload, session, operationId)
+    }
     if (action === 'program.create' || action === 'program.update') {
       requirePermission(context, 'manage')
       const previous = action === 'program.update' ? await loadVisible(models.Programs, context, payload.programId, session, true) : {}
@@ -260,6 +264,7 @@ export const createPartyTicketingService = (dependencies = {}) => {
     return { entity: 'sale', entityId: sale._id }
   }
   const readEntity = async (models, context, entity, id) => {
+    if (entity === 'channel_record') return createPartyTicketChannels({ models, loadVisible, now }).readRecord(context, id)
     if (entity === 'program') return programDto(await loadVisible(models.Programs, context, id, null, true))
     if (entity === 'session') { const row = await loadVisible(models.Sessions, context, id); const program = await loadVisible(models.Programs, context, row.programId, null, true); return sessionDto(row, program) }
     const sale = await loadVisible(models.Sales, context, id), output = saleDto(context, sale)
@@ -271,11 +276,12 @@ export const createPartyTicketingService = (dependencies = {}) => {
       if (!allowed(context, '', 'read')) ticketFailure('Нет доступа к билетному модулю', 403)
       if (!body || typeof body !== 'object' || Array.isArray(body)) ticketFailure('Проверьте билетную операцию')
       const action = typeof body.action === 'string' ? body.action : '', payload = body.payload && typeof body.payload === 'object' && !Array.isArray(body.payload) ? body.payload : {}
-      const maintenance = ['refund.record', 'sale.cancel', 'admission.record'].includes(action) || action === 'session.update' && payload.status === 'canceled' && Object.keys(payload).every((key) => ['sessionId', 'expectedRevision', 'status'].includes(key))
+      const maintenance = ['refund.record', 'sale.cancel', 'admission.record'].includes(action) || action === 'channel.record' && payload.kind === 'refund' || action === 'session.update' && payload.status === 'canceled' && Object.keys(payload).every((key) => ['sessionId', 'expectedRevision', 'status'].includes(key))
       if (!isPartyTicketingEnabled(context.company) && !maintenance) ticketFailure('Билетный модуль выключен; доступны история и обслуживание действующих билетов', 403, 'partycrm_ticketing_disabled')
-      const permissions = { 'program.create': 'manage', 'program.update': 'manage', 'session.create': 'manage', 'session.update': 'manage', 'sale.create': 'sell', 'sale.cancel': 'sell', 'payment.record': 'payments', 'refund.record': 'refund', 'admission.record': 'checkin' }
+      const permissions = { 'program.create': 'manage', 'program.update': 'manage', 'session.create': 'manage', 'session.update': 'manage', 'sale.create': 'sell', 'sale.cancel': 'sell', 'payment.record': 'payments', 'refund.record': 'refund', 'admission.record': 'checkin', 'channel.record': payload.kind === 'refund' ? 'refund' : 'sell' }
       if (!Object.hasOwn(permissions, action)) ticketFailure('Неизвестное действие билетного модуля')
       requirePermission(context, permissions[action])
+      if (action === 'channel.record' && !allowed(context, 'finance', 'read')) ticketFailure('Нет права просматривать сверку продаж по каналам', 403, 'partycrm_ticketing_forbidden')
       const models = await loadModels()
       const operation = await mutateTransaction({ context, action, payload, requestKey: body.requestKey, models, work: ({ session, operationId }) => execute(models, context, action, payload, session, operationId) })
       return { data: await readEntity(models, context, operation.entity, operation.entityId), operation: { id: String(operation._id), replayed: operation.replayed } }
@@ -283,6 +289,7 @@ export const createPartyTicketingService = (dependencies = {}) => {
     async read(context, params) {
       if (!allowed(context, '', 'read')) ticketFailure('Нет доступа к билетному модулю', 403)
       const models = await loadModels(), requestedSection = params.get('section') || 'catalog', section = requestedSection === 'clientSales' ? 'sales' : requestedSection
+      if (section === 'channelSummary') return createPartyTicketChannels({ models, loadVisible, now }).summary(context, params, scopeFilter(context, { kind: 'sale' }))
       if (requestedSection === 'clientSales' && (!params.get('clientId') || !allowed(context, 'contacts', 'read'))) ticketFailure('Нет права просматривать покупки клиента', 403)
       if (section === 'sale' || section === 'session') return { data: await readEntity(models, context, section, ticketId(params.get('id'))) }
       if (!['catalog', 'programs', 'sessions', 'sales'].includes(section)) ticketFailure('Неизвестный раздел билетного модуля')

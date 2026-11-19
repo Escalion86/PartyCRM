@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import FocusedTicketSession from './FocusedTicketSession'
+import TicketSessionSales from './TicketSessionSales'
 import usePartyUnsavedChanges, {
   requestPartyLeave,
 } from '@components/party/navigation/usePartyUnsavedChanges'
@@ -503,8 +504,13 @@ export default function TicketingSchedule({
   onChanged,
   programList,
   initialSessionId = '',
+  timeZone,
+  onOpenDirectSales,
 }) {
   const [selected, setSelected] = useState(null)
+  const [salesSession, setSalesSession] = useState(null)
+  const salesTrigger = useRef(null)
+  const salesHeading = useRef(null)
   const [editorRevision, setEditorRevision] = useState(0)
   const cancellation = useTicketingCommand(companyId)
   const [notice, setNotice] = useState('')
@@ -519,6 +525,32 @@ export default function TicketingSchedule({
     enabled: true,
     revision,
   })
+  const openSales = (session, trigger) => {
+    if (
+      String(salesSession?._id) !== String(session._id) &&
+      !requestPartyLeave({
+        kind: 'record',
+        target: `ticket-channel-session-${session._id}`,
+        scope: `${companyId}:ticket-channel`,
+      })
+    )
+      return
+    salesTrigger.current = trigger
+    setSalesSession(session)
+    requestAnimationFrame(() => salesHeading.current?.focus())
+  }
+  const closeSales = () => {
+    if (
+      !requestPartyLeave({
+        kind: 'record',
+        target: 'ticket-channel-close-summary',
+        scope: `${companyId}:ticket-channel`,
+      })
+    )
+      return
+    setSalesSession(null)
+    requestAnimationFrame(() => salesTrigger.current?.focus())
+  }
   const choose = (session) => {
     if (
       !requestPartyLeave({
@@ -557,7 +589,22 @@ export default function TicketingSchedule({
         revision={revision}
         canEdit={catalog.enabled && catalog.capabilities?.manage}
         onChoose={choose}
+        onOpenSales={catalog.capabilities?.channelRead ? openSales : undefined}
       />
+      {salesSession && catalog.capabilities?.channelRead ? (
+        <TicketSessionSales
+          key={salesSession._id}
+          companyId={companyId}
+          session={salesSession}
+          timeZone={timeZone}
+          revision={revision}
+          canSell={catalog.enabled && catalog.capabilities.channelSell}
+          canRefund={catalog.capabilities.channelRefund}
+          headingRef={salesHeading}
+          onClose={closeSales}
+          onOpenDirectSales={onOpenDirectSales}
+        />
+      ) : null}
       {notice ? (
         <p role="status" className="text-sm text-emerald-800">
           {notice}
@@ -633,28 +680,40 @@ export default function TicketingSchedule({
                   {ticketMoney(program.unitPriceKopecks)} за билет
                 </p>
               ) : null}
-              {catalog.enabled && catalog.capabilities?.manage ? (
-                <button
-                  type="button"
-                  className={ticketButton}
-                  onClick={() => choose(session)}
-                >
-                  Изменить сеанс
-                </button>
-              ) : null}
-              {!catalog.enabled &&
-              catalog.capabilities?.manage &&
-              catalog.maintenanceActions?.includes('session.cancel') &&
-              session.status === 'scheduled' ? (
-                <button
-                  type="button"
-                  className={ticketButton}
-                  disabled={cancellation.busy}
-                  onClick={() => cancelSession(session)}
-                >
-                  {cancellation.busy ? 'Отменяем…' : 'Отменить сеанс'}
-                </button>
-              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {catalog.capabilities?.channelRead ? (
+                  <button
+                    type="button"
+                    className={ticketButton}
+                    aria-label={`Продажи по каналам · ${session.title || program?.title || 'Сеанс'} · ${ticketDate(session.startsAt)}`}
+                    onClick={(event) => openSales(session, event.currentTarget)}
+                  >
+                    Продажи по каналам
+                  </button>
+                ) : null}
+                {catalog.enabled && catalog.capabilities?.manage ? (
+                  <button
+                    type="button"
+                    className={ticketButton}
+                    onClick={() => choose(session)}
+                  >
+                    Изменить сеанс
+                  </button>
+                ) : null}
+                {!catalog.enabled &&
+                catalog.capabilities?.manage &&
+                catalog.maintenanceActions?.includes('session.cancel') &&
+                session.status === 'scheduled' ? (
+                  <button
+                    type="button"
+                    className={ticketButton}
+                    disabled={cancellation.busy}
+                    onClick={() => cancelSession(session)}
+                  >
+                    {cancellation.busy ? 'Отменяем…' : 'Отменить сеанс'}
+                  </button>
+                ) : null}
+              </div>
             </article>
           )
         })}

@@ -45,11 +45,27 @@ export default function usePartyToday(companyId) {
     }
   }, [companyId, key])
   const reload = useCallback(() => setRevision((value) => value + 1), [])
+  const saveWidgets = async (widgetIds) => {
+    const result = await apiJson('/api/party/today', {
+      method: 'PATCH',
+      headers: { 'x-partycrm-company-id': companyId },
+      body: JSON.stringify({ widgetIds }),
+    })
+    const saved = result?.data?.widgetIds
+    if (saved !== null && !Array.isArray(saved))
+      throw new Error('Не удалось подтвердить сохранение настроек.')
+    setState((previous) =>
+      previous.key === key && previous.data
+        ? { ...previous, data: { ...previous.data, widgetIds: saved } }
+        : previous
+    )
+  }
   const current = state.key === key && Boolean(companyId)
   return {
     data: current ? state.data : null,
     busy: Boolean(companyId) && (!current || state.busy),
     error: current ? state.error : '',
     reload,
+    saveWidgets,
   }
 }

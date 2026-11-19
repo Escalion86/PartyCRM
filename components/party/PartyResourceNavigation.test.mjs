@@ -7,6 +7,8 @@ import * as rolePermissions from '../../helpers/partyRolePermissions.js'
 import * as resourceCalendar from '../../helpers/partyResourceCalendar.js'
 import * as today from '../../helpers/partyToday.js'
 import * as ticketing from '../../helpers/partyTicketing.js'
+import * as companyBranding from '../../helpers/partyCompanyBranding.js'
+import * as companyModules from '../../helpers/partyCompanyModules.js'
 import * as mobileNavigation from '../../helpers/partyMobileNavigation.js'
 import * as navigationGroups from '../../helpers/partyNavigationGroups.js'
 import * as operationalPermissions from '../../helpers/partyOperationalPermissions.js'
@@ -34,12 +36,13 @@ const membership = ({
   role = 'performer',
   permissions = {},
   active = true,
+  modules,
 } = {}) => ({
   tenantId,
   role,
   status: active ? 'active' : 'archived',
   isAdmin: ['owner', 'admin'].includes(role),
-  company: { title: 'Тестовая компания' },
+  company: { title: 'Тестовая компания', settings: { modules } },
   staff: {
     _id: staffId,
     tenantId,
@@ -108,6 +111,8 @@ const setup = ({
           isPartySiteSettingsPath: () => false,
         },
         './PartyMobileNav': { __esModule: true, default: 'mobile-nav' },
+        './PartyCompanyLogo': { __esModule: true, default: 'company-logo' },
+        './PartyCompanyTheme.module.css': { __esModule: true, default: { workspace: 'theme' } },
         './navigation/PartyUnsavedChangesBootstrap': {
           __esModule: true,
           default: 'bootstrap',
@@ -121,6 +126,8 @@ const setup = ({
         '@helpers/partyMobileNavigation': mobileNavigation,
         '@helpers/partyNavigationGroups': navigationGroups,
         '@helpers/partyTicketing': ticketing,
+        '@helpers/partyCompanyBranding': companyBranding,
+        '@helpers/partyCompanyModules': companyModules,
         '@helpers/partyToday': today,
         '@helpers/partyResourceCalendar': resourceCalendar,
         '@helpers/partyActiveCompany': {
@@ -163,6 +170,9 @@ const setup = ({
       [...nodes(host.value)].filter(
         (node) => node.props?.item?.resourceCalendar
       ),
+    moduleLinks: () => [...nodes(host.value)]
+      .filter((node) => node.props?.item?.module || node.props?.item?.ticketing)
+      .map((node) => node.props.item.href),
     refresh: (next) => {
       current = next
       for (const listener of listeners.get('partycrm:profile-updated') || [])
@@ -197,5 +207,17 @@ test('an archived employee cannot see the resource calendar menu', async () => {
   const h = setup({ active: false })
   await h.host.flush()
   assert.equal(h.links().length, 0)
+  h.host.dispose()
+})
+
+test('company navigation reflects active inventory and ticketing modules after settings change', async () => {
+  const h = setup({ variant: 'company', role: 'owner' })
+  await h.host.flush()
+  assert.ok(h.moduleLinks().includes('/company/inventory'))
+  assert.ok(!h.moduleLinks().includes('/company/ticketing'))
+  h.refresh(membership({ role: 'owner', modules: { inventory: { enabled: false }, ticketing: { enabled: true } } }))
+  await h.host.flush()
+  assert.ok(!h.moduleLinks().includes('/company/inventory'))
+  assert.ok(h.moduleLinks().includes('/company/ticketing'))
   h.host.dispose()
 })

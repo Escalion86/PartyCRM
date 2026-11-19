@@ -4,6 +4,8 @@ import {
   normalizePartyPoolAddress,
   normalizeTownList,
 } from './addressPool.js'
+import { normalizePartyCompanyBranding } from './partyCompanyBranding.js'
+import { normalizePartyCompanyModules, mergePartyCompanyModules } from './partyCompanyModules.js'
 
 const uniqueBy = (items, getKey) => {
   const seen = new Set()
@@ -41,7 +43,8 @@ export const DEFAULT_COMPANY_SETTINGS = Object.freeze({
   notifications: {},
   documents: {},
   integrations: {},
-  modules: { ticketing: { enabled: false } },
+  modules: normalizePartyCompanyModules(),
+  branding: normalizePartyCompanyBranding(),
 })
 
 export const normalizeCompanyEventTypes = (eventTypes = []) =>
@@ -229,7 +232,8 @@ export const normalizeCompanySettings = (value = {}) => ({
   notifications: normalizeCompanyNotifications(value?.notifications),
   documents: normalizeCompanyDocuments(value?.documents),
   integrations: normalizeObjectField(value?.integrations),
-  modules: { ticketing: { enabled: value?.modules?.ticketing?.enabled === true } },
+  branding: normalizePartyCompanyBranding(value?.branding),
+  modules: normalizePartyCompanyModules(value?.modules),
 })
 
 export const mergeCompanySettingsPatch = (current, patch) =>
@@ -248,11 +252,10 @@ export const mergeCompanySettingsPatch = (current, patch) =>
       ...normalizeObjectField(current?.integrations),
       ...normalizeObjectField(patch?.integrations),
     },
-    modules: {
-      ticketing: {
-        ...normalizeObjectField(current?.modules?.ticketing),
-        ...normalizeObjectField(patch?.modules?.ticketing),
-      },
+    modules: mergePartyCompanyModules(current?.modules, patch?.modules),
+    branding: {
+      ...normalizePartyCompanyBranding(current?.branding),
+      ...normalizeObjectField(patch?.branding),
     },
   })
 

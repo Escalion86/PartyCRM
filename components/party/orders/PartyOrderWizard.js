@@ -28,6 +28,7 @@ import PartyOrderAvailabilityPicker from './PartyOrderAvailabilityPicker'
 import PartyInitialExpectations from './PartyInitialExpectations'
 import usePartyOrderWizardDraft from './usePartyOrderWizardDraft'
 import { getPartyOrderWizardDraftScope } from '@helpers/partyOrderWizardDraft'
+import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 
 const input =
   'mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 sm:text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 aria-invalid:border-red-700'
@@ -61,6 +62,7 @@ function Wizard({
 }) {
   const context = options.context
   const existing = Boolean(order._id)
+  const offsiteAllowed = order.placeType === 'client_address' || isPartyCompanyModuleEnabled(context.company, 'offsite')
   const can = (resource, action = 'read') =>
     canPartyAccess(context, { resource, action })
   const canReadOrderType = can('orders.title')
@@ -76,7 +78,7 @@ function Wizard({
     orderTypeId: order.orderTypeId ? String(order.orderTypeId) : '',
     placeType:
       order.placeType ||
-      (context.company?.settings?.noOwnPremises || !options.locations.length
+      (offsiteAllowed && (context.company?.settings?.noOwnPremises || !options.locations.length)
         ? 'client_address'
         : 'company_location'),
     locationId: order.locationId ? String(order.locationId) : '',
@@ -875,7 +877,7 @@ function Wizard({
                   }
                 >
                   <option value="company_location">В помещении компании</option>
-                  <option value="client_address">На выезде</option>
+                  {offsiteAllowed ? <option value="client_address">На выезде</option> : null}
                 </select>
               </label>
               {draft.placeType === 'company_location' ? (

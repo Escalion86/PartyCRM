@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
 import { getPartyOrderWriteGuard } from '../helpers/partyOrderWriteGuard.js'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import { buildPartyProposalApplication } from '../helpers/partyProposalApply.js'
 import { preservePartyAssignmentConfirmationStatuses } from '../helpers/partyOrderAssignments.js'
 import { canPartyAccess, filterPartyOrderForAccess, guardPartyOrderPatch } from '../helpers/partyRolePermissions.js'
@@ -36,6 +37,7 @@ function setup() {
     },
   }
   return { current, Orders, deps: {
+    canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE,
     getPartyOrderWriteGuard, buildPartyProposalApplication,
     getPartyRequestContext: async () => ({ context: { tenantId, role: 'owner', company: {}, staff: { _id: id, tenantId, status: 'active', role: 'owner' } } }),
     canPartyAccess, filterPartyOrderForAccess, guardPartyOrderPatch, preservePartyOrderContactSettings,

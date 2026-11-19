@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
+import { isPartyCompanyModuleEnabled } from '../helpers/partyCompanyModules.js'
 import * as inventoryAccess from '../helpers/partyInventoryAccess.js'
 import * as rolePermissions from '../helpers/partyRolePermissions.js'
 import {
@@ -170,8 +171,8 @@ test('inventory wrapper keeps catalog private to legacy operators and rechecks e
   }
   const wrapper = compileFunction(
     `${wrapperSource}\nreturn inventoryRoute`,
-    Object.keys(deps)
-  )(...Object.values(deps))
+    [...Object.keys(deps), 'isPartyCompanyModuleEnabled']
+  )(...Object.values(deps), isPartyCompanyModuleEnabled)
   let calls = 0
   const handler = async () => {
     calls++
@@ -274,8 +275,8 @@ test('movement route gates both verbs and exposes only operational order/staff p
   }
   const api = compileFunction(
     `${movementSource}\nreturn { GET, POST }`,
-    Object.keys(deps)
-  )(...Object.values(deps))
+    [...Object.keys(deps), 'isPartyCompanyModuleEnabled']
+  )(...Object.values(deps), isPartyCompanyModuleEnabled)
   assert.deepEqual(gates, ['inventory.movements', 'inventory.movements'])
   const context = { tenantId: 'trusted', role: 'owner', staff: { _id: 'actor', tenantId: 'trusted', role: 'owner', status: 'active' } }
   await api.GET({ nextUrl: new URL('http://localhost/') }, context)

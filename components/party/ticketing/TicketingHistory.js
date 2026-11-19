@@ -292,6 +292,7 @@ export default function TicketingHistory({
   catalog,
   revision,
   onChanged,
+  sessionId = '',
 }) {
   const caps = catalog.capabilities || {}
   const list = useTicketingList({
@@ -299,6 +300,7 @@ export default function TicketingHistory({
     section: 'sales',
     enabled: true,
     revision,
+    filters: sessionId ? new URLSearchParams({ sessionId }).toString() : '',
   })
   const [selectedId, setSelectedId] = useState('')
   const [detailState, setDetail] = useState({

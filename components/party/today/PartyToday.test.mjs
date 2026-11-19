@@ -58,6 +58,7 @@ const components = compile(
   readFileSync(new URL('./PartyToday.js', import.meta.url), 'utf8'),
   {
     '@helpers/partyTodayPresentation': presentation,
+    '@components/party/navigation/usePartyUnsavedChanges': () => {},
     './usePartyToday': () => result,
     'next/link': ({ children, ...props }) =>
       React.createElement('a', props, children),
@@ -141,6 +142,36 @@ test('parent renders loading and failed requests without stale or false empty bl
   assert.doesNotMatch(
     error,
     /По проверенным условиям действий нет|Проверяем доступные/
+  )
+})
+
+test('configured dashboard filters both indicators and work lists and marks incomplete indicators', () => {
+  result = {
+    data: {
+      ...data([
+        section({ hasMore: true }),
+        section({ id: 'payments', title: 'Оплаты' }),
+      ]),
+      widgetIds: ['tasks', 'inbox'],
+      canCustomizeWidgets: true,
+    },
+    busy: false,
+    error: '',
+  }
+  const selected = renderToStaticMarkup(
+    React.createElement(components.default, { companyId })
+  )
+  assert.match(selected, /Настроить дашборд|Показатели/)
+  assert.match(selected, /Список неполный/)
+  assert.doesNotMatch(selected, /Оплаты|Обращения/)
+  result.data.widgetIds = []
+  const empty = renderToStaticMarkup(
+    React.createElement(components.default, { companyId })
+  )
+  assert.match(empty, /На дашборде пока нет показателей/)
+  assert.doesNotMatch(
+    empty,
+    /Проверить комплект|По проверенным условиям действий нет/
   )
 })
 

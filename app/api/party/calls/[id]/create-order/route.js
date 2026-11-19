@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '@helpers/partyCompanyModules'
 import { getPartyCallModel, getPartyOrderModel } from '@server/partyModels'
 import { getPartyRequestContext, partyError } from '@server/partyApi'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
@@ -49,6 +50,9 @@ export async function POST(req, { params }) {
     callId: resolvedParams?.id,
     prepareOrderPayload: async (draftPayload) => {
       const payload = normalizeOrderPayload(draftPayload)
+      if (!canPartySetOffsiteOrder(context.company, payload)) return {
+        error: { status: 409, code: 'partycrm_offsite_disabled', message: PARTY_OFFSITE_DISABLED_MESSAGE },
+      }
       if (
         !payload.clientId &&
         !payload.client.name &&

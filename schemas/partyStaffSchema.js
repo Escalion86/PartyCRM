@@ -1,4 +1,5 @@
 import { Schema } from 'mongoose'
+import { PARTY_TODAY_WIDGET_IDS } from '../helpers/partyToday.js'
 
 const partyStaffSchema = {
   tenantId: {
@@ -83,6 +84,11 @@ const partyStaffSchema = {
     default: [],
   },
   permissionRevision: { type: Number, default: 0 },
+  todayWidgetIds: {
+    type: [String],
+    enum: PARTY_TODAY_WIDGET_IDS,
+    default: null,
+  },
   status: {
     type: String,
     enum: ['active', 'invited', 'paused', 'archived'],

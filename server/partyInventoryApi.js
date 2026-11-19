@@ -6,6 +6,7 @@ import {
   filterPartyInventoryData,
 } from '@helpers/partyInventoryAccess'
 import { getPartyOrderModel } from './partyModels'
+import { isPartyCompanyModuleEnabled } from '../helpers/partyCompanyModules.js'
 
 export const inventoryResponse = (data, status = 200) =>
   NextResponse.json({ success: true, data }, { status })
@@ -49,6 +50,11 @@ export const inventoryRoute =
         'Недостаточно прав для действия',
         'permission'
       )
+    if (!['read', 'view', 'list'].includes(policy.action || 'read') && !isPartyCompanyModuleEnabled(context.company, 'inventory')) {
+      const isReturn = policy.resource === 'inventory.movements' &&
+        req.method === 'POST' && (await req.clone().json().catch(() => null))?.operation === 'return'
+      if (!isReturn) return partyError(409, 'partycrm_inventory_disabled', 'Склад и реквизит отключены в настройках компании. Доступны история и возврат выданных вещей.', 'validation')
+    }
     try {
       const response = await handler(req, context, params)
       const payload = await response.json()

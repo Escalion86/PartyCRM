@@ -11,6 +11,7 @@ export default function FocusedTicketSession({
   revision,
   onChoose,
   canEdit,
+  onOpenSales,
 }) {
   const [retry, setRetry] = useState(0)
   const [state, setState] = useState({ key: '', data: null, error: '' })
@@ -79,15 +80,28 @@ export default function FocusedTicketSession({
               }[current.data.status]
             }
           </p>
-          {canEdit ? (
-            <button
-              type="button"
-              className={ticketButton}
-              onClick={() => onChoose(current.data)}
-            >
-              Изменить этот сеанс
-            </button>
-          ) : null}
+          <div className="flex flex-wrap gap-2">
+            {onOpenSales ? (
+              <button
+                type="button"
+                className={ticketButton}
+                onClick={(event) =>
+                  onOpenSales(current.data, event.currentTarget)
+                }
+              >
+                Продажи по каналам
+              </button>
+            ) : null}
+            {canEdit ? (
+              <button
+                type="button"
+                className={ticketButton}
+                onClick={() => onChoose(current.data)}
+              >
+                Изменить этот сеанс
+              </button>
+            ) : null}
+          </div>
         </>
       )}
     </article>

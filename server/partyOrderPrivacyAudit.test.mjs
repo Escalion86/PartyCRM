@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as permissions from '../helpers/partyRolePermissions.js'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import * as calendarQueries from '../helpers/partyOrderCalendarQuery.js'
 import * as orderAccess from '../helpers/partyOrderAccess.js'
 import * as payloadHelpers from './partyOrderPayload.js'
@@ -31,6 +32,7 @@ function setup({ context = actor(), orderPatch = {}, transactions = [] } = {}) {
     findOneAndUpdate: (filter, update) => { assert.equal(filter.tenantId, tenantId); writes.push(update.$set); Object.assign(order, update.$set); return q(order) },
   }
   const deps = {
+    canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE,
     ...permissions, ...calendarQueries, ...orderAccess, ...payloadHelpers, ...brief, ...contacts, ...assignments, getPartyWorkflow, getPartyOrderWriteGuard,
     withPartyOrderReportSummaries: async ({ orders }) => orders,
     withPartyOrderTaskSummaries: async ({ orders }) => orders,

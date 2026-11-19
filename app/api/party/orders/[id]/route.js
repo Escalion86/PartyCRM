@@ -1,4 +1,5 @@
 import { getPartyOrderWriteGuard } from '@helpers/partyOrderWriteGuard'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '@helpers/partyCompanyModules'
 import { formatAddressPoolShort, normalizePartyPoolAddress } from '@helpers/addressPool'
 import { NextResponse } from 'next/server'
 import { withPartyOrderVenueWrite } from '@server/partyVenueBookings'
@@ -267,6 +268,8 @@ export async function PATCH(req, { params }) {
     }
   }
   let payload = normalizeOrderPayload(bodyWithBackwardCompatibleBrief)
+  if (!canPartySetOffsiteOrder(context.company, payload, currentOrder))
+    return partyError(409, 'partycrm_offsite_disabled', PARTY_OFFSITE_DISABLED_MESSAGE, 'validation')
   try {
     if (body.bookingVersion === 1 || currentOrder.bookingVersion === 1) {
       const { preparePartyOrderBooking } = await import('@server/partyOrderBooking')

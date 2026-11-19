@@ -6,6 +6,7 @@ import {
   getPartyServiceModel,
 } from '@server/partyModels'
 import { sendPartyOrderScopedPush } from './partyOrderPermissionPush'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import { syncPartyOrderInventory } from './partyInventory'
 import { withPartyOrderVenueWrite } from './partyVenueBookings'
 import {
@@ -127,6 +128,9 @@ export const createPartyPublicLeadOrder = async ({
   apiKeyData,
 }) => {
   const tenantId = company._id
+  // A free-text address is an incoming request, not an explicit booking mode.
+  if (rawPayload?.placeType === 'client_address' && !canPartySetOffsiteOrder(company, rawPayload))
+    throw Object.assign(new Error(PARTY_OFFSITE_DISABLED_MESSAGE), { status: 409, code: 'partycrm_offsite_disabled' })
   const client = await upsertPartyPublicLeadClient({ tenantId, normalized })
   const [PartyOrders, PartyLocations, PartyServices] = await Promise.all([
     getPartyOrderModel(),

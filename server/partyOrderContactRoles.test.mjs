@@ -6,6 +6,7 @@ import * as roles from './partyOrderContactRoles.js'
 import * as brief from './partyOrderBrief.js'
 import * as payloadHelpers from './partyOrderPayload.js'
 import { getPartyOrderWriteGuard } from '../helpers/partyOrderWriteGuard.js'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 
 const id = '507f1f77bcf86cd799439011'
 const clientId = '507f1f77bcf86cd799439012'
@@ -29,10 +30,11 @@ test('ordinary order payload cannot forge group membership or shared booking sta
     assert.equal(Object.hasOwn(normalized, key), false)
   }
 })
-async function setup(currentRoles, currentExtras = {}) {
+async function setup(currentRoles, currentExtras = {}, companySettings = {}) {
   let current = { ...baseBody, _id: id, tenantId, contactRoles: currentRoles, ...currentExtras }
   let writes = 0
   const deps = {
+    canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE,
     ...roles, ...brief, ...payloadHelpers, getPartyOrderWriteGuard,
     canPartyAccess: () => true,
     guardPartyOrderPatch: () => ({ ok: true }),
@@ -40,7 +42,7 @@ async function setup(currentRoles, currentExtras = {}) {
     filterPartyOrderForAccess: (_context, order) => order,
     filterPartyInventoryResult: async (_context, inventory) => inventory,
     filterPartyInventoryResult: async (_context, value) => value,
-    getPartyRequestContext: async () => ({ context: { tenantId, company: {} } }),
+    getPartyRequestContext: async () => ({ context: { tenantId, company: { settings: companySettings } } }),
     isValidObjectId: (value) => typeof value === 'string' && /^[a-f\d]{24}$/i.test(value),
     parseJsonBody: async (req) => req.body,
     partyError: (status, code) => ({ status, code }),
@@ -71,6 +73,20 @@ async function setup(currentRoles, currentExtras = {}) {
   const update = await load('../app/api/party/orders/[id]/route.js', { ...deps, ...create }, 'PATCH')
   return { ...create, ...update, writes: () => writes }
 }
+
+test('disabling offsite keeps existing offsite edits but refuses converting another order', async () => {
+  const settings = { modules: { offsite: { enabled: false } } }
+  const previousOffsite = await setup({}, { placeType: 'client_address' }, settings)
+  const edited = await previousOffsite.PATCH({ body: { title: 'Уточнённый выезд' } }, { params: { id } })
+  assert.equal(edited.status, 200)
+  assert.equal(edited.body.data.placeType, 'client_address')
+  assert.equal(previousOffsite.writes(), 1)
+  const previousLocation = await setup({}, { placeType: 'company_location' }, settings)
+  const converted = await previousLocation.PATCH({ body: { placeType: 'client_address' } }, { params: { id } })
+  assert.equal(converted.status, 409)
+  assert.equal(converted.code, 'partycrm_offsite_disabled')
+  assert.equal(previousLocation.writes(), 0)
+})
 
 test('contact roles reject malformed IDs, types, oversized text and duplicated/unknown methods', () => {
   for (const value of [null, [], { payerClientId: 'bad' }, { payerClientId: 123 }, { payerClientId: { toHexString: 'invalid' } },

@@ -5,6 +5,7 @@ import { compileFunction } from 'node:vm'
 import * as access from '../helpers/partyInventoryAccess.js'
 import * as permissions from '../helpers/partyRolePermissions.js'
 import * as inventory from '../helpers/partyInventory.js'
+import { isPartyCompanyModuleEnabled } from '../helpers/partyCompanyModules.js'
 import { getPartyOrderWriteGuard } from '../helpers/partyOrderWriteGuard.js'
 import { serializePartyOrderPreparation, arePartyPreparationItemsEqual } from '../helpers/partyOrderPreparation.js'
 import { buildPerformerPreparationView } from './partyOrderPreparation.js'
@@ -36,7 +37,7 @@ const models = (orders = [own()]) => ({
 })
 async function setup(context, orders = [own()]) {
   const Orders = models(orders)
-  const deps = { ...access, ...permissions, ...inventory, NextResponse: { json }, partyError,
+  const deps = { isPartyCompanyModuleEnabled, ...access, ...permissions, ...inventory, NextResponse: { json }, partyError,
     getPartyRequestContext: async options => { assert.notEqual(options.managementOnly, true); assert.equal(options.allowLocationOwner, true); return { context } },
     parseJsonBody: async req => req.body, getPartyOrderModel: async () => Orders,
   }
@@ -56,6 +57,27 @@ test('catalog read cannot POST/edit; wrapper rechecks grants and hides stock for
   context.position.permissions['inventory.catalog'] = 'hidden'
   assert.equal((await read({ method: 'GET' })).status, 403)
   assert.equal(writes, 0)
+})
+
+test('disabled inventory permits history and returns but rejects new catalog, reservations, and issues', async () => {
+  const context = actor({ 'inventory.catalog': 'edit', 'inventory.reservations': 'edit', 'inventory.movements': 'edit' })
+  context.company.settings = { modules: { inventory: { enabled: false } } }
+  const api = await setup(context)
+  let writes = 0
+  const handler = async () => { writes++; return api.inventoryResponse({ saved: true }) }
+  const catalog = api.inventoryRoute(handler, { resource: 'inventory.catalog', action: 'edit' })
+  const reserve = api.inventoryRoute(handler, { resource: 'inventory.reservations', action: 'edit' })
+  assert.equal((await catalog(new Request('https://local/api/party/inventory', { method: 'POST' }))).status, 409)
+  assert.equal((await reserve(new Request('https://local/api/party/inventory/reservations/a', { method: 'PUT' }))).status, 409)
+  const movement = api.inventoryRoute(handler, 'inventory.movements')
+  const movementRequest = (operation) => new Request('https://local/api/party/inventory/movements', { method: 'POST', body: JSON.stringify({ operation }) })
+  assert.equal((await movement(movementRequest('issue'))).status, 409)
+  assert.equal((await movement(movementRequest('transfer'))).status, 409)
+  assert.equal(writes, 0)
+  assert.equal((await movement(movementRequest('return'))).status, 200)
+  const history = api.inventoryRoute(handler, { resource: 'inventory.catalog', action: 'read' })
+  assert.equal((await history({ method: 'GET' })).status, 200)
+  assert.equal(writes, 2)
 })
 
 test('availability POST is a scoped read and redacts conflicting inaccessible order identities and counts', async () => {

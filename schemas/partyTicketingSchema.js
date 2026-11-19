@@ -42,6 +42,6 @@ export const partyTicketLedgerSchema = {
 export const partyTicketOperationSchema = {
   tenantId: ref(true), actorStaffId: ref(true), requestKey: { type: String, required: true, maxlength: 100 },
   requestHash: { type: String, required: true }, action: { type: String, required: true },
-  entity: { type: String, enum: ['program', 'session', 'sale'], required: true }, entityId: ref(true),
+  entity: { type: String, enum: ['program', 'session', 'sale', 'channel_record'], required: true }, entityId: ref(true),
 }
 export const partyTicketLockSchema = { tenantId: ref(true), revision: count() }

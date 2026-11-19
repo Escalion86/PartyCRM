@@ -1,6 +1,7 @@
 import { parsePartyOrderContactRoles, PARTY_ORDER_CONTACT_ROLE_KEYS, normalizePartyOrderOtherContacts, validatePartyOrderContactSettingsOrder } from '@server/partyOrderContactRoles'
 import { canPartyAccess, buildPartyOrderAccessFilter, filterPartyOrderForAccess, guardPartyOrderPatch } from '@helpers/partyRolePermissions'
 import { getPartyWorkflow } from '@helpers/partyWorkflow'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '@helpers/partyCompanyModules'
 import { maskPartyOrderConflicts } from '@helpers/partyOrderAccess'
 import { filterPartyInventoryResult } from '@server/partyInventoryApi'
 import { NextResponse } from 'next/server'
@@ -661,6 +662,8 @@ export async function POST(req) {
   const normalizedPayload = normalizeOrderPayload(createBody, {
     fallbackResponsibleStaffId: context.staff?._id,
   })
+  if (!canPartySetOffsiteOrder(context.company, normalizedPayload))
+    return partyError(409, 'partycrm_offsite_disabled', PARTY_OFFSITE_DISABLED_MESSAGE, 'validation')
   const createGuard = guardPartyOrderPatch(context, changedFields, { ...normalizedPayload, tenantId: context.tenantId, workflowStageId: getPartyWorkflow(context.company).initialStageId })
   if (!createGuard.ok) return partyError(403, 'partycrm_forbidden_order_fields', 'Нет права менять некоторые поля заказа', 'permission', { fields: createGuard.forbiddenFields })
   // Applying an accepted proposal is the only API allowed to create this link.

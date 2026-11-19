@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { PARTY_COMPANY_MODULES, isValidPartyCompanyModulesPatch } from '../helpers/partyCompanyModules.js'
 import { filterCompanySettingsPatchByTariffAccess, mergeCompanySettingsPatch, normalizeCompanyProfile, normalizeCompanySettings } from '../helpers/companySettings.js'
 
 const source = (await readFile(new URL('../app/api/party/company-settings/route.js', import.meta.url), 'utf8')).replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replaceAll('export async function ', 'async function ')
@@ -8,6 +9,7 @@ const setup = ({ ready = true, enabled = false, authError, probeError } = {}) =>
   const writes = [], probes = []
   const company = { settings: { modules: { ticketing: { enabled } } } }
   const deps = {
+    PARTY_COMPANY_MODULES, isValidPartyCompanyModulesPatch,
     NextResponse: { json: (body) => ({ status: 200, body }) },
     getPartyCompanyModel: async () => ({ findById: (id) => { assert.equal(id, 'tenant'); return { select() { return this }, lean: async () => company } }, updateOne: async (filter, update) => writes.push({ filter, update }) }),
     getPartyRequestContext: async (options) => { assert.equal(options.managementOnly, true); return authError ? { error: authError } : { context: { tenantId: 'tenant' } } },
@@ -47,7 +49,17 @@ test('unrelated patches cannot revert a concurrently changed module and disable 
 })
 test('malformed flags and missing management authorization stop without mutation', async () => {
   const api = setup()
-  for (const modules of [null, [], true, { ticketing: null }, { ticketing: [] }, { ticketing: { enabled: 'true' } }]) assert.equal((await api.run({ modules })).status, 400)
+  for (const modules of [null, [], true, { ticketing: null }, { ticketing: [] }, { ticketing: { enabled: 'true' } }, { goods: { enabled: true } }, { inventory: { enabled: 'false' } }, { offsite: { enabled: 0 } }]) assert.equal((await api.run({ modules })).status, 400)
   assert.equal(api.writes.length, 0)
   assert.equal((await setup({ authError: { status: 403 } }).run({ modules: { ticketing: { enabled: true } } })).status, 403)
+})
+
+test('each operational block updates only its explicit tenant flag', async () => {
+  const api = setup({ enabled: true })
+  const response = await api.run({ modules: { inventory: { enabled: false }, offsite: { enabled: false } } })
+  assert.equal(response.status, 200)
+  const flags = Object.fromEntries(Object.entries(api.writes[0].update.$set).filter(([key]) => key.startsWith('settings.modules.')))
+  assert.deepEqual(flags, { 'settings.modules.inventory.enabled': false, 'settings.modules.offsite.enabled': false })
+  assert.equal(api.probes.length, 0)
+  assert.equal(response.body.data.settings.modules.ticketing.enabled, true)
 })

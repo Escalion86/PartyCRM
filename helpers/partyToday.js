@@ -6,6 +6,28 @@ import { partyTaskLocalToUtc, partyTaskZonedParts } from './partyTasks.js'
 
 export const PARTY_TODAY_CARD_LIMIT = 6
 export const PARTY_TODAY_SCAN_LIMIT = 400
+export const PARTY_TODAY_WIDGET_IDS = Object.freeze([
+  'tasks',
+  'inbox',
+  'orders_new',
+  'orders_team',
+  'orders_preparation',
+  'payments',
+  'payment_expectations',
+  'orders_upcoming',
+])
+
+export const isValidPartyTodayWidgetIds = (value) =>
+  value === null || (Array.isArray(value) &&
+    value.length <= PARTY_TODAY_WIDGET_IDS.length &&
+    new Set(value).size === value.length &&
+    value.every((key) => PARTY_TODAY_WIDGET_IDS.includes(key)))
+
+export const normalizePartyTodayWidgetIds = (value, context) => {
+  if (!Array.isArray(value)) return null
+  const access = getPartyTodayAccess(context)
+  return [...new Set(value)].filter((key) => PARTY_TODAY_WIDGET_IDS.includes(key) && access[key])
+}
 
 export const getPartyTodayAccess = (context) => {
   const can = (resource) => canPartyAccess(context, { resource })

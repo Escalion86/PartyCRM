@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import * as permissions from '../helpers/partyRolePermissions.js'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import * as payloadHelpers from './partyOrderPayload.js'
 import * as brief from './partyOrderBrief.js'
 import * as contacts from './partyOrderContactRoles.js'
@@ -67,6 +68,7 @@ function setup(context = owner, { storedInboxState = null, sourceOrderId = null,
   }
   const inboxModule = new Function(...Object.keys(inboxDeps), `${inboxSource};return {preparePartyInboxOrderLink}`)(...Object.values(inboxDeps))
   const deps = {
+    canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE,
     ...permissions, ...payloadHelpers, ...brief, ...contacts, ...assignments, getPartyWorkflow,
     loadInitialPaymentModule: async () => initial,
     loadInboxOrderModule: async () => inboxModule,
@@ -101,6 +103,17 @@ test('a short lead with empty expectations saves and replays without transaction
   const changed = await state.post({ ...input, adminComment: 'Другая заявка' })
   assert.equal(changed.status, 409)
   assert.equal(changed.body.code, 'partycrm_order_create_key_conflict')
+})
+
+test('main order creation refuses a new offsite order before saving when the block is disabled', async () => {
+  const context = { ...owner, company: { settings: { modules: { offsite: { enabled: false } } } } }
+  const state = setup(context)
+  const result = await state.post({ title: 'Выезд', placeType: 'client_address', serviceTitle: 'Шоу' }, '')
+  assert.equal(result.status, 409)
+  assert.equal(result.body.code, 'partycrm_offsite_disabled')
+  assert.equal(state.orders.length, 0)
+  assert.equal(state.payments.length, 0)
+  assert.deepEqual(state.effects, [])
 })
 
 test('an idempotency key remains supported if a short lead omits empty expectations', async () => {

@@ -5,7 +5,9 @@ import { readFile } from 'node:fs/promises'
 const source = await readFile(new URL('./partyMembershipResponse.js', import.meta.url), 'utf8')
 const permissionsUrl = new URL('../helpers/partyOperationalPermissions.js', import.meta.url).href
 const rolePermissionsUrl = new URL('../helpers/partyRolePermissions.js', import.meta.url).href
-const resolvedSource = source.replace('../helpers/partyOperationalPermissions.js', permissionsUrl).replace('../helpers/partyRolePermissions.js', rolePermissionsUrl)
+const brandingUrl = new URL('../helpers/partyCompanyBranding.js', import.meta.url).href
+const modulesUrl = new URL('../helpers/partyCompanyModules.js', import.meta.url).href
+const resolvedSource = source.replace('../helpers/partyOperationalPermissions.js', permissionsUrl).replace('../helpers/partyRolePermissions.js', rolePermissionsUrl).replace('../helpers/partyCompanyBranding.js', brandingUrl).replace('../helpers/partyCompanyModules.js', modulesUrl)
 const { serializePartyMembershipResponse, serializePartyMembershipCompany, serializePartyRestrictedCompanySettings } = await import(`data:text/javascript;base64,${Buffer.from(resolvedSource).toString('base64')}`)
 const secret = 'secret-must-never-appear'
 const company = {
@@ -40,7 +42,7 @@ test('performer and unknown/scoped roles get company identity/timezone only, nev
     const result = serializePartyMembershipResponse(membership(role))
     assert.equal(result.isAdmin, false)
     assert.deepEqual(Object.keys(result.company).sort(), ['_id', 'tenantId', 'title', 'status', 'settings'].sort())
-    assert.deepEqual(result.company.settings, { timeZone: 'Asia/Krasnoyarsk' })
+    assert.deepEqual(result.company.settings, { timeZone: 'Asia/Krasnoyarsk', modules: { offsite: { enabled: true }, inventory: { enabled: true }, ticketing: { enabled: false } } })
     assert.equal(result.company.balance, undefined)
     assert.ok(!JSON.stringify(result).includes(secret))
   }
@@ -76,7 +78,7 @@ test('restricted administrator profile and settings metadata do not expose compa
   const result = serializePartyMembershipResponse(actor)
   assert.equal(result.company.balance, undefined)
   assert.equal(result.company.tariffId, undefined)
-  assert.deepEqual(result.company.settings, { timeZone: 'Asia/Krasnoyarsk' })
+  assert.deepEqual(result.company.settings, { timeZone: 'Asia/Krasnoyarsk', modules: { offsite: { enabled: true }, inventory: { enabled: true }, ticketing: { enabled: false } } })
   const settings = serializePartyRestrictedCompanySettings(company.settings)
   assert.equal(settings.integrations.avitoStatus, 'connected')
   assert.equal(settings.googleCalendar.connected, true)

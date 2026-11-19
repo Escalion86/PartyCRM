@@ -1,4 +1,5 @@
 'use client'
+import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 
 import dynamic from 'next/dynamic'
 import Modal from '@components/Modal'
@@ -934,7 +935,7 @@ function RoleOrderEditor({
                               onChange={(event) => change('placeType', event.target.value)}
                             >
                               <option value="company_location">На площадке</option>
-                              <option value="client_address">На выезде</option>
+                              {order.placeType === 'client_address' || isPartyCompanyModuleEnabled(context.company, 'offsite') ? <option value="client_address">На выезде</option> : null}
                             </select>
                           </OrderField>
                         ) : null}

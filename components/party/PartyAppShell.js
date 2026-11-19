@@ -36,6 +36,9 @@ import {
 import cn from 'classnames'
 import Link from 'next/link'
 import PartyMobileNav from './PartyMobileNav'
+import PartyCompanyLogo from './PartyCompanyLogo'
+import companyTheme from './PartyCompanyTheme.module.css'
+import { getPartyCompanyBrandingStyle, normalizePartyCompanyBranding } from '@helpers/partyCompanyBranding'
 import PartyUnsavedChangesBootstrap from './navigation/PartyUnsavedChangesBootstrap'
 import {
   requestPartyLeave,
@@ -51,6 +54,7 @@ import {
 import { getPartyMobileNavItems } from '@helpers/partyMobileNavigation'
 import { getPartyNavigationGroups } from '@helpers/partyNavigationGroups'
 import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
+import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 import { canPartyTodayAccess } from '@helpers/partyToday'
 import { canPartyResourceCalendarAccess } from '@helpers/partyResourceCalendar'
 import {
@@ -109,6 +113,7 @@ const companyMenu = [
     label: 'Склад',
     icon: faBoxesStacked,
     managementOnly: true,
+    module: 'inventory',
   },
   { href: '/company/locations', label: 'Точки', icon: faLocationDot },
   { href: '/company/staff', label: 'Сотрудники', icon: faUserGroup },
@@ -178,6 +183,7 @@ const performerMenu = [
     label: 'Выдача реквизита',
     icon: faBoxesStacked,
     permission: 'inventory.movements',
+    module: 'inventory',
   },
   {
     href: '/performer/pricing',
@@ -381,6 +387,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
     memberships.find((item) => item.tenantId === activeCompanyId) ||
     memberships[0] ||
     null
+  const branding = normalizePartyCompanyBranding(activeMembership?.company?.settings?.branding)
   const companySettingsActive = isCompanySettingsPath(pathname || '')
   const companySettingsOpen = companySettingsExpanded ?? companySettingsActive
   const performerSettingsActive = isPerformerSettingsPath(pathname || '')
@@ -419,6 +426,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
           activeMembership?.status === 'active' &&
           activeMembership?.isAdmin)) &&
       (!item.ticketing || isPartyTicketingEnabled(activeMembership?.company)) &&
+      (!item.module || isPartyCompanyModuleEnabled(activeMembership?.company, item.module)) &&
       (!item.managementOnly || activeMembership?.isAdmin) &&
       (!item.today || canPartyTodayAccess(activeMembership)) &&
       (!item.resourceCalendar || canPartyResourceCalendarAccess(activeMembership)) &&
@@ -436,6 +444,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const visiblePerformerMenu = performerMenu.filter(
     (item) =>
       (item.href !== '/performer' || canUsePerformer) &&
+      (!item.module || isPartyCompanyModuleEnabled(activeMembership?.company, item.module)) &&
       (!item.today || memberships.some((membership) => canPartyTodayAccess(membership))) &&
       (!item.resourceCalendar || memberships.some((membership) => canPartyResourceCalendarAccess(membership))) &&
       (!item.ticketing ||
@@ -723,15 +732,16 @@ export default function PartyAppShell({ variant = 'company', children }) {
       <PartyUnsavedChangesBootstrap />
       <main
         style={{
+          ...getPartyCompanyBrandingStyle(branding),
           '--party-mobile-nav-height':
             profileLoaded && primaryMenu.length > 0 ? '4rem' : '0px',
         }}
-        className="grid h-[100dvh] max-h-[100dvh] w-full overflow-hidden bg-[#eaf6ff] text-slate-950 md:grid-cols-[248px_1fr]"
+        className={`${companyTheme.workspace} grid h-[100dvh] max-h-[100dvh] w-full overflow-hidden text-slate-950 md:grid-cols-[248px_1fr]`}
       >
         <aside className="hidden min-h-0 flex-col bg-slate-950 text-white md:flex">
           <div className="flex h-16 items-center border-b border-white/10 px-5">
-            <Link href="/party" className="text-lg font-semibold text-sky-200">
-              PartyCRM
+            <Link href="/party" className="flex min-h-11 min-w-0 cursor-pointer items-center" aria-label={`${activeMembership?.company?.title || 'Компания'} — PartyCRM`}>
+              <PartyCompanyLogo src={branding.logoUrl} title={activeMembership?.company?.title} />
             </Link>
           </div>
 
@@ -904,6 +914,9 @@ export default function PartyAppShell({ variant = 'company', children }) {
                     <span className="block h-0.5 w-5 bg-current" />
                   </span>
                 </button>
+                {branding.logoUrl ? <span className="md:hidden">
+                  <PartyCompanyLogo src={branding.logoUrl} title={activeMembership?.company?.title} compact />
+                </span> : null}
                 <div className="min-w-0">
                   <h1 className="truncate text-base font-semibold">{title}</h1>
                 </div>

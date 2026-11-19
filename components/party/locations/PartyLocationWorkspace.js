@@ -1,7 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import { PARTY_ACTIVE_COMPANY_EVENT, publishPartyActiveCompanyId, readPartyActiveCompanyId } from '@helpers/partyActiveCompany'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import Modal from '@components/Modal'
 import {
   partyTransactionCategoryLabels,
@@ -42,6 +44,7 @@ function LocationOrder({ order, companyId, onChanged }) {
   const [transaction, setTransaction] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  usePartyUnsavedChanges(Boolean(transaction), { label: 'операция по мероприятию', scope: companyId, pending: busy })
   const summary = order.readiness?.summary || {}
   const headers = { 'x-partycrm-company-id': companyId }
   const save = async (event) => {
@@ -393,6 +396,7 @@ function LocationOrder({ order, companyId, onChanged }) {
 
 export default function PartyLocationWorkspace({ companies }) {
   const [companyId, setCompanyId] = useState(companies[0]?.id || '')
+  const activeCompany = useRef(companyId)
   const [filters, setFilters] = useState({
     locationId: '',
     status: '',
@@ -434,21 +438,34 @@ export default function PartyLocationWorkspace({ companies }) {
     request(`/api/party/location-workspace?${query}`, {
       signal: controller.signal,
     })
-      .then((json) => setData(json.data))
+      .then((json) => { if (!controller.signal.aborted) setData(json.data) })
       .catch((cause) => {
         if (!controller.signal.aborted) setError(cause.message)
       })
     return () => controller.abort()
   }, [request, query])
   useEffect(() => {
-    window.localStorage.setItem('partycrm.activeCompanyId', companyId)
-    window.dispatchEvent(new Event('partycrm:profile-updated'))
-  }, [companyId])
+    const syncCompany = (event) => {
+      const requested = event?.detail?.companyId || readPartyActiveCompanyId(companies)
+      if (!companies.some((item) => item.id === requested)) return
+      if (activeCompany.current === requested) return
+      activeCompany.current = requested
+      setCompanyId(requested)
+      setFilters({ locationId: '', status: '', from: '', to: '' })
+      setData({ locations: [], orders: [], total: 0, nextCursor: null })
+      setSelected(null)
+      setError('')
+    }
+    syncCompany()
+    window.addEventListener(PARTY_ACTIVE_COMPANY_EVENT, syncCompany)
+    return () => window.removeEventListener(PARTY_ACTIVE_COMPANY_EVENT, syncCompany)
+  }, [companies])
   const loadOrder = async (id) => {
     setBusy(true)
     setError('')
     try {
       const json = await request(`/api/party/location-orders/${id}`)
+      if (activeCompany.current !== companyId) return
       setSelected(json.data)
       setData((previous) => ({
         ...previous,
@@ -469,6 +486,7 @@ export default function PartyLocationWorkspace({ companies }) {
       const json = await request(
         `/api/party/location-workspace?${query}&cursor=${data.nextCursor}`
       )
+      if (activeCompany.current !== companyId) return
       setData((previous) => ({
         ...json.data,
         orders: [...previous.orders, ...json.data.orders],
@@ -521,11 +539,7 @@ export default function PartyLocationWorkspace({ companies }) {
             className={control}
             value={companyId}
             onChange={(event) => {
-              setCompanyId(event.target.value)
-              setFilters({ locationId: '', status: '', from: '', to: '' })
-              setData({ locations: [], orders: [], total: 0, nextCursor: null })
-              setSelected(null)
-              setError('')
+              publishPartyActiveCompanyId(event.target.value)
             }}
           >
             {companies.map((company) => (

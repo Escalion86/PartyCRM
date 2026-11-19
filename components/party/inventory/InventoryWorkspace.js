@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
 import { apiJson } from '@helpers/apiClient'
+import { PARTY_ACTIVE_COMPANY_EVENT, publishPartyActiveCompanyId, readPartyActiveCompanyId } from '@helpers/partyActiveCompany'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import OrderInventoryPanel from './OrderInventoryPanel'
 import InventoryMovementsPanel from './InventoryMovementsPanel'
 
@@ -31,9 +33,23 @@ export default function InventoryWorkspace({ companies }) {
   const [loading, setLoading] = useState(true)
   const [previewIds, setPreviewIds] = useState([])
   const [showArchived, setShowArchived] = useState(false)
+  const moduleEnabled = data.moduleEnabled !== false
+  const savedNorms = (data.requirements.find((item) => String(item.serviceId) === serviceId)?.items || [])
+    .map((item) => ({ resourceId: String(item.resourceId), quantity: item.quantity }))
+  const itemDirty = editing && JSON.stringify(editing) !== JSON.stringify(
+    data.items.find((item) => item._id === editing._id) || emptyItem
+  )
+  usePartyUnsavedChanges(Boolean(itemDirty || (serviceId && JSON.stringify(norms) !== JSON.stringify(savedNorms))), {
+    label: 'склад и реквизит', scope: companyId, pending: busy,
+  })
   useEffect(() => {
-    const stored = localStorage.getItem('partycrm.activeCompanyId')
-    if (companies.some((item) => item._id === stored)) setCompanyId(stored)
+    const syncCompany = (event) => {
+      const requested = event?.detail?.companyId || readPartyActiveCompanyId(companies)
+      if (companies.some((item) => item._id === requested)) setCompanyId(requested)
+    }
+    syncCompany()
+    window.addEventListener(PARTY_ACTIVE_COMPANY_EVENT, syncCompany)
+    return () => window.removeEventListener(PARTY_ACTIVE_COMPANY_EVENT, syncCompany)
   }, [companies])
   const request = (url, options = {}) =>
     apiJson(url, {
@@ -142,11 +158,7 @@ export default function InventoryWorkspace({ companies }) {
             className="ml-2 cursor-pointer rounded border bg-white p-2"
             value={companyId}
             onChange={(event) => {
-              localStorage.setItem(
-                'partycrm.activeCompanyId',
-                event.target.value
-              )
-              setCompanyId(event.target.value)
+              publishPartyActiveCompanyId(event.target.value)
             }}
           >
             {companies.map((company) => (
@@ -171,12 +183,14 @@ export default function InventoryWorkspace({ companies }) {
         <p role="status">Загрузка склада…</p>
       ) : (
         <>
+          {!moduleEnabled ? <p role="status" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Склад и реквизит отключены. Доступны каталог, история и возврат выданных вещей. Подключить блок можно в настройках компании.</p> : null}
           <section className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">Каталог</h2>
               <Button
                 type="button"
                 variant="contained"
+                disabled={!moduleEnabled}
                 onClick={() => setEditing({ ...emptyItem })}
               >
                 Добавить реквизит
@@ -292,6 +306,7 @@ export default function InventoryWorkspace({ companies }) {
                     <Button
                       type="button"
                       size="small"
+                      disabled={!moduleEnabled}
                       onClick={() => setEditing({ ...item })}
                     >
                       Изменить
@@ -306,8 +321,8 @@ export default function InventoryWorkspace({ companies }) {
               </p>
             )}
           </section>
-          <section className="space-y-3 rounded-xl border bg-white p-4">
-            <h2 className="text-lg font-semibold">Состав реквизита услуги</h2>
+          <fieldset disabled={!moduleEnabled} className="space-y-3 rounded-xl border bg-white p-4">
+            <legend className="px-1 text-lg font-semibold">Состав реквизита услуги</legend>
             <p className="text-sm text-gray-600">
               Количество на одну услугу. При подборе норма умножается на
               количество услуг.
@@ -399,14 +414,14 @@ export default function InventoryWorkspace({ companies }) {
                 <Button
                   type="button"
                   variant="contained"
-                  disabled={busy}
+                  disabled={busy || !moduleEnabled}
                   onClick={saveNorms}
                 >
                   Сохранить состав
                 </Button>
               </>
             )}
-          </section>
+          </fieldset>
           <InventoryMovementsPanel
             activeCompanyId={companyId}
             onChanged={reload}

@@ -11,6 +11,7 @@ import {
   partyWorkingWindow,
 } from '../helpers/partyWorkingSchedule.js'
 import { partyBookingFailure } from '../helpers/partyOrderBooking.js'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import { sharePartyLocationBooking } from '../helpers/partySharedLocationBooking.js'
 
 export const loadPartyBookingAvailability = async ({ context, body }) => {
@@ -58,6 +59,8 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
     )
       partyBookingFailure('Заказ недоступен', 404)
   }
+  if (!canPartySetOffsiteOrder(context.company, body, selectedOrder))
+    partyBookingFailure(PARTY_OFFSITE_DISABLED_MESSAGE, 409, 'partycrm_offsite_disabled')
   let location = null
   if (body.placeType === 'company_location') {
     if (

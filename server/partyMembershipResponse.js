@@ -1,4 +1,6 @@
 import { normalizePartyOperationalPermissions } from '../helpers/partyOperationalPermissions.js'
+import { normalizePartyCompanyModules } from '../helpers/partyCompanyModules.js'
+import { normalizePartyCompanyBranding } from '../helpers/partyCompanyBranding.js'
 import { isPartyRestrictedManagementContext, normalizePartyRolePermissions } from '../helpers/partyRolePermissions.js'
 
 // API response boundary only. Internal membership context retains server credentials.
@@ -45,8 +47,8 @@ export const serializePartyMembershipCompany = (company, role, position = null) 
     status: text(company.status),
     settings: { timeZone: text(settings.timeZone) || 'Asia/Krasnoyarsk' },
   }
-  if (typeof settings.modules?.ticketing?.enabled === 'boolean')
-    safe.settings.modules = { ticketing: { enabled: settings.modules.ticketing.enabled } }
+  if (settings.branding) safe.settings.branding = normalizePartyCompanyBranding(settings.branding)
+  safe.settings.modules = normalizePartyCompanyModules(settings.modules)
   if (!isManager(role) || isPartyRestrictedManagementContext({ role, position })) return safe
   Object.assign(safe, {
     legalTitle: text(company.legalTitle),
@@ -102,11 +104,11 @@ export const serializePartyRestrictedCompanySettings = (settings = {}) => {
     publicLeadEnabled: settings.publicLeadEnabled === true,
       noOwnPremises: settings.noOwnPremises === true,
     notifications: { pushEnabled: settings.notifications?.pushEnabled === true },
+    branding: normalizePartyCompanyBranding(settings.branding),
     integrations: serializeIntegrationIndicators(settings.integrations),
     googleCalendar: { enabled: settings.googleCalendar?.enabled === true, connected: Boolean(settings.googleCalendar?.refreshToken || settings.googleCalendar?.accessToken) },
   }
-  if (typeof settings.modules?.ticketing?.enabled === 'boolean')
-    safe.modules = { ticketing: { enabled: settings.modules.ticketing.enabled } }
+  safe.modules = normalizePartyCompanyModules(settings.modules)
   for (const key of ['towns', 'orderTypes', 'eventTypes', 'serviceTypes', 'preparationStatuses', 'leadSources', 'paymentMethods', 'expenseCategories']) safe[key] = Array.isArray(settings[key]) ? settings[key].filter((value) => typeof value === 'string') : []
   return safe
 }

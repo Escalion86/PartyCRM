@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { PARTY_COMPANY_MODULES, isValidPartyCompanyModulesPatch } from '../helpers/partyCompanyModules.js'
 
 const root = new URL('../', import.meta.url)
 const source = (path) => readFile(new URL(path, root), 'utf8')
@@ -9,7 +10,9 @@ const scheduleHelpers = await import(dataUrl(await source('helpers/partyInboxSch
 const apiCode = await source('server/partyApi.js')
 const { parseJsonBody } = await import(dataUrl(apiCode.slice(apiCode.indexOf('export const parseJsonBody'))))
 const addressUrl = dataUrl(await source('helpers/addressPool.js'))
-const companyHelpers = await import(dataUrl((await source('helpers/companySettings.js')).replace("'./addressPool.js'", JSON.stringify(addressUrl))))
+const brandingUrl = new URL('../helpers/partyCompanyBranding.js', import.meta.url).href
+const modulesUrl = new URL('../helpers/partyCompanyModules.js', import.meta.url).href
+const companyHelpers = await import(dataUrl((await source('helpers/companySettings.js')).replace("'./addressPool.js'", JSON.stringify(addressUrl)).replace("'./partyCompanyBranding.js'", JSON.stringify(brandingUrl)).replace("'./partyCompanyModules.js'", JSON.stringify(modulesUrl))))
 const routeCode = async (path) => (await source(path))
   .replace(/^import[\s\S]*?from '[^']+'\r?\n/gm, '')
   .replaceAll('export async function ', 'async function ')
@@ -44,6 +47,7 @@ function setup({ denied = false, company = { settings: {} }, conflict = false, b
     },
   }
   const deps = {
+    PARTY_COMPANY_MODULES, isValidPartyCompanyModulesPatch,
     ...scheduleHelpers, ...companyHelpers,
     NextResponse: { json: (body, options) => ({ body, status: options?.status || 200, headers: options?.headers }) },
     partyError: (status, code, message) => ({ status, body: { error: { code, message } } }),

@@ -1,16 +1,157 @@
 'use client'
 
-import { useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   partyTodayDate,
   partyTodayHref,
   partyTodayPhoneHref,
 } from '@helpers/partyTodayPresentation'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import usePartyToday from './usePartyToday'
 
 const button =
-  'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50'
+  'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-50'
+
+const primaryButton =
+  'inline-flex min-h-11 cursor-pointer items-center justify-center rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-50'
+
+const getDashboardSections = (sections, widgetIds) =>
+  widgetIds === null
+    ? sections
+    : widgetIds.flatMap(
+        (id) => sections.find((section) => section.id === id) || []
+      )
+
+function TodayIndicators({ sections, activeId, controls, onSelect }) {
+  return (
+    <div
+      role="group"
+      aria-label="Показатели"
+      className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4"
+    >
+      {sections.map((section) => {
+        const count = section.items?.length ?? 0
+        const limited = section.partial || section.hasMore
+        const unavailable = section.error || (limited && count === 0)
+        return (
+          <button
+            key={section.id}
+            type="button"
+            aria-controls={controls}
+            aria-pressed={activeId === section.id}
+            className={`flex min-h-24 min-w-0 cursor-pointer flex-col items-start justify-between gap-2 rounded-xl border p-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${activeId === section.id ? 'border-sky-400 bg-sky-50' : 'border-slate-200 bg-white hover:bg-sky-50'}`}
+            onClick={() => onSelect(section.id)}
+          >
+            <span className="text-sm leading-snug font-semibold break-words text-sky-950">
+              {section.title}
+            </span>
+            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <span className="text-xl leading-none font-semibold text-slate-950 tabular-nums">
+                {unavailable ? '—' : count}
+              </span>
+              {section.error || limited ? (
+                <span
+                  className={`text-xs ${section.error ? 'text-red-700' : 'text-amber-900'}`}
+                >
+                  {section.error ? 'Ошибка загрузки' : 'Список неполный'}
+                </span>
+              ) : null}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function TodayWidgetSettings({
+  id,
+  editorRef,
+  sections,
+  draft,
+  changed,
+  busy,
+  error,
+  onChange,
+  onSave,
+  onClose,
+}) {
+  const chosen = new Set(draft ?? sections.map((section) => section.id))
+  return (
+    <form
+      id={id}
+      className="rounded-xl border border-slate-200 bg-white p-4"
+      onSubmit={onSave}
+    >
+      <fieldset aria-label="Показатели дашборда" disabled={busy}>
+        <legend className="font-semibold text-sky-950">
+          Что показывать на дашборде
+        </legend>
+        <p className="mt-1 text-sm text-slate-600">
+          Выбор сохранится для вас в этой компании.
+        </p>
+        <div
+          ref={editorRef}
+          className="mt-3 grid min-w-0 gap-x-5 sm:grid-cols-2"
+        >
+          {sections.map((section) => (
+            <label
+              key={section.id}
+              className="flex min-h-11 cursor-pointer items-center gap-2 py-1 text-sm break-words text-slate-800"
+            >
+              <input
+                type="checkbox"
+                checked={chosen.has(section.id)}
+                className="h-4 w-4 shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+                onChange={(event) => {
+                  const next = new Set(chosen)
+                  if (event.target.checked) next.add(section.id)
+                  else next.delete(section.id)
+                  onChange([...next])
+                }}
+              />
+              {section.title}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {error ? (
+        <p
+          role="alert"
+          className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-800"
+        >
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          type="submit"
+          className={primaryButton}
+          disabled={busy || !changed}
+        >
+          {busy ? 'Сохраняем…' : 'Сохранить'}
+        </button>
+        <button
+          type="button"
+          className={button}
+          disabled={busy}
+          onClick={onClose}
+        >
+          Отмена
+        </button>
+        <button
+          type="button"
+          className={button}
+          disabled={busy || draft === null}
+          onClick={() => onChange(null)}
+        >
+          Стандартный набор
+        </button>
+      </div>
+    </form>
+  )
+}
 
 export function PartyTodaySections({
   data,
@@ -165,13 +306,59 @@ export function PartyTodaySections({
 }
 
 export default function PartyToday({ companyId, company = false }) {
-  const { data, busy, error, reload } = usePartyToday(companyId)
+  const { data, busy, error, reload, saveWidgets } = usePartyToday(companyId)
   const [filter, setFilter] = useState('all')
   const [showEmpty, setShowEmpty] = useState(false)
+  const [draft, setDraft] = useState(undefined)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [saved, setSaved] = useState(false)
+  const trigger = useRef(null)
+  const editor = useRef(null)
+  const details = useRef(null)
+  const settingsId = useId()
+  const detailsId = useId()
+  const widgetIds = data?.widgetIds ?? null
+  const sections = getDashboardSections(data?.sections ?? [], widgetIds)
+  const editing = draft !== undefined && data?.canCustomizeWidgets === true
+  const changed = editing && JSON.stringify(draft) !== JSON.stringify(widgetIds)
+  usePartyUnsavedChanges(changed, {
+    label: 'настройка дашборда',
+    scope: companyId,
+    pending: saving,
+  })
   const actualFilter =
-    filter === 'all' || data?.sections.some((section) => section.id === filter)
+    filter === 'all' || sections.some((section) => section.id === filter)
       ? filter
       : 'all'
+  const closeSettings = () => {
+    setDraft(undefined)
+    setSaveError('')
+    trigger.current?.focus()
+  }
+  const openSettings = () => {
+    setDraft(widgetIds)
+    setSaved(false)
+    requestAnimationFrame(() => editor.current?.querySelector('input')?.focus())
+  }
+  const submitSettings = async (event) => {
+    event.preventDefault()
+    if (!changed || saving) return
+    setSaving(true)
+    setSaveError('')
+    try {
+      await saveWidgets(draft)
+      closeSettings()
+      setSaved(true)
+    } catch (cause) {
+      setSaveError(cause.message || 'Не удалось сохранить настройки дашборда.')
+    } finally {
+      setSaving(false)
+      requestAnimationFrame(() => {
+        if (!editor.current) trigger.current?.focus()
+      })
+    }
+  }
   return (
     <section
       className="min-w-0 space-y-4"
@@ -198,14 +385,29 @@ export default function PartyToday({ companyId, company = false }) {
             </p>
           ) : null}
         </div>
-        <button
-          type="button"
-          className={button}
-          disabled={busy}
-          onClick={reload}
-        >
-          Обновить
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {data?.canCustomizeWidgets && !error ? (
+            <button
+              ref={trigger}
+              type="button"
+              className={button}
+              aria-controls={settingsId}
+              aria-expanded={editing}
+              disabled={busy || saving}
+              onClick={editing ? closeSettings : openSettings}
+            >
+              Настроить дашборд
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className={button}
+            disabled={busy || saving || editing}
+            onClick={reload}
+          >
+            Обновить
+          </button>
+        </div>
       </header>
       {busy ? (
         <p
@@ -232,42 +434,81 @@ export default function PartyToday({ companyId, company = false }) {
       ) : null}
       {data && !busy && !error ? (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div
-              role="group"
-              aria-label="Блоки рабочего экрана"
-              className="flex flex-wrap gap-2"
-            >
-              {[{ id: 'all', title: 'Все' }, ...data.sections].map(
-                (section) => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    aria-pressed={actualFilter === section.id}
-                    className={`min-h-11 cursor-pointer rounded-full border px-3 py-2 text-sm ${actualFilter === section.id ? 'border-sky-700 bg-sky-700 font-semibold text-white' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
-                    onClick={() => setFilter(section.id)}
-                  >
-                    {section.title}
-                  </button>
-                )
-              )}
-            </div>
-            <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-slate-600">
-              <input
-                type="checkbox"
-                checked={showEmpty}
-                onChange={(event) => setShowEmpty(event.target.checked)}
+          {editing ? (
+            <TodayWidgetSettings
+              id={settingsId}
+              editorRef={editor}
+              sections={data.sections}
+              draft={draft}
+              changed={changed}
+              busy={saving}
+              error={saveError}
+              onChange={(next) => {
+                setDraft(next)
+                setSaveError('')
+              }}
+              onSave={submitSettings}
+              onClose={closeSettings}
+            />
+          ) : null}
+          {saved ? (
+            <p role="status" className="text-sm text-emerald-800">
+              Настройки дашборда сохранены.
+            </p>
+          ) : null}
+          {sections.length ? (
+            <>
+              <TodayIndicators
+                sections={sections}
+                activeId={actualFilter}
+                controls={detailsId}
+                onSelect={(id) => {
+                  setFilter(id)
+                  requestAnimationFrame(() => details.current?.focus())
+                }}
               />
-              Показывать пустые блоки
-            </label>
-          </div>
-          <PartyTodaySections
-            data={data}
-            companyId={companyId}
-            company={company}
-            filter={actualFilter}
-            showEmpty={showEmpty}
-          />
+              <div id={detailsId} className="min-w-0 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h2
+                    ref={details}
+                    tabIndex={-1}
+                    className="font-semibold text-sky-950"
+                  >
+                    Рабочие списки
+                  </h2>
+                  {actualFilter !== 'all' ? (
+                    <button
+                      type="button"
+                      className={button}
+                      onClick={() => setFilter('all')}
+                    >
+                      Все списки
+                    </button>
+                  ) : (
+                    <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={showEmpty}
+                        onChange={(event) => setShowEmpty(event.target.checked)}
+                      />
+                      Показывать пустые списки
+                    </label>
+                  )}
+                </div>
+                <PartyTodaySections
+                  data={{ ...data, sections }}
+                  companyId={companyId}
+                  company={company}
+                  filter={actualFilter}
+                  showEmpty={showEmpty || actualFilter !== 'all'}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              На дашборде пока нет показателей. Выберите нужные в настройке.
+            </p>
+          )}
         </>
       ) : null}
     </section>

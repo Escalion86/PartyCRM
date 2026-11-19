@@ -7,6 +7,7 @@ import {
 } from '@server/partyInventoryModels'
 import { getPartyOrderModel, getPartyStaffModel } from '@server/partyModels'
 import { buildPartyOrderAccessFilter } from '@helpers/partyRolePermissions'
+import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 import {
   canPartyInventoryAccess,
   hasUnrestrictedPartyInventoryScope,
@@ -188,6 +189,7 @@ export const GET = inventoryRoute(async (req, context) => {
     movements: movements.slice(0, 50),
     nextCursor: movements.length > 50 ? inventoryId(movements[49]) : null,
     permissions: {
+      returnOnly: !isPartyCompanyModuleEnabled(context.company, 'inventory'),
       canEdit: canPartyInventoryAccess(context, {
         resource: 'inventory.movements',
         action: 'edit',

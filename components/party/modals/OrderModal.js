@@ -45,6 +45,7 @@ import {
   EMPTY_LOCATION,
 } from '@helpers/partyHelpers'
 import { normalizeCompanyDictionary } from '@helpers/companySettings'
+import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 import { getAdditionalEventsDisplayGroups } from '@helpers/additionalEvents'
 import {
   getPartyAssignmentPayoutState,
@@ -951,7 +952,9 @@ export default function OrderModal({
                 }}
                 options={[
                   { value: 'company_location', label: 'Точка компании' },
-                  { value: 'client_address', label: 'Выезд к клиенту' },
+                  ...(orderDraft.placeType === 'client_address' || isPartyCompanyModuleEnabled(companySettings, 'offsite')
+                    ? [{ value: 'client_address', label: 'Выезд к клиенту' }]
+                    : []),
                 ]}
                 fullWidth
                 tone="party"

@@ -9,7 +9,7 @@ test('ticketing requires an explicit company flag and survives unrelated setting
   const settings = normalizeCompanySettings({ modules: { ticketing: { enabled: true, secret: 'not-a-setting' } } })
   assert.equal(isPartyTicketingEnabled(settings), true)
   assert.equal(isPartyTicketingEnabled({ settings }), true)
-  assert.deepEqual(settings.modules, { ticketing: { enabled: true } })
+  assert.deepEqual(settings.modules, { ticketing: { enabled: true }, inventory: { enabled: true }, offsite: { enabled: true } })
   assert.equal(isPartyTicketingEnabled(mergeCompanySettingsPatch(settings, { defaultTown: 'Город' })), true)
   assert.equal(isPartyTicketingEnabled(mergeCompanySettingsPatch(settings, { modules: { ticketing: {} } })), true)
   assert.equal(isPartyTicketingEnabled(mergeCompanySettingsPatch(settings, { modules: { ticketing: { enabled: false } } })), false)

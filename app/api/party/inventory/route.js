@@ -10,6 +10,7 @@ import { inventoryId } from '@helpers/partyInventory'
 import { normalizeInventoryItem } from '@helpers/partyInventory'
 import { canPartyInventoryAccess } from '@helpers/partyInventoryAccess'
 import { inventoryValidationError } from '@helpers/partyInventory'
+import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 
 export const dynamic = 'force-dynamic'
 export const GET = inventoryRoute(async (req, context) => {
@@ -29,6 +30,7 @@ export const GET = inventoryRoute(async (req, context) => {
     quantity: { $gt: 0 },
   }).lean()
   return inventoryResponse({
+    moduleEnabled: isPartyCompanyModuleEnabled(context.company, 'inventory'),
     items: items.map((item) => ({
       ...item,
       ...inventoryPhysicalStock(

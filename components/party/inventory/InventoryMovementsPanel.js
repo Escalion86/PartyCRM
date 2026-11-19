@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Button from '@mui/material/Button'
 import TextField from '@mui/material/TextField'
 import { apiJson } from '@helpers/apiClient'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 
 const empty = {
   operation: 'issue',
@@ -44,6 +45,10 @@ export default function InventoryMovementsPanel({
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [busy, setBusy] = useState(false)
+  const operation = data?.permissions?.returnOnly ? 'return' : form.operation
+  usePartyUnsavedChanges(JSON.stringify(form) !== JSON.stringify({ ...empty, orderId }), {
+    label: 'движение реквизита', scope: activeCompanyId, pending: busy,
+  })
   const pending = useRef(null)
   const submitting = useRef(false)
   const request = useCallback(
@@ -98,6 +103,7 @@ export default function InventoryMovementsPanel({
     try {
       const payload = {
         ...form,
+        operation,
         quantity: Number(form.quantity),
         expectedReturnAt: form.expectedReturnAt
           ? new Date(form.expectedReturnAt).toISOString()
@@ -215,7 +221,7 @@ export default function InventoryMovementsPanel({
                     <Button
                       type="button"
                       size="small"
-                      disabled={busy}
+                      disabled={busy || data.permissions?.returnOnly}
                       onClick={() => fromHolding(holding, 'transfer')}
                     >
                       Передать сотруднику
@@ -237,7 +243,7 @@ export default function InventoryMovementsPanel({
                     Операция
                     <select
                       className={selectClass}
-                      value={form.operation}
+                      value={operation}
                       aria-label="Операция"
                       onChange={(event) =>
                         update({
@@ -246,7 +252,7 @@ export default function InventoryMovementsPanel({
                         })
                       }
                     >
-                      {Object.entries(kinds).map(([key, label]) => (
+                      {Object.entries(kinds).filter(([key]) => !data.permissions?.returnOnly || key === 'return').map(([key, label]) => (
                         <option key={key} value={key}>
                           {label}
                         </option>
@@ -306,7 +312,7 @@ export default function InventoryMovementsPanel({
                       {data.items
                         .filter(
                           (item) =>
-                            form.operation !== 'issue' ||
+                            operation !== 'issue' ||
                             item.status === 'active'
                         )
                         .map((item) => (
@@ -330,7 +336,7 @@ export default function InventoryMovementsPanel({
                       update({ quantity: event.target.value })
                     }
                   />
-                  {form.operation !== 'issue' && (
+                  {operation !== 'issue' && (
                     <label className="text-sm">
                       У кого забираем
                       <select
@@ -354,7 +360,7 @@ export default function InventoryMovementsPanel({
                       </select>
                     </label>
                   )}
-                  {form.operation !== 'return' && (
+                  {operation !== 'return' && (
                     <label className="text-sm">
                       Кому передаём
                       <select
@@ -381,7 +387,7 @@ export default function InventoryMovementsPanel({
                       </select>
                     </label>
                   )}
-                  {form.operation !== 'return' && (
+                  {operation !== 'return' && (
                     <TextField
                       size="small"
                       label="Ожидаемый возврат"
@@ -393,7 +399,7 @@ export default function InventoryMovementsPanel({
                       }
                     />
                   )}
-                  {form.operation === 'return' && (
+                  {operation === 'return' && (
                     <label className="text-sm">
                       Состояние возвращаемой части
                       <select

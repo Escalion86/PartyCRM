@@ -2,7 +2,9 @@ import {
   getPartyOrderModel,
   getPartyServiceModel,
   getPartyStaffModel,
+  getPartyCompanyModel,
 } from './partyModels'
+import { isPartyCompanyModuleEnabled } from '../helpers/partyCompanyModules.js'
 import {
   getPartyInventoryItemModel,
   getPartyInventoryRequirementModel,
@@ -371,6 +373,11 @@ const syncPartyOrderInventoryResult = async ({
 }) => {
   try {
     const orderId = inventoryId(order)
+    if (!deleted && order.status !== 'canceled') {
+      const Companies = await getPartyCompanyModel()
+      const company = await Companies.findById(tenantId).select('settings.modules.inventory').lean()
+      if (!isPartyCompanyModuleEnabled(company, 'inventory')) return { skipped: true, moduleDisabled: true }
+    }
     const Reservations = await getPartyInventoryReservationModel()
     const existing = await Reservations.findOne({ tenantId, orderId })
       .select('_id')

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
 import * as core from './partyPublicLeadCore.js'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 
 const source = (
   await readFile(
@@ -28,6 +29,7 @@ function setup(failBooking = false) {
     session = { name: 'lead-transaction' }
   let received
   const deps = {
+    canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE,
     ...core,
     getPartyClientModel: async () => ({
       findOne: async () => ({
@@ -94,7 +96,7 @@ function setup(failBooking = false) {
     `${source}\nreturn createPartyPublicLeadOrder`,
     Object.keys(deps)
   )(...Object.values(deps))
-  const run = () =>
+  const run = (overrides = {}) =>
     create({
       company: {
         _id: tenantId,
@@ -111,6 +113,7 @@ function setup(failBooking = false) {
         dateEnd: '2026-12-01T11:00:00Z',
       }),
       rawPayload: { requestMarker: 'original-request' },
+      ...overrides,
     })
   return { run, events, orders, received: () => received }
 }
@@ -128,6 +131,16 @@ test('dated public lead is created under the venue writer; inventory and push fo
     'inventory',
     'push',
   ])
+})
+
+test('disabled offsite rejects only an explicit booking mode before client or order creation', async () => {
+  const h = setup()
+  const company = { _id: tenantId, settings: { modules: { offsite: { enabled: false } } } }
+  await assert.rejects(h.run({ company, rawPayload: { placeType: 'client_address' } }), (error) => error.status === 409 && error.code === 'partycrm_offsite_disabled')
+  assert.equal(h.orders.length, 0)
+  assert.deepEqual(h.events, [])
+  const accepted = await h.run({ company, rawPayload: { address: 'Уточнить адрес с клиентом' } })
+  assert.ok(accepted.order._id)
 })
 
 test('an occupied requested interval becomes one unreserved inquiry with original timing, client, and services intact', async () => {

@@ -3,6 +3,7 @@ import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
 import { getPartyOrderWriteGuard } from '../helpers/partyOrderWriteGuard.js'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import * as calendarQueries from '../helpers/partyOrderCalendarQuery.js'
 import { canPartyAccess, buildPartyOrderAccessFilter, filterPartyOrderForAccess, guardPartyOrderPatch } from '../helpers/partyRolePermissions.js'
 import { canAccessPartyTransaction } from './partyTransactionAccess.js'
@@ -15,6 +16,7 @@ const load = async (path, deps, name) => {
   return compileFunction(`${source}\nreturn ${name}`, Object.keys(deps))(...Object.values(deps))
 }
 const base = {
+  canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE,
   ...calendarQueries,
   getPartyRequestContext: async () => ({ context: { tenantId: 'trusted', company: {}, role: 'owner', staff: { _id: 'owner', tenantId: 'trusted', role: 'owner', status: 'active' } } }),
   canPartyAccess, buildPartyOrderAccessFilter, filterPartyOrderForAccess, guardPartyOrderPatch, canAccessPartyTransaction,
