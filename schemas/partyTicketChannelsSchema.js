@@ -32,6 +32,7 @@ export const partyTicketChannelRecordSchema = {
   occurredAt: { type: Date, required: true },
   quantity: quantity(),
   amountKopecks: money(),
+  paymentMethod: { type: String, default: '', maxlength: 80 },
   externalReference: { type: String, default: '', maxlength: 180 },
   externalReferenceKey: { type: String, maxlength: 64 },
   comment: { type: String, default: '', maxlength: 1000 },

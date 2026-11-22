@@ -23,12 +23,14 @@ export const normalizeTicketChannelRecord = (payload, now) => {
   const quantity = ticketInteger(payload.quantity, payload.kind === 'sale' ? 1 : 0, 100000)
   const amountKopecks = ticketInteger(payload.amountKopecks)
   if (!quantity && !amountKopecks) ticketFailure('Укажите количество или сумму возврата')
+  const paymentMethod = ticketText(payload.paymentMethod ?? '', 80).replace(/\s+/gu, ' ')
   const externalReference = ticketText(payload.externalReference || '', 180).normalize('NFKC')
   return {
     kind: payload.kind,
     occurredAt,
     quantity,
     amountKopecks,
+    paymentMethod,
     externalReference,
     ...(externalReference ? { externalReferenceKey: createHash('sha256').update(externalReference).digest('hex') } : {}),
     comment: ticketText(payload.comment || '', 1000),
@@ -44,6 +46,7 @@ export const ticketChannelRecordDto = (row) => ({
   occurredAt: row.occurredAt,
   quantity: row.quantity,
   amountKopecks: row.amountKopecks,
+  paymentMethod: row.paymentMethod || '',
   externalReference: row.externalReference || '',
   comment: row.comment || '',
   saleRecordId: row.saleRecordId ? String(row.saleRecordId) : null,

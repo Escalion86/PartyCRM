@@ -150,7 +150,7 @@ test('channel identities normalize spacing/case and reject invalid dates, quanti
   assert.equal(channelHelpers.ticketChannelIdentity('ＡBC').channelKey, channelHelpers.ticketChannelIdentity('abc').channelKey)
   const payload = { kind: 'sale', occurredAt: '2030-01-01T09:00:00+00:00', quantity: 1, amountKopecks: 0 }
   const now = new Date('2030-01-01T10:00:00Z')
-  for (const change of [{ kind: 'anything' }, { quantity: 0 }, { quantity: 1.1 }, { amountKopecks: -1 }, { occurredAt: '2030-01-01' }, { occurredAt: '2030-01-02T09:00:00Z' }]) {
+  for (const change of [{ kind: 'anything' }, { quantity: 0 }, { quantity: 1.1 }, { amountKopecks: -1 }, { paymentMethod: 42 }, { occurredAt: '2030-01-01' }, { occurredAt: '2030-01-02T09:00:00Z' }]) {
     assert.throws(() => channelHelpers.normalizeTicketChannelRecord({ ...payload, ...change }, now), { status: 400 })
   }
   assert.throws(() => channelHelpers.ticketChannelIdentity('  '), { status: 400 })
@@ -176,11 +176,27 @@ test('daily manual channel totals match 61 tickets and 72080 rubles without unpa
   assert.equal(summary.unpaidAmountKopecks, 700000)
   assert.equal(summary.channels[0].cashRefundedAmountKopecks, 200000)
   assert.equal(summary.records.length, 3)
+  assert.ok(summary.records.every((record) => record.paymentMethod === ''))
   assert.equal(summary.inventorySynced, false)
   assert.equal(summary.bankSettlementsVerified, false)
   assert.equal(state.table('Sessions')[0].soldCount, 17, 'manual observations do not reserve CRM tickets')
   assert.equal(state.table('Sales').length, 3)
   assert.equal(state.table('Ledger').length, 3, 'manual channel records cannot create receipts or cash refunds')
+})
+
+test('external journal keeps each operation payment method while reconciling gross channel amounts', async () => {
+  const state = setup(), program = await state.program(), event = await state.show(program)
+  const input = { sessionId: event._id, occurredAt: '2030-01-01T09:00:00Z', quantity: 1 }
+  const first = { ...input, kind: 'sale', channelTitle: 'Площадка', amountKopecks: 25000, paymentMethod: '  Карта ', externalReference: 'sale-1' }
+  const { data: sale } = await state.run('channel.record', first)
+  await state.run('channel.record', { ...first, paymentMethod: 'СБП', externalReference: 'sale-2' })
+  await assert.rejects(state.run('channel.record', { ...first, paymentMethod: 'СБП' }), { code: 'partycrm_ticketing_channel_duplicate' })
+  await state.run('channel.record', { ...input, kind: 'refund', saleRecordId: sale._id, amountKopecks: 25000, paymentMethod: 'Перевод' })
+  const { data } = await state.read(`section=channelSummary&sessionId=${event._id}`)
+  assert.deepEqual(data.records.map((record) => record.paymentMethod), ['Перевод', 'СБП', 'Карта'])
+  assert.equal(data.totals.netQuantity, 1)
+  assert.equal(data.totals.netAmountKopecks, 25000)
+  assert.equal(data.channels.filter((channel) => channel.source === 'manual').length, 1)
 })
 
 test('manual records replay once, reject reference duplicates across actors and preserve channel identity', async () => {

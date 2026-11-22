@@ -106,6 +106,7 @@ function ChannelRecordForm({
     date: today,
     quantity: sale ? '0' : '',
     amount: sale ? '0' : '',
+    paymentMethod: '',
     reference: '',
     comment: '',
   }))
@@ -113,6 +114,7 @@ function ChannelRecordForm({
   const [error, setError] = useState('')
   const command = useTicketingCommand(companyId)
   const listId = useId()
+  const paymentMethodsId = useId()
   const firstField = useRef(null)
   const locked = command.busy || command.uncertain
   const dirty = Object.keys(initial).some(
@@ -172,6 +174,9 @@ function ChannelRecordForm({
       occurredAt,
       quantity,
       amountKopecks,
+      ...(draft.paymentMethod.trim()
+        ? { paymentMethod: draft.paymentMethod.trim() }
+        : {}),
       externalReference: draft.reference.trim(),
       comment: draft.comment.trim(),
     })
@@ -196,7 +201,8 @@ function ChannelRecordForm({
         </p>
       ) : (
         <p className="text-sm text-slate-700">
-          Внесите данные из отчёта площадки. Продажа появится в сверке сеанса.
+          Внесите одну операцию из отчёта площадки. Укажите полную сумму оплаты
+          до вычета комиссии.
         </p>
       )}
       <div className="grid gap-3 sm:grid-cols-2">
@@ -246,7 +252,9 @@ function ChannelRecordForm({
             onChange={(event) => set('quantity', event.target.value)}
           />
         </TicketField>
-        <TicketField label={sale ? 'Сумма возврата, ₽' : 'Сумма продажи, ₽'}>
+        <TicketField
+          label={sale ? 'Сумма возврата, ₽' : 'Сумма продажи до комиссии, ₽'}
+        >
           <input
             required
             inputMode="decimal"
@@ -256,13 +264,34 @@ function ChannelRecordForm({
             onChange={(event) => set('amount', event.target.value)}
           />
         </TicketField>
+        <TicketField
+          label={
+            sale
+              ? 'Способ возврата (если известен)'
+              : 'Способ оплаты (если известен)'
+          }
+        >
+          <input
+            list={paymentMethodsId}
+            className={ticketControl}
+            maxLength={80}
+            value={draft.paymentMethod}
+            disabled={locked}
+            onChange={(event) => set('paymentMethod', event.target.value)}
+          />
+          <datalist id={paymentMethodsId}>
+            {['Карта', 'Наличные', 'СБП', 'Перевод', 'Счёт'].map((method) => (
+              <option key={method} value={method} />
+            ))}
+          </datalist>
+        </TicketField>
       </div>
       <details className="rounded-lg border border-slate-200 bg-white px-3">
         <summary className="min-h-11 cursor-pointer py-3 text-sm font-medium text-slate-700">
           Номер записи и комментарий
         </summary>
         <div className="grid gap-3 pb-3 sm:grid-cols-2">
-          <TicketField label="Номер заказа или строки из отчёта">
+          <TicketField label="Номер операции или строки из отчёта">
             <input
               className={ticketControl}
               maxLength={180}
@@ -437,7 +466,7 @@ export default function TicketSessionSales({
         <>
           <div>
             <p className="text-sm text-slate-700">
-              Продажи за вычетом возвратов
+              Продажи после возвратов, до вычета комиссии площадок
             </p>
             <ChannelTotals channels={data.channels} totals={data.totals} />
             {data.unpaidQuantity > 0 ? (
@@ -519,6 +548,12 @@ export default function TicketSessionSales({
                       {record.externalReference ? (
                         <p className="break-words">
                           № {record.externalReference}
+                        </p>
+                      ) : null}
+                      {record.paymentMethod ? (
+                        <p className="break-words">
+                          {record.kind === 'sale' ? 'Оплата' : 'Возврат'}:{' '}
+                          {record.paymentMethod}
                         </p>
                       ) : null}
                       {record.comment ? (
