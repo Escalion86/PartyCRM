@@ -34,6 +34,8 @@ const input =
   'mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 sm:text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 aria-invalid:border-red-700'
 const button =
   'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
+const editorButton =
+  'min-h-11 cursor-pointer rounded-lg px-2 py-2 text-sm font-semibold text-sky-800 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 const steps = ['Тип', 'Место', 'Услуги', 'Время', 'Клиент и бриф', 'Финансы']
 const money = (value) => Number(value || 0).toLocaleString('ru-RU') + ' ₽'
 const selectionOf = (order) =>
@@ -56,8 +58,11 @@ function Wizard({
   inboxId,
   options,
   refreshOrderTypes,
+  initialStep = 0,
   onSaved,
   onClose,
+  onShowDetails,
+  onSwitchToAdvanced,
   onDirtyChange,
 }) {
   const context = options.context
@@ -116,8 +121,9 @@ function Wizard({
   const serviceEditorTrigger = useRef(null)
   const scheduleTrigger = useRef(null)
   const orderTypes = orderTypeCatalog ?? options.orderTypes ?? []
-  const [step, setStep] = useState(canCaptureLead ? -1 : 0)
-  const [reachedStep, setReachedStep] = useState(canCaptureLead ? -1 : 0)
+  const startStep = existing ? initialStep : canCaptureLead ? -1 : 0
+  const [step, setStep] = useState(startStep)
+  const [reachedStep, setReachedStep] = useState(startStep)
   const [clientForm, setClientForm] = useState(null)
   const [clientPickerOpen, setClientPickerOpen] = useState(false)
   const [clientFormVersion, setClientFormVersion] = useState(0)
@@ -142,7 +148,7 @@ function Wizard({
   const stepSection = useRef(null)
   const stepHeading = useRef(null)
   const stepProgress = useRef(null)
-  const previousStep = useRef(step)
+  const previousStep = useRef(startStep > 0 ? null : step)
   const [rentalMinutes, setRentalMinutes] = useState(() =>
     order.rental
       ? (+new Date(order.rental.endsAt) - +new Date(order.rental.startsAt)) /
@@ -480,16 +486,17 @@ function Wizard({
             : index === 4 && can('orders.clientId') && !draft.clientId
               ? 'Выберите или создайте клиента.'
               : index === 4 ? briefError : ''
-  const close = () => {
+  const leaveWizard = (callback, target) => {
     if (
       !busy &&
-      ((inboxId && !dirty) || requestPartyLeave({ kind: 'record', target: 'close-order-wizard' }))
+      ((inboxId && !dirty) || requestPartyLeave({ kind: 'record', target }))
     )
     {
       recovery.clear()
-      onClose?.(true)
+      callback?.(true)
     }
   }
+  const close = () => leaveWizard(onClose, 'close-order-wizard')
   const save = async (complete) => {
     if (saving.current || childDirty) return
     if (!unresolved && leadMode && !draft.clientId && !draft.adminComment?.trim()) {
@@ -634,7 +641,7 @@ function Wizard({
       selectedId={draft.clientId}
       savedName={order.client?.name}
       canEdit={canEditClient}
-      showCreateButton={leadMode && !draft.clientId}
+      inlineSearch={leadMode}
       disabled={disabled}
       open={clientPickerVisible}
       fieldError={validationStep === 4 && invalidBriefField !== null ? undefined : fieldError(leadMode ? -1 : 4)}
@@ -669,14 +676,38 @@ function Wizard({
         </p>
       ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {!leadMode && <button
-          type="button"
-          className={button}
-          disabled={disabled || childDirty || step === (canCaptureLead ? -1 : 0)}
-          onClick={() => navigateTo(step - 1)}
-        >
-          Назад
-        </button>}
+        {!leadMode && (
+          <div className="flex flex-wrap gap-2">
+            {existing && onShowDetails && (
+              <button
+                type="button"
+                className={editorButton}
+                disabled={disabled || childDirty}
+                onClick={() => leaveWizard(onShowDetails, 'order-details')}
+              >
+                Подробная форма
+              </button>
+            )}
+            {existing && onSwitchToAdvanced && (
+              <button
+                type="button"
+                className={editorButton}
+                disabled={disabled || childDirty}
+                onClick={() => leaveWizard(onSwitchToAdvanced, 'order-advanced-editor')}
+              >
+                Расширенный режим
+              </button>
+            )}
+            <button
+              type="button"
+              className={button}
+              disabled={disabled || childDirty || step === (canCaptureLead ? -1 : 0)}
+              onClick={() => navigateTo(step - 1)}
+            >
+              Назад
+            </button>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -730,7 +761,6 @@ function Wizard({
           )}
         </div>
       </div>
-      {leadMode ? <p className="text-xs leading-5 text-slate-600">Для заявки достаточно клиента или заметки.</p> : null}
       {recovery.storageState === 'unavailable' ? (
         <p role="status" className="text-xs text-slate-600">
           Автосохранение в этой вкладке недоступно. Сохраните заявку перед уходом.
@@ -750,6 +780,7 @@ function Wizard({
       inactive={clientPickerVisible || typeCreateOpen || Boolean(serviceEditor) || scheduleOpen}
       onClose={close}
       disableBackdropClick={busy}
+      initialFocusRef={existing ? stepHeading : undefined}
       footer={footer}
     >
       <div className="space-y-5">
@@ -786,6 +817,9 @@ function Wizard({
         <fieldset ref={stepSection} disabled={disabled} className="min-w-0 space-y-4" aria-describedby={validationStep === step && error ? errorId : undefined}>
           {leadMode ? (
             <>
+              {canReadClient && canEditClient && can('orders.adminComment', 'edit') && (
+                <p className="text-sm text-slate-600">Для заявки достаточно выбрать клиента или записать суть обращения.</p>
+              )}
               {clientFields}
               {can('orders.adminComment', 'edit') ? (
                 <label className="block text-sm">

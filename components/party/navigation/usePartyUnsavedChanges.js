@@ -23,4 +23,5 @@ export default function usePartyUnsavedChanges(
       onDiscard,
     })
   }, [id, dirty, pending, label, scope, onDiscard])
+  return id
 }

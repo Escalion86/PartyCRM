@@ -63,6 +63,7 @@ import {
   writePartyOrderSortPreference,
 } from '@helpers/partyOrderViewPreference'
 import { canPartyResourceCalendarAccess } from '@helpers/partyResourceCalendar'
+import { canOpenPartyOrderWizard } from '@helpers/partyOrderWizardStart'
 
 const PartyRoleOrdersCalendar = dynamic(
   () => import('./PartyRoleOrdersCalendar')
@@ -90,8 +91,12 @@ const PartyOrderPreparationPanel = dynamic(
 )
 const control =
   'mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:cursor-default disabled:bg-slate-50 disabled:text-slate-600'
-const button =
-  'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50'
+const boardSearch =
+  'min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 disabled:bg-slate-50 sm:text-sm'
+const buttonBase =
+  'min-h-11 cursor-pointer rounded-lg border px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50'
+const button = `${buttonBase} border-sky-200 text-sky-800 hover:bg-sky-50`
+const primaryButton = `${buttonBase} border-transparent bg-sky-700 text-white hover:bg-sky-800`
 const statuses = {
   draft: 'Заявка',
   active: 'Подтверждён',
@@ -496,11 +501,7 @@ function RoleOrderEditor({
   const showStatus = existing && can('orders.status') && order.status
   const showStage = existing && can('orders.workflowStageId')
   const stageTitle = workflow.stages.find((stage) => stage.id === currentStage)?.title || 'Рабочий этап'
-  const canOpenWizard =
-    existing &&
-    can('orders.title') &&
-    !['closed', 'canceled'].includes(order.status) &&
-    ['orders.title', 'orders.servicesIds', 'orders.eventDate'].some((resource) => can(resource, 'edit'))
+  const canOpenWizard = canOpenPartyOrderWizard(order, can)
   const nextStages =
     existing &&
     order.workflowTransitionAvailable !== false &&
@@ -598,7 +599,7 @@ function RoleOrderEditor({
           <button
             type="button"
             className={button + ' min-w-0 justify-self-start max-sm:px-2'}
-            onClick={onSwitchToAdvanced}
+            onClick={() => onSwitchToAdvanced()}
             disabled={busy}
           >
             Расширенный режим
@@ -610,7 +611,7 @@ function RoleOrderEditor({
           </button>
           <button
             type="button"
-            className={button + ' bg-sky-700 text-white hover:bg-sky-800 max-sm:px-2.5'}
+            className={primaryButton + ' max-sm:px-2.5'}
             disabled={
               busy ||
               (!changes.dirty && !contractAmountInvalid && !initialPaymentDirty && !unresolvedCreate) ||
@@ -647,7 +648,7 @@ function RoleOrderEditor({
               disabled={busy || dirty}
               onClick={() => setBookingOpen(true)}
             >
-              Заполнение заявки по этапам
+              Редактировать по шагам
             </button>
           ) : null}
           {showStatus ? (
@@ -1399,7 +1400,21 @@ function RoleOrderEditor({
             </> : null}
           </div>
         ))}
-      {bookingOpen ? <PartyOrderWizard companyId={companyId} order={order} options={options} onSaved={(next, accessChanged) => { setBookingOpen(false); onSaved(next, accessChanged) }} onClose={() => setBookingOpen(false)} onDirtyChange={dirtyBooking} /> : null}
+      {bookingOpen && (
+        <PartyOrderWizard
+          companyId={companyId}
+          order={order}
+          options={options}
+          onSaved={(next, accessChanged) => {
+            setBookingOpen(false)
+            onSaved(next, accessChanged)
+          }}
+          onClose={() => setBookingOpen(false)}
+          onShowDetails={() => setBookingOpen(false)}
+          onSwitchToAdvanced={onSwitchToAdvanced}
+          onDirtyChange={dirtyBooking}
+        />
+      )}
     </section>
   )
 
@@ -1430,7 +1445,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
   const [notice, setNotice] = useState('')
   const [selected, setSelected] = useState(null)
   const [selectedOptions, setSelectedOptions] = useState(null)
-  const [advancedEditor, setAdvancedEditor] = useState(false)
+  const [editorMode, setEditorMode] = useState('details')
   const [initialEditorTab, setInitialEditorTab] = useState('main')
   const [editorRevision, setEditorRevision] = useState(0)
   const [openingId, setOpeningId] = useState('')
@@ -1444,6 +1459,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [quickFilter, setQuickFilter] = useState('all')
+  const [boardFiltersOpen, setBoardFiltersOpen] = useState(false)
   const [sortBy, setSortBy] = useState('created_desc')
   const [readOrderId, setReadOrderId] = useState('')
   const [boardPending, setBoardPending] = useState('')
@@ -1670,7 +1686,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       selectedId.current = ''
       setSelectedOptions(data.options)
       setSelected({})
-      setAdvancedEditor(false)
+      setEditorMode('details')
       setEditorRevision((value) => value + 1)
       setOverviewVisible(false)
       setNotice('')
@@ -1703,7 +1719,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       dirtyChanged(false)
       setSelectedOptions(data.options)
       setSelected(order)
-      setAdvancedEditor(false)
+      setEditorMode('details')
       setEditorRevision((value) => value + 1)
       setOverviewVisible(false)
       return
@@ -1727,7 +1743,11 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       dirtyChanged(false)
       setSelectedOptions({ ...emptyOptions, ...options.data })
       setSelected(record.data)
-      setAdvancedEditor(false)
+      setEditorMode(
+        initialTab === 'main' && Number.isInteger(options.data.initialWizardStep)
+          ? 'steps'
+          : 'details'
+      )
       setInitialEditorTab(
         initialTab === 'brief' &&
         Object.hasOwn(record.data, 'eventBrief') &&
@@ -1767,7 +1787,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
     setOpeningId('')
     setSelected(null)
     setSelectedOptions(null)
-    setAdvancedEditor(false)
+    setEditorMode('details')
     setOverviewVisible(false)
   }
   const saved = (order, accessChanged) => {
@@ -1776,7 +1796,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       returnFocusRequested.current = true
       selectedId.current = ''
       setSelected(null)
-      setAdvancedEditor(false)
+      setEditorMode('details')
       setNotice(
         'Заказ передан. На текущем этапе он доступен другим сотрудникам.'
       )
@@ -1793,11 +1813,20 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
     canSwitchOrderMode &&
     ['owner', 'admin'].includes(editorContext?.role) &&
     !isPartyRestrictedManagementContext(editorContext)
-  const switchEditor = (advanced) => {
+  const switchEditor = (advanced, confirmed = false) => {
     if (!canUseAdvancedEditor || !selected?._id) return
-    if (!leave(`${selected._id}:${advanced ? 'advanced' : 'ordinary'}`)) return
+    if (!confirmed && !leave(`${selected._id}:${advanced ? 'advanced' : 'ordinary'}`)) return
     dirtyChanged(false)
-    setAdvancedEditor(advanced)
+    setEditorMode(advanced ? 'advanced' : 'details')
+  }
+  const showDetails = () => {
+    dirtyChanged(false)
+    setEditorMode('details')
+  }
+  const saveWizardOrder = (order, accessChanged) => {
+    setEditorMode('details')
+    setInitialEditorTab('main')
+    saved(order, accessChanged)
   }
   const moveOrder = async (order, stageId) => {
     if (busy || boardPending || dirtyRef.current || !getPartyOrderBoardTransitions(context, data.workflow, order).some((stage) => stage.id === stageId)) return
@@ -1903,12 +1932,25 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
     setCalendarView(next)
     writePartyOrderViewPreference(companyId, preferenceStaffId, { view, calendarView: next })
   }
+  const isBoard = effectiveView === 'board'
+  const quickFilters = [
+    { id: 'all', title: 'Все' },
+    ...(canCalendar ? [{ id: 'today', title: 'Сегодня' }] : []),
+    ...(can('tasks') ? [{ id: 'tasks', title: 'С задачами' }] : []),
+    ...(canCalendar && effectiveView !== 'calendar' ? [{ id: 'undated', title: 'Без даты' }] : []),
+  ]
+  const activeBoardFilters = [
+    quickFilters.find((item) => item.id !== 'all' && item.id === effectiveQuickFilter)?.title,
+    data.workflow.stages.find((stage) => stage.id === effectiveStageFilter)?.title,
+  ].filter(Boolean)
+  const filtersId = `party-order-filters-${companyId}`
+  const filtersActive = Boolean(effectiveSearch.trim() || activeBoardFilters.length)
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4" data-orders-view={effectiveView}>
       <div
         className={
           (selected ? 'hidden lg:flex' : 'flex') +
-          ' flex-wrap items-center justify-between gap-3'
+          ' flex-wrap items-center justify-between gap-2'
         }
       >
         <h1
@@ -1922,7 +1964,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
           {can('orders', 'create') ? (
             <button
               type="button"
-              className={button + ' bg-sky-700 text-white hover:bg-sky-800'}
+              className={primaryButton}
               disabled={busy || Boolean(boardPending)}
               onClick={() => open({})}
             >
@@ -1960,7 +2002,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
                 aria-pressed={effectiveView === id}
                 disabled={Boolean(boardPending)}
                 className={
-                  'min-h-11 cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold ' +
+                  'min-h-11 cursor-pointer rounded-lg px-2.5 py-2 text-sm font-semibold sm:px-4 ' +
                   (effectiveView === id
                     ? 'bg-sky-700 text-white'
                     : 'text-sky-800 hover:bg-sky-50')
@@ -2067,112 +2109,112 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
               'min-w-0 space-y-3'
             }
           >
-            {searchable ? (
-              <label className="block text-sm text-slate-600">
-                Поиск заказов
-                <input
-                  id={`party-role-search-${companyId}`}
-                  type="search"
-                  placeholder={[
-                    can('orders.title') && 'Название',
-                    can('orders.client.name') && 'Клиент',
-                    can('orders.serviceTitle') && 'Услуга',
-                  ]
-                    .filter(Boolean)
-                    .join(', ')}
-                  maxLength={160}
-                  className={control}
-                  value={search}
-                  disabled={Boolean(boardPending)}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </label>
+            {searchable || isBoard ? (
+              <div className="flex min-w-0 flex-wrap items-end gap-2">
+                {searchable ? (
+                  <label className="block min-w-0 flex-1 text-sm text-slate-600">
+                    <span className={isBoard ? 'sr-only' : undefined}>Поиск заказов</span>
+                    <input
+                      id={`party-role-search-${companyId}`}
+                      type="search"
+                      placeholder={isBoard ? 'Поиск заказов' : [
+                        can('orders.title') && 'Название',
+                        can('orders.client.name') && 'Клиент',
+                        can('orders.serviceTitle') && 'Услуга',
+                      ].filter(Boolean).join(', ')}
+                      maxLength={160}
+                      className={isBoard ? boardSearch : control}
+                      value={search}
+                      disabled={Boolean(boardPending)}
+                      onChange={(event) => setSearch(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+                {isBoard ? (
+                  <button
+                    type="button"
+                    className={button}
+                    aria-expanded={boardFiltersOpen}
+                    aria-controls={filtersId}
+                    onClick={() => setBoardFiltersOpen((open) => !open)}
+                  >
+                    Фильтры{activeBoardFilters.length ? ` (${activeBoardFilters.length})` : ''}
+                  </button>
+                ) : null}
+              </div>
             ) : null}
             {effectiveView === 'list' ? <label className="block text-sm text-slate-600">Сортировка<select aria-label="Сортировка" className={`${control} cursor-pointer`} value={effectiveSortBy} disabled={Boolean(boardPending)} onChange={(event) => { setSortBy(event.target.value); writePartyOrderSortPreference(companyId, preferenceStaffId, event.target.value) }}>{sortOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}</select></label> : null}
-            <div
-              className="flex flex-wrap gap-2"
-              role="group"
-              aria-label="Быстрые фильтры заказов"
-            >
-              {[
-                { id: 'all', title: 'Все' },
-                ...(can('orders.eventDate')
-                  ? [
-                      {
-                        id: 'today',
-                        title: 'Сегодня',
-                      },
-                    ]
-                  : []),
-                ...(can('tasks')
-                  ? [
-                      {
-                        id: 'tasks',
-                        title: 'С задачами',
-                      },
-                    ]
-                  : []),
-                ...(canCalendar && effectiveView !== 'calendar'
-                  ? [
-                      {
-                        id: 'undated',
-                        title: 'Без даты',
-                      },
-                    ]
-                  : []),
-              ].map((item) => (
+            <div id={filtersId} hidden={isBoard && !boardFiltersOpen}>
+              <div className={isBoard ? 'flex flex-wrap items-end gap-3 rounded-lg border border-sky-200 bg-white p-3' : 'space-y-3'}>
+                <div
+                  className="flex flex-wrap gap-2"
+                  role="group"
+                  aria-label="Быстрые фильтры заказов"
+                >
+                  {quickFilters.map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      aria-pressed={effectiveQuickFilter === item.id}
+                      disabled={Boolean(boardPending)}
+                      onClick={() => setQuickFilter(item.id)}
+                      className={
+                        'min-h-11 cursor-pointer rounded-lg border px-3 py-2 text-sm ' +
+                        (effectiveQuickFilter === item.id
+                          ? 'border-sky-300 bg-sky-50 font-semibold text-sky-800'
+                          : 'border-slate-200 bg-white text-slate-600')
+                      }
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                </div>
+                {can('orders.workflowStageId') ? (
+                  <label className={isBoard ? 'block min-w-0 basis-full text-sm text-slate-600 sm:basis-60' : 'block text-sm text-slate-600'}>
+                    Рабочий этап
+                    <select
+                      className={control + ' cursor-pointer'}
+                      value={effectiveStageFilter}
+                      disabled={Boolean(boardPending)}
+                      onChange={(event) => setStageFilter(event.target.value)}
+                    >
+                      <option value="">Все доступные этапы</option>
+                      {data.workflow.stages.map((stage) => (
+                        <option key={stage.id} value={stage.id}>
+                          {stage.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+              </div>
+            </div>
+            {filtersActive ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {isBoard && activeBoardFilters.length ? (
+                  <p className="text-sm text-slate-700">{activeBoardFilters.join(' · ')}</p>
+                ) : null}
                 <button
                   type="button"
-                  key={item.id}
-                  aria-pressed={effectiveQuickFilter === item.id}
+                  className={button}
                   disabled={Boolean(boardPending)}
-                  onClick={() => setQuickFilter(item.id)}
-                  className={
-                    'min-h-10 cursor-pointer rounded-lg border px-3 py-2 text-sm ' +
-                    (effectiveQuickFilter === item.id
-                      ? 'border-sky-300 bg-sky-50 font-semibold text-sky-800'
-                      : 'border-slate-200 bg-white text-slate-600')
-                  }
+                  onClick={() => {
+                    setSearch('')
+                    setStageFilter('')
+                    setQuickFilter('all')
+                    const searchInput = document.getElementById(`party-role-search-${companyId}`)
+                    const filtersButton = document.querySelector(`button[aria-controls="${filtersId}"]`)
+                    const focusTarget = searchInput || filtersButton
+                    focusTarget?.focus()
+                  }}
                 >
-                  {item.title}
+                  Сбросить фильтры
                 </button>
-              ))}
-            </div>
-            {can('orders.workflowStageId') ? (
-              <label className="block text-sm text-slate-600">
-                Рабочий этап
-                <select
-                  className={control + ' cursor-pointer'}
-                  value={effectiveStageFilter}
-                  disabled={Boolean(boardPending)}
-                  onChange={(event) => setStageFilter(event.target.value)}
-                >
-                  <option value="">Все доступные этапы</option>
-                  {data.workflow.stages.map((stage) => (
-                    <option key={stage.id} value={stage.id}>
-                      {stage.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              </div>
             ) : null}
-            {search || stageFilter || quickFilter !== 'all' ? (
-              <button
-                type="button"
-                className={button}
-                disabled={Boolean(boardPending)}
-                onClick={() => {
-                  setSearch('')
-                  setStageFilter('')
-                  setQuickFilter('all')
-                }}
-              >
-                Сбросить фильтры
-              </button>
-            ) : null}
-            {effectiveView === 'board' ? <>
+            {isBoard ? <>
               {dirty ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Сохраните или отмените изменения открытого заказа перед передачей карточек.</p> : null}
-              <PartyRoleOrdersBoard context={context} locations={data.options.locations} workflow={data.workflow} stages={boardStages} board={board} filtered={Boolean(effectiveSearch.trim() || effectiveStageFilter || effectiveQuickFilter !== 'all')} disabled={busy || dirty || Boolean(boardPending) || Boolean(openingId)} selectedId={selected?._id ? String(selected._id) : ''} onOpen={open} onTransition={moveOrder} />
+              <PartyRoleOrdersBoard context={context} locations={data.options.locations} workflow={data.workflow} stages={boardStages} board={board} filtered={filtersActive} disabled={busy || dirty || Boolean(boardPending) || Boolean(openingId)} selectedId={selected?._id ? String(selected._id) : ''} onOpen={open} onTransition={moveOrder} />
             </> : null}
             {effectiveView === 'list' ? (
               <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
@@ -2328,11 +2370,25 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
               </div>
             ) : null}
           </div>
-          {selected && !selected._id ? <PartyOrderWizard companyId={companyId} options={selectedOptions || data.options} onSaved={saved} onClose={close} onDirtyChange={dirtyChanged} /> : selected && advancedEditor && canUseAdvancedEditor ? (
+          {selected && (!selected._id || editorMode === 'steps') ? (
+            <PartyOrderWizard
+              key={`steps:${selected._id || 'new'}:${editorRevision}`}
+              companyId={companyId}
+              order={selected}
+              options={selectedOptions || data.options}
+              initialStep={selectedOptions?.initialWizardStep ?? 0}
+              onSaved={saveWizardOrder}
+              onClose={close}
+              onShowDetails={selected._id ? showDetails : undefined}
+              onSwitchToAdvanced={canUseAdvancedEditor ? (confirmed) => switchEditor(true, confirmed) : undefined}
+              onDirtyChange={dirtyChanged}
+            />
+          ) : selected && editorMode === 'advanced' && canUseAdvancedEditor ? (
               <PartyAdvancedOrderEditor
                 key={`${companyId}:${selected._id}`}
                 companyId={companyId}
                 order={selected}
+                canSwitchOrderMode={canUseAdvancedEditor}
                 onSaved={saved}
                 onClose={close}
                 onSwitchToOrdinary={() => switchEditor(false)}
@@ -2354,7 +2410,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
                 onSaved={saved}
                 onClose={close}
                 onDirtyChange={dirtyChanged}
-                onSwitchToAdvanced={canUseAdvancedEditor ? () => switchEditor(true) : undefined}
+                onSwitchToAdvanced={canUseAdvancedEditor ? (confirmed) => switchEditor(true, confirmed) : undefined}
                 blocked={Boolean(openingId) || busy || Boolean(boardPending)}
               />
           ) : null}
@@ -2450,7 +2506,7 @@ export default function PartyRoleOrdersWorkspace({
   return (
     <div
       data-company-id={activeId}
-      className="mx-auto w-full max-w-7xl space-y-4 p-3 sm:p-5"
+      className="mx-auto w-full min-w-0 max-w-7xl space-y-4 p-3 has-[[data-orders-view=board]]:max-w-none sm:p-5"
     >
       {companyNotice ? (
         <p
@@ -2461,7 +2517,7 @@ export default function PartyRoleOrdersWorkspace({
         </p>
       ) : null}
       {!fixedCompanyId && companies.length > 1 ? (
-        <label className="block text-sm text-slate-600">
+        <label className="block text-sm text-slate-600 sm:max-w-xs">
           Компания
           <select
             className={control + ' cursor-pointer'}

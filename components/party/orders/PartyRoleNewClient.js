@@ -31,6 +31,7 @@ export default function PartyRoleNewClient({
   onStateChange,
   onCancel,
   onBusyChange,
+  onFindExisting,
 }) {
   const [open, setOpen] = useState(initialState?.open === true)
   const [draft, setDraft] = useState(() => initialState?.draft || emptyDraft)
@@ -40,7 +41,7 @@ export default function PartyRoleNewClient({
       : formatPartyClientFullName(initialState?.draft)
   )
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(null)
   const dirty = open && Boolean(fullName.trim() || draft.phone || draft.email)
   usePartyUnsavedChanges(dirty, {
     label: 'новый клиент',
@@ -67,17 +68,17 @@ export default function PartyRoleNewClient({
     const nameParts = canEditName ? resolvePartyClientNameParts(fullName, draft) : {}
     const nameError = getPartyClientNameError(nameParts)
     if (nameError) {
-      setError(nameError)
+      setError({ message: nameError })
       return
     }
     const phone = canEditPhone && phoneInput ? normalizePhoneNumber(phoneInput) : null
     if (canEditPhone && phoneInput && !phone) {
-      setError('Введите полный номер телефона или очистите поле.')
+      setError({ message: 'Введите полный номер телефона или очистите поле.' })
       return
     }
     setBusy(true)
     onBusyChange?.(true)
-    setError('')
+    setError(null)
     try {
       const body = {
         ...nameParts,
@@ -94,7 +95,11 @@ export default function PartyRoleNewClient({
       setDraft(emptyDraft)
       setFullName('')
     } catch (cause) {
-      setError(cause.message)
+      const duplicatePhone = onFindExisting && cause.payload?.error?.code === 'partycrm_client_phone_exists' ? phone : null
+      setError({
+        message: duplicatePhone ? 'Клиент с таким телефоном уже есть в компании.' : cause.message,
+        duplicatePhone,
+      })
     } finally {
       setBusy(false)
       onBusyChange?.(false)
@@ -127,7 +132,7 @@ export default function PartyRoleNewClient({
             disabled={busy || disabled}
             onChange={(event) => {
               setFullName(event.target.value)
-              setError('')
+              setError(null)
             }}
           />
         </label>
@@ -137,7 +142,7 @@ export default function PartyRoleNewClient({
           value={phoneInput}
           onChange={(phone) => {
             setDraft((previous) => ({ ...previous, phone }))
-            setError('')
+            setError(null)
           }}
           disabled={busy || disabled}
           tone="party"
@@ -162,14 +167,24 @@ export default function PartyRoleNewClient({
         </label>
       )}
       {error && (
-        <p role="alert" className="text-sm text-red-800">
-          {error}
-        </p>
+        <div className="space-y-1">
+          <p role="alert" className="text-sm text-red-800">{error.message}</p>
+          {error.duplicatePhone && (
+            <button
+              type="button"
+              className={`${button} hover:bg-white`}
+              disabled={busy || disabled}
+              onClick={() => onFindExisting(error.duplicatePhone)}
+            >
+              Найти клиента по телефону
+            </button>
+          )}
+        </div>
       )}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          className={button}
+          className={`${button} border-sky-700 bg-sky-700 text-white hover:bg-sky-800`}
           disabled={busy || disabled}
           onClick={submit}
         >

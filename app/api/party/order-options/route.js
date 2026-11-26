@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getPartyOrderTypes } from '@server/partyOrderTypes'
+import { validatePartyBriefForTransition } from '@server/partyBriefTemplates'
+import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
+import {
+  canOpenPartyOrderWizard,
+  getPartyOrderWizardInitialStep,
+} from '@helpers/partyOrderWizardStart'
 import {
   getPartyRequestContext,
   partyError,
@@ -16,6 +22,19 @@ import {
   canPartyAccess,
   buildPartyOrderAccessFilter,
 } from '@helpers/partyRolePermissions'
+
+const getInitialWizardStep = async ({ context, order, can, services, locations }) => {
+  if (!canOpenPartyOrderWizard(order, can)) return null
+  const step = getPartyOrderWizardInitialStep({ order, can, company: context.company, services, locations })
+  if (step !== null || !can('orders.eventBrief', 'edit')) return step
+  try {
+    const brief = await validatePartyBriefForTransition({ tenantId: context.tenantId, order })
+    return brief.ok ? null : 4
+  } catch {
+    // Keep the order editable if the brief template could not be loaded.
+    return null
+  }
+}
 
 export const dynamic = 'force-dynamic'
 export async function GET(req) {
@@ -100,7 +119,7 @@ export async function GET(req) {
         : []),
     ]),
   ]
-  const [clients, staff, services, locations] = await Promise.all([
+  const [clients, staff, services, locations, orderTypes] = await Promise.all([
     canReadClients
       ? Clients.find({
           tenantId: context.tenantId,
@@ -149,7 +168,11 @@ export async function GET(req) {
           .limit(500)
           .lean()
       : [],
+    can('orders.title') ? getPartyOrderTypes(context) : [],
   ])
+  const initialWizardStep = selectedOrder
+    ? await getInitialWizardStep({ context, order: selectedOrder, can, services, locations })
+    : null
   return NextResponse.json({
     success: true,
     data: {
@@ -192,7 +215,8 @@ export async function GET(req) {
       })),
       services,
       locations,
-      orderTypes: can('orders.title') ? await getPartyOrderTypes(context) : [],
+      orderTypes,
+      ...(selectedOrder ? { initialWizardStep } : {}),
       context: {
         tenantId: context.tenantId,
         role: context.role,
@@ -202,7 +226,12 @@ export async function GET(req) {
         company: {
           _id: context.company._id,
           title: context.company.title,
-          settings: { timeZone: context.company.settings?.timeZone, noOwnPremises: context.company.settings?.noOwnPremises === true, ...(can('orders.eventDate') ? { workingSchedule: context.company.settings?.workingSchedule || null } : {}) },
+          settings: {
+            timeZone: context.company.settings?.timeZone,
+            noOwnPremises: context.company.settings?.noOwnPremises === true,
+            modules: { offsite: { enabled: isPartyCompanyModuleEnabled(context.company, 'offsite') } },
+            ...(can('orders.eventDate') ? { workingSchedule: context.company.settings?.workingSchedule || null } : {}),
+          },
         },
       },
     },

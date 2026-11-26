@@ -85,6 +85,13 @@ NEXT_PUBLIC_VK_DEBUG_LOGS
 смешивались. Защищённый ключ `PARTY_VK_ID_CLIENT_SECRET` хранится только на
 сервере. Redirect URI должен в точности совпадать с адресом из кабинета VK ID.
 
+## Загрузка логотипов
+
+Загрузка логотипов компании через `https://cloud.escalion.ru/api` использует
+серверную переменную `ESCALIONCLOUD_PASSWORD`. Укажите пароль API файлового
+хранилища в окружении PartyCRM. Для отображения ранее сохранённого логотипа
+достаточно его публичной ссылки.
+
 ## Оставлять только если реально используете эти общие модули
 
 Следующие переменные не нужны `PartyCRM` как продукту v1, но могут остаться, если вы сознательно оставляете в нем общие telephony/push/AI-модули:
@@ -96,7 +103,6 @@ PHONE_SMS_SEND_WEBHOOK
 TELEPHONY_WEBHOOK_SECRET
 NOVOFON_WEBHOOK_SECRET
 TELEGRAM_TOKEN
-ESCALIONCLOUD_PASSWORD
 PUSH_REMINDERS_CRON_SECRET
 VAPID_PUBLIC_KEY
 VAPID_PRIVATE_KEY

@@ -17,6 +17,7 @@ import * as venueHelpers from '../helpers/partyVenueBooking.js'
 import * as venueSchemas from '../schemas/partyVenueBookingsSchema.js'
 import * as sorting from '../helpers/partyOrderSorting.js'
 import * as listHelpers from '../helpers/partyOrderListQuery.js'
+import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import { sharePartyLocationBooking } from '../helpers/partySharedLocationBooking.js'
 import { parsePartyIsoDate } from '../helpers/partyIsoDate.js'
 import { canAccessPartyTransaction } from '../server/partyTransactionAccess.js'
@@ -281,6 +282,8 @@ try {
       ...schedules,
       ...booking,
       ...venueGetters,
+      canPartySetOffsiteOrder,
+      PARTY_OFFSITE_DISABLED_MESSAGE,
       sharePartyLocationBooking,
     },
     'loadPartyBookingAvailability'

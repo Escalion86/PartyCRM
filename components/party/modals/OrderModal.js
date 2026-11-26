@@ -2,10 +2,10 @@
 
 import { PartyOrderContactRolesEditor } from '@components/party/orders/PartyOrderContactRoles'
 
-import { useState, useCallback, useMemo, useEffect } from 'react'
+import { useState, useCallback, useMemo, useEffect, useId } from 'react'
 import PartyOrderWizard from '@components/party/orders/PartyOrderWizard'
 import PartyOrderExtensions from '@components/party/orders/PartyOrderExtensions'
-import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
+import usePartyUnsavedChanges, { requestPartyLeave } from '@components/party/navigation/usePartyUnsavedChanges'
 import { useSetAtom } from 'jotai'
 import { apiJson } from '@helpers/apiClient'
 import {
@@ -133,6 +133,8 @@ export default function OrderModal({
   activeCompanyId,
   canManage = false,
   canSwitchOrderMode = false,
+  formVariant,
+  onFormVariantChange,
   onSwitchToOrdinary,
   aiAvailable = false,
   saving,
@@ -147,6 +149,8 @@ export default function OrderModal({
 }) {
   const [clientModal, setClientModal] = useState('')
   const [bookingOpen, setBookingOpen] = useState(false)
+  const [localFormVariant, setLocalFormVariant] = useState(null)
+  const layoutSelectId = useId()
   const [canonicalTypes, setCanonicalTypes] = useState([])
   useEffect(() => {
     if (!open || !activeCompanyId) return
@@ -180,11 +184,24 @@ export default function OrderModal({
   const [submitError, setSubmitError] = useState('')
   const [focusSection, setFocusSection] = useState('')
   const hasUnsavedChanges = useUnsavedChanges(orderDraft, open)
-  usePartyUnsavedChanges(open && hasUnsavedChanges, {
+  const formGuardId = usePartyUnsavedChanges(open && hasUnsavedChanges, {
     label: 'заказ',
     scope: activeCompanyId,
     pending: open && saving,
   })
+  const canChangeLayout = canManage && canSwitchOrderMode
+  const layoutOverride = canChangeLayout ? formVariant ?? localFormVariant : null
+  const compact = (layoutOverride ?? companySettings?.orderFormVariant) !== 'classic'
+  const changeLayout = (variant) => {
+    if (!canChangeLayout || saving || !requestPartyLeave({
+      kind: 'record',
+      target: `order-layout:${orderDraft._id || 'new'}:${variant}`,
+      scope: activeCompanyId,
+      retainedFormId: formGuardId,
+    })) return
+    if (onFormVariantChange) onFormVariantChange(variant)
+    else setLocalFormVariant(variant)
+  }
   const hasUnsavedAdditionalEventChanges = useUnsavedChanges(
     editingAdditionalEventDraft,
     editingAdditionalEvent !== null
@@ -807,6 +824,21 @@ export default function OrderModal({
       inactive={bookingOpen}
       footer={footerContent}
     >
+      {canChangeLayout && (
+        <div className="mb-3 inline-flex max-w-full flex-wrap items-center gap-2 text-sm font-medium text-slate-700">
+          <label htmlFor={layoutSelectId}>Вид формы заказа</label>
+          <select
+            id={layoutSelectId}
+            className="min-h-11 max-w-full cursor-pointer rounded-lg border border-sky-200 bg-white px-2 text-base text-slate-900 focus-visible:outline-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed sm:text-sm"
+            value={compact ? 'compact' : 'classic'}
+            disabled={saving}
+            onChange={(event) => changeLayout(event.target.value)}
+          >
+            <option value="compact">Компактная</option>
+            <option value="classic">Классическая</option>
+          </select>
+        </div>
+      )}
       {canManage &&
         aiAvailable &&
         !['closed', 'canceled'].includes(orderDraft.status) && (
@@ -822,7 +854,7 @@ export default function OrderModal({
           />
         )}
       <PartyOrderFormLayout
-        compact={companySettings?.orderFormVariant !== 'classic'}
+        compact={compact}
         focusSection={focusSection}
         initialSection={!orderDraft.clientId ? 'Клиенты и контакты' : ''}
         summaries={{
@@ -884,7 +916,7 @@ export default function OrderModal({
         <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
             <div data-order-group="Услуги" className="grid gap-2">
-              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => setBookingOpen(true)}>Заполнение заявки по этапам</button> : null}
+              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => setBookingOpen(true)}>Редактировать по шагам</button> : null}
               <PartyOrderTypePicker
                 value={orderDraft.title || ''}
                 onChange={(val) => handleChange('title', val || '')}
@@ -1403,7 +1435,7 @@ export default function OrderModal({
         onCompanySettingsChange={onCompanySettingsChange}
       />
 
-      {bookingOpen ? <PartyOrderWizard companyId={activeCompanyId} order={orderDraft} onClose={() => setBookingOpen(false)} onSaved={(next) => { setBookingOpen(false); onOrderApplied?.(next); onClose?.() }} /> : null}
+      {bookingOpen ? <PartyOrderWizard companyId={activeCompanyId} order={orderDraft} onClose={() => setBookingOpen(false)} onShowDetails={() => setBookingOpen(false)} onSaved={(next) => { setBookingOpen(false); onOrderApplied?.(next); onClose?.() }} /> : null}
       {editingAdditionalEvent !== null ? (
         <AdditionalEventEditModal
           open={true}

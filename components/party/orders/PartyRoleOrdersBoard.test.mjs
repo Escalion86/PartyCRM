@@ -10,7 +10,7 @@ import {
   projectPartyOrderBoardColumns,
 } from '../../../helpers/partyOrderBoard.js'
 import { getPartyOrderStage } from '../../../helpers/partyWorkflow.js'
-import { nodes } from './partyOrderBoardTestHost.mjs'
+import { createHookHost, nodes, textOf } from './partyOrderBoardTestHost.mjs'
 
 const require = createRequire(import.meta.url)
 const { transformSync } = require('next/dist/build/swc')
@@ -30,25 +30,29 @@ const compiled = transformSync(source, {
   },
   module: { type: 'commonjs' },
 }).code
-const createBoard = (h, hooks) =>
-  new Function(
-    'h',
-    'React',
-    ...Object.keys(hooks),
-    'canPartyAccess',
-    'getPartyOrderBoardTransitions',
-    'projectPartyOrderBoardColumns',
-    'getPartyOrderStage',
-    `${compiled}\nreturn PartyRoleOrdersBoard`
-  )(
-    h,
+const createBoard = (h, hooks) => {
+  const bindings = {
     React,
-    ...Object.values(hooks),
+    ...hooks,
     canPartyAccess,
     getPartyOrderBoardTransitions,
     projectPartyOrderBoardColumns,
-    getPartyOrderStage
-  )
+    getPartyOrderStage,
+    FontAwesomeIcon: () => null,
+    faEllipsis: 'ellipsis',
+    faLocationDot: 'location',
+    faUser: 'user',
+    Menu: ({ open, children, slotProps }) =>
+      open ? h('div', { role: 'menu', ...slotProps.list }, children) : null,
+    MenuItem: ({ children, onClick }) =>
+      h('button', { role: 'menuitem', onClick }, children),
+  }
+  return new Function(
+    'h',
+    ...Object.keys(bindings),
+    `${compiled}\nreturn PartyRoleOrdersBoard`
+  )(h, ...Object.values(bindings))
+}
 const tenantId = 'a'.repeat(24),
   roleId = 'b'.repeat(24),
   staffId = 'c'.repeat(24)
@@ -119,21 +123,21 @@ const SSRBoard = createBoard(React.createElement, {
 test('board SSR shows only explicitly permitted order fields and accessible alternatives', () => {
   const html = renderToStaticMarkup(React.createElement(SSRBoard, props()))
   assert.match(html, /Заказ/)
-  assert.match(html, /Передать заказ/)
-  assert.match(html, /Перетащить заказ/)
-  assert.doesNotMatch(html, /Скрытый клиент|987654|30 окт|Подтверждён/)
+  assert.match(html, /Переместить заказ/)
+  assert.match(html, /aria-haspopup="menu"/)
+  assert.doesNotMatch(html, /Скрытый клиент|987654|<time|Подтверждён/)
   assert.match(html, /class="sr-only">Загружено заказов: 1<\/span><span aria-hidden="true">1<\/span>/)
   assert.match(html, /min-h-11/)
 })
 
-test('read-only stage cards have no drag handle or transition select', () => {
+test('read-only stage cards have no drag handle or move menu', () => {
   const html = renderToStaticMarkup(
     React.createElement(
       SSRBoard,
       props({ context: context({ 'orders.transition': 'hidden' }) })
     )
   )
-  assert.doesNotMatch(html, /draggable|<select/)
+  assert.doesNotMatch(html, /draggable|aria-haspopup="menu"/)
   assert.match(html, /Открыть заказ/)
   assert.match(html, /Листайте колонки/)
 })
@@ -169,7 +173,7 @@ test('hidden-status cards expose controls only with an explicit server capabilit
       )
     )
     assert.equal(html.includes('draggable="true"'), movable)
-    assert.equal(html.includes('<select'), movable)
+    assert.equal(html.includes('aria-haspopup="menu"'), movable)
     assert.doesNotMatch(html, /Подтверждён|Закрыт|workflowTransitionAvailable/)
   }
 })
@@ -207,36 +211,37 @@ test('empty columns suggest resetting filters only when filters are active', () 
   assert.doesNotMatch(filtered, /На этом этапе пока нет заказов/)
 })
 
-test('ordinary selection and actual drag/drop handlers invoke the same transition callback', () => {
-  let dragged = null
+test('move menu and actual drag/drop handlers invoke the same transition callback', () => {
   const transitions = [],
     opened = []
   const h = (type, values, ...children) =>
     typeof type === 'function'
       ? type({ ...values, children })
       : { type, props: { ...values, children } }
-  const Board = createBoard(h, {
-    useId: () => 'board',
-    useMemo: (fn) => fn(),
-    useState: () => [
-      dragged,
-      (value) => {
-        dragged = value
-      },
-    ],
-  })
-  const render = () =>
-    Board(
-      props({
-        onTransition: (...args) => transitions.push(args),
-        onOpen: (value) => opened.push(value),
-      })
-    )
-  let tree = render()
-  const select = [...nodes(tree)].find((node) => node.type === 'select')
-  select.props.onChange({ target: { value: 'prepare' } })
+  const host = createHookHost(
+    (hooks) => createBoard(h, hooks),
+    props({
+      onTransition: (...args) => transitions.push(args),
+      onOpen: (value) => opened.push(value),
+    })
+  )
+  const find = (predicate) => [...nodes(host.value)].find(predicate)
+  const findMoveButton = () => find(
+    (node) => node.props?.['aria-label'] === 'Переместить заказ «Заказ»'
+  )
+  const moveButton = findMoveButton()
+  assert.equal(moveButton.props['aria-expanded'], false)
+  moveButton.props.onClick({ currentTarget: moveButton })
+  const menu = find((node) => node.props?.role === 'menu')
+  assert.equal(findMoveButton().props['aria-expanded'], true)
+  assert.equal(menu.props.id, findMoveButton().props['aria-controls'])
+  const destination = find((node) =>
+    node.props?.role === 'menuitem' && textOf(node) === 'Подготовка'
+  )
+  destination.props.onClick()
   assert.deepEqual(transitions, [[order, 'prepare']])
-  const openButton = [...nodes(tree)].find(
+  assert.equal(findMoveButton().props['aria-expanded'], false)
+  const openButton = find(
     (node) => node.props?.['aria-label'] === 'Открыть заказ «Заказ»'
   )
   openButton.props.onClick()
@@ -246,13 +251,13 @@ test('ordinary selection and actual drag/drop handlers invoke the same transitio
     setData: (key, value) => data.set(key, value),
     getData: (key) => data.get(key),
   }
-  const handle = [...nodes(tree)].find((node) => node.props?.draggable)
+  const handle = findMoveButton()
+  assert.equal(handle.props.draggable, true)
   handle.props.onDragStart({ dataTransfer })
-  tree = render()
-  const target = [...nodes(tree)].find(
+  const target = find(
     (node) =>
       node.type === 'section' &&
-      node.props?.['aria-labelledby'] === 'board-prepare'
+      node.props?.['aria-labelledby']?.endsWith('-prepare')
   )
   target.props.onDrop({ dataTransfer, preventDefault() {} })
   assert.deepEqual(transitions, [

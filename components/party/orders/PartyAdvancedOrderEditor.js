@@ -16,13 +16,14 @@ const serverFields = new Set([
   'createRequestKey', 'createRequestActorId', 'createRequestFingerprint',
 ])
 
-export default function PartyAdvancedOrderEditor({ companyId, order, onSaved, onClose, onSwitchToOrdinary }) {
+export default function PartyAdvancedOrderEditor({ companyId, order, canSwitchOrderMode, onSaved, onClose, onSwitchToOrdinary }) {
   const [orderDraft, setOrderDraft] = useState(() => normalizePartyLegacyOrderDraft(order))
   const baseline = useRef(orderDraft)
   const [draftRevision, setDraftRevision] = useState(0)
   const [store] = useState(createStore)
   const [catalogs, setCatalogs] = useState(null)
   const [companySettings, setCompanySettings] = useState({})
+  const [formVariant, setFormVariant] = useState(null)
   const [aiAvailable, setAiAvailable] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [retry, setRetry] = useState(0)
@@ -130,6 +131,9 @@ export default function PartyAdvancedOrderEditor({ companyId, order, onSaved, on
         title="Редактировать заказ"
         isEdit
         canManage
+        canSwitchOrderMode={canSwitchOrderMode}
+        formVariant={formVariant}
+        onFormVariantChange={setFormVariant}
         orderDraft={orderDraft}
         setOrderDraft={setOrderDraft}
         activeCompanyId={companyId}

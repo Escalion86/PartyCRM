@@ -1,7 +1,6 @@
 'use client'
 
 import Input from '@components/Input'
-import Select from '@components/Select'
 import { useMemo, useState } from 'react'
 import useCompanySettings from '../useCompanySettings'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
@@ -195,25 +194,6 @@ export default function CompanySettingsGeneralContent({ activeCompanyId }) {
         saving={saving}
         savePatch={savePatch}
       />
-      <div className="rounded-2xl border border-sky-100 bg-white p-5">
-        <Select
-          label="Вид формы заказа"
-          value={settings?.orderFormVariant || 'compact'}
-          options={[
-            { value: 'compact', label: 'Компактная' },
-            { value: 'classic', label: 'Классическая' },
-          ]}
-          disabled={saving}
-          tone="party"
-          onChange={(orderFormVariant) => {
-            savePatch({ orderFormVariant }).catch(() => {})
-          }}
-        />
-        <p className="mt-2 text-sm text-slate-500">
-          Компактная — раскрываемые разделы со сводками. Классическая — вкладки.
-          Выбор применяется к созданию и редактированию заказов всей компании.
-        </p>
-      </div>
       {error ? (
         <div className="border-danger/30 bg-danger/10 text-danger rounded-md border p-3 text-sm">
           {error}

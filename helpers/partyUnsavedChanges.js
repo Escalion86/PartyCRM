@@ -6,10 +6,12 @@ export const createPartyUnsavedChangesStore = ({
 } = {}) => {
   const forms = new Map()
   let permitted = null
-  const entries = (scope) =>
-    [...forms.values()].filter(
-      (form) => (form.dirty || form.pending) && (!scope || form.scope === scope)
-    )
+  const entries = (scope, retainedFormId) =>
+    [...forms]
+      .filter(([id, form]) =>
+        id !== retainedFormId && (form.dirty || form.pending) && (!scope || form.scope === scope)
+      )
+      .map(([, form]) => form)
   const keyOf = ({ kind = 'route', target = '' }) =>
     `${kind}:${cleanTarget(target)}`
   return {
@@ -42,7 +44,7 @@ export const createPartyUnsavedChangesStore = ({
       permitted = null
     },
     request(intent = {}) {
-      const active = entries(intent.scope)
+      const active = entries(intent.scope, intent.retainedFormId)
       if (!active.length) return true
       if (permitted?.key === keyOf(intent) && permitted.until >= now())
         return true

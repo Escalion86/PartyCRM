@@ -37,6 +37,25 @@ test('all dirty forms produce one confirmation, cancellation retains every form'
   assert.equal(store.hasChanges(), true)
 })
 
+test('switching layout retains the order draft while protecting a nested form', () => {
+  const messages = []
+  const store = createPartyUnsavedChangesStore({
+    confirm: (message) => {
+      messages.push(message)
+      return false
+    },
+  })
+  const intent = { kind: 'record', target: 'classic', retainedFormId: 'order' }
+  store.register('order', { dirty: true, label: 'Заказ' })
+  assert.equal(store.request(intent), true)
+  store.register('tasks', { dirty: true, label: 'Задачи' })
+  assert.equal(store.request(intent), false)
+  assert.equal(messages.length, 1)
+  assert.match(messages[0], /\(Задачи\)/)
+  assert.equal(store.request({ kind: 'record', target: 'list' }), false)
+  assert.match(messages[1], /Заказ/)
+})
+
 test('accepted link and its router event share a short permission for that target only', () => {
   let time = 1,
     prompts = 0

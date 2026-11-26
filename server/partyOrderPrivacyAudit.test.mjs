@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import * as permissions from '../helpers/partyRolePermissions.js'
-import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
+import { canPartySetOffsiteOrder, isPartyCompanyModuleEnabled, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import * as calendarQueries from '../helpers/partyOrderCalendarQuery.js'
 import * as orderAccess from '../helpers/partyOrderAccess.js'
 import * as payloadHelpers from './partyOrderPayload.js'
@@ -133,7 +133,7 @@ test('read-only order team options are scoped and staff phones require an explic
     getPartyOrderModel: async () => ({ find: (filter) => { assert.equal(filter.tenantId, tenantId); assert.equal(JSON.stringify(filter).includes(locationId), true); return q([{ assignedStaff: [{ staffId: personId }] }]) } }),
       getPartyStaffModel: async () => ({ find: (filter) => { seen.push(filter); return q([{ _id: personId, firstName: 'Коллега', role: 'performer', phone: '79130000001' }]) } }),
       getPartyClientModel: async () => ({}), getPartyServiceModel: async () => ({ find: () => q([]) }), getPartyLocationModel: async () => ({}),
-      getPartyOrderTypes: async () => [],
+      getPartyOrderTypes: async () => [], isPartyCompanyModuleEnabled,
     }
     const get = new Function(...Object.keys(deps), `${optionsCode}\nreturn GET`)(...Object.values(deps))
     const result = await get({})

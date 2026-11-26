@@ -12,11 +12,12 @@ const extractApiErrorMessage = (json) => {
 }
 
 export const apiJson = async (url, options = {}) => {
+  const isFormData = options.body instanceof FormData
   const response = await fetch(url, {
     ...options,
     headers: {
       Accept: contentType,
-      'Content-Type': contentType,
+      ...(!isFormData ? { 'Content-Type': contentType } : {}),
       ...(options.headers ?? {}),
     },
   })

@@ -25,30 +25,28 @@ const newClientForm = (phone = null) => ({
   draft: { firstName: '', secondName: '', thirdName: '', phone, email: '' },
 })
 
-function ClientPickerDialog({
-  companyId, context, clients, selectedId, onChoose, onClose,
-  initialForm, onFormStateChange, onDirtyChange, direct,
+function ClientLookup({
+  companyId, context, clients, selectedId, onChoose, onOpen, onClose,
+  initialForm, onFormStateChange, onDirtyChange, inline, open, searchRef, fieldError,
 }) {
   const [search, setSearch] = useState('')
   const [lookup, setLookup] = useState(null)
   const [retry, setRetry] = useState(0)
-  const [creating, setCreating] = useState(() => {
-    if (!canCreateClient(context)) return null
-    if (initialForm?.open) return initialForm
-    return direct ? newClientForm() : null
-  })
+  const [creating, setCreating] = useState(() =>
+    open && canCreateClient(context) && initialForm?.open ? initialForm : null
+  )
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [clipboardMessage, setClipboardMessage] = useState('')
-  const searchRef = useRef(null)
+  const createButtonRef = useRef(null)
   const createRef = useRef(null)
   const initialFocusRef = useRef(null)
   const cancelledForm = useRef(null)
-  const query = search.trim()
   const canReadName = canPartyAccess(context, { resource: 'orders.client.name' })
   const canReadPhone = canPartyAccess(context, { resource: 'orders.client.phone' })
   const canReadEmail = canPartyAccess(context, { resource: 'orders.client.email' })
   const canSearch = canReadName || canReadPhone || canReadEmail
+  const query = canSearch ? search.trim() : ''
   const canCreate = canCreateClient(context)
   const searchHint = [canReadName && 'имя', canReadPhone && 'телефон', !canReadName && !canReadPhone && canReadEmail && 'email'].filter(Boolean).join(' или ')
 
@@ -80,17 +78,15 @@ function ClientPickerDialog({
     if (!createInput) return
     const frame = requestAnimationFrame(() => createInput.focus())
     return () => cancelAnimationFrame(frame)
-  }, [creating])
+  }, [creating, searchRef])
 
-  const results = query ? lookup?.clients || [] : clients.slice(0, 40)
+  const showRecent = !inline || !canSearch
+  const results = query ? lookup?.clients || [] : showRecent ? clients.slice(0, 40) : []
   const loading = Boolean(query && (lookup?.query !== query || lookup.retry !== retry))
   const handleDirtyChange = useCallback((value) => {
     setDirty(value)
     onDirtyChange(value)
   }, [onDirtyChange])
-  const publishFormState = useCallback((form) => {
-    onFormStateChange(direct ? { ...form, direct: true } : form)
-  }, [direct, onFormStateChange])
   const select = (client) => {
     onChoose(client)
     onClose()
@@ -106,6 +102,7 @@ function ClientPickerDialog({
     searchRef.current?.focus()
   }
   const startCreating = () => {
+    if (inline) onOpen()
     if (cancelledForm.current?.query === query) {
       setCreating(cancelledForm.current.form)
       return
@@ -113,18 +110,93 @@ function ClientPickerDialog({
     const phone = canPartyAccess(context, { resource: 'orders.client.phone', action: 'edit' }) ? normalizePhoneNumber(query) : null
     setCreating(newClientForm(phone ? Number(phone) : null))
   }
-  const cancelCreating = (keepDraft) => {
-    if (direct) {
-      onClose()
-      return
-    }
-    cancelledForm.current = keepDraft && initialForm?.open ? { query, form: initialForm } : null
+  const cancelCreating = (keepDraft, returnQuery = query) => {
+    cancelledForm.current = keepDraft && initialForm?.open ? { query: returnQuery, form: initialForm } : null
     setCreating(null)
-    onFormStateChange(null)
-    requestAnimationFrame(() => searchRef.current?.focus())
+    if (inline) onClose(false)
+    else onFormStateChange(null)
+    requestAnimationFrame(() => {
+      const target = returnQuery || !inline ? searchRef.current || createButtonRef.current : createButtonRef.current
+      target?.focus()
+    })
+  }
+  const findExisting = (phone) => {
+    cancelCreating(true, phone)
+    setSearch(phone)
+    setRetry((value) => value + 1)
   }
 
-  return (
+  const createForm = creating ? (
+    <div ref={createRef}>
+      <PartyRoleNewClient
+        context={context}
+        companyId={companyId}
+        initialState={creating}
+        onStateChange={onFormStateChange}
+        onDirtyChange={handleDirtyChange}
+        onBusyChange={setBusy}
+        onCancel={() => cancelCreating(true)}
+        onCreated={select}
+        onFindExisting={canReadPhone ? findExisting : undefined}
+      />
+    </div>
+  ) : null
+  const createButton = canCreate ? (
+    <button type="button" ref={createButtonRef} className={buttonStyle} aria-haspopup="dialog" onClick={startCreating}>
+      Создать клиента
+    </button>
+  ) : null
+  const lookupFields = (
+        <div className="space-y-3">
+          {canSearch && <div className="flex items-end gap-2">
+            <label className="min-w-0 flex-1 text-sm font-medium">
+              Поиск клиента
+              <input
+                ref={searchRef}
+                type="search"
+                inputMode={canReadPhone && !canReadName && !canReadEmail ? 'tel' : undefined}
+                value={search}
+                maxLength={120}
+                placeholder={searchHint}
+                {...fieldError}
+                className={`mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base placeholder:text-slate-600 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60 ${focusStyle}`}
+                onChange={(event) => {
+                  setSearch(event.target.value)
+                  setClipboardMessage('')
+                }}
+              />
+            </label>
+            {canReadPhone && <button type="button" className={buttonStyle} aria-label="Вставить номер из буфера" onClick={pasteSearch}>
+              <FontAwesomeIcon icon={faPaste} aria-hidden="true" />
+            </button>}
+          </div>}
+          {clipboardMessage && <p className="text-sm text-slate-600" role="status">{clipboardMessage}</p>}
+          {!inline && createButton}
+          {loading ? <p className="text-sm text-slate-600" role="status">Ищем клиентов…</p> : query && lookup?.error ? (
+            <div className="space-y-2 text-sm">
+              <p role="alert" className="text-red-800">{lookup.error}</p>
+              <button type="button" className={buttonStyle} onClick={() => setRetry((value) => value + 1)}>Повторить поиск</button>
+            </div>
+          ) : results.length ? (
+            <ul className={`divide-y divide-slate-200 rounded-lg border border-slate-200 ${inline ? 'max-h-56 overflow-y-auto overscroll-contain' : ''}`} aria-label="Клиенты">
+              {results.map((client) => {
+                const phone = phoneOf(client)
+                return (
+                  <li key={client._id}>
+                    <button type="button" className={`flex min-h-11 w-full cursor-pointer flex-wrap items-baseline justify-between gap-x-3 px-3 py-2 text-left hover:bg-sky-50 ${focusStyle}`} onClick={() => select(client)}>
+                      <span className="min-w-0 break-words text-sm font-semibold">{nameOf(client)}</span>
+                    {(phone || client.email) && <span className="min-w-0 break-all text-sm text-slate-600 tabular-nums">{phone || client.email}</span>}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : query || showRecent ? <p className="text-sm text-slate-600" role="status">{query ? 'Клиенты не найдены. Измените запрос.' : 'Клиентов пока нет.'}</p> : null}
+          {inline && createButton}
+          {selectedId && <button type="button" className={buttonStyle} onClick={() => select(null)}>Убрать клиента</button>}
+        </div>
+  )
+  const modal = !inline || creating ? (
     <Modal
       open
       title={creating ? 'Новый клиент' : 'Выбор клиента'}
@@ -139,99 +211,37 @@ function ClientPickerDialog({
         else onClose()
       }}
     >
-      {creating ? (
-        <div ref={createRef}>
-          <PartyRoleNewClient
-            context={context}
-            companyId={companyId}
-            initialState={creating}
-            onStateChange={publishFormState}
-            onDirtyChange={handleDirtyChange}
-            onBusyChange={setBusy}
-            onCancel={() => cancelCreating(true)}
-            onCreated={select}
-          />
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {canSearch && <div className="flex items-end gap-2">
-            <label className="min-w-0 flex-1 text-sm font-medium">
-              Поиск клиента
-              <input
-                ref={searchRef}
-                type="search"
-                inputMode={canReadPhone && !canReadName && !canReadEmail ? 'tel' : undefined}
-                value={search}
-                maxLength={120}
-                placeholder={searchHint}
-                className={`mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base ${focusStyle}`}
-                onChange={(event) => {
-                  setSearch(event.target.value)
-                  setClipboardMessage('')
-                }}
-              />
-            </label>
-            {canReadPhone && <button type="button" className={buttonStyle} aria-label="Вставить номер из буфера" onClick={pasteSearch}>
-              <FontAwesomeIcon icon={faPaste} aria-hidden="true" />
-            </button>}
-          </div>}
-          {clipboardMessage && <p className="text-sm text-slate-600" role="status">{clipboardMessage}</p>}
-          {canCreate && <button type="button" className={`${buttonStyle} border-sky-700 bg-sky-700 text-white hover:bg-sky-800`} onClick={startCreating}>Создать клиента</button>}
-          {loading ? <p className="text-sm text-slate-600" role="status">Ищем клиентов…</p> : query && lookup?.error ? (
-            <div className="space-y-2 text-sm">
-              <p role="alert" className="text-red-800">{lookup.error}</p>
-              <button type="button" className={buttonStyle} onClick={() => setRetry((value) => value + 1)}>Повторить поиск</button>
-            </div>
-          ) : results.length ? (
-            <ul className="divide-y divide-slate-200 rounded-lg border border-slate-200" aria-label="Клиенты">
-              {results.map((client) => {
-                const phone = phoneOf(client)
-                return (
-                  <li key={client._id}>
-                    <button type="button" className={`flex min-h-11 w-full cursor-pointer flex-wrap items-baseline justify-between gap-x-3 px-3 py-2 text-left hover:bg-sky-50 ${focusStyle}`} onClick={() => select(client)}>
-                      <span className="min-w-0 break-words text-sm font-semibold">{nameOf(client)}</span>
-                    {(phone || client.email) && <span className="min-w-0 break-all text-sm text-slate-600 tabular-nums">{phone || client.email}</span>}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          ) : <p className="text-sm text-slate-600" role="status">{query ? 'Клиенты не найдены. Измените запрос.' : 'Клиентов пока нет.'}</p>}
-          {selectedId && <button type="button" className={buttonStyle} onClick={() => select(null)}>Убрать клиента</button>}
-        </div>
-      )}
+      {createForm || lookupFields}
     </Modal>
-  )
+  ) : null
+  return inline ? <>{lookupFields}{modal}</> : modal
 }
 
 export default function PartyOrderClientPicker({
   companyId, context, clients, selectedId, savedName, canEdit, disabled, open,
   onOpen, onClose, onChoose, initialForm, onFormStateChange, onDirtyChange, fieldError,
-  showCreateButton = false,
+  inlineSearch = false,
 }) {
   const triggerRef = useRef(null)
-  const createTriggerRef = useRef(null)
-  const [directCreate, setDirectCreate] = useState(false)
-  const canCreate = canCreateClient(context)
-  const direct = canCreate && (directCreate || initialForm?.direct === true)
+  const searchRef = useRef(null)
+  const inline = inlineSearch && !selectedId && canEdit && (!open || canCreateClient(context))
   const selected = clients.find((client) => String(client._id) === selectedId)
   const selectedName = selected ? nameOf(selected) : selectedId ? savedName || 'Сохранённый клиент' : ''
   const contact = phoneOf(selected) || selected?.email || ''
   const valueLabel = [selectedName || 'выбрать клиента', contact].filter(Boolean).join(' · ')
   return (
     <div className="min-w-0 sm:max-w-sm">
-      <p className="mb-1 text-sm font-medium">Основной клиент</p>
-      {canEdit ? (
-        <div className="flex flex-wrap items-start gap-2">
+      {!inline && <p className="mb-1 text-sm font-medium">Основной клиент</p>}
+      {inline ? null : canEdit ? (
           <button
             type="button"
             ref={triggerRef}
             aria-label={`Основной клиент: ${valueLabel}`}
             aria-haspopup="dialog"
-            aria-expanded={open && !direct}
+            aria-expanded={open}
             {...fieldError}
             disabled={disabled}
-            className={`flex min-h-11 min-w-0 flex-1 cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm hover:bg-sky-50 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60 ${focusStyle}`}
+            className={`flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm hover:bg-sky-50 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60 ${focusStyle}`}
             onClick={onOpen}
           >
             <span className="min-w-0 break-words">
@@ -240,31 +250,13 @@ export default function PartyOrderClientPicker({
             </span>
             <FontAwesomeIcon icon={faChevronDown} className="shrink-0 text-slate-600" aria-hidden="true" />
           </button>
-          {showCreateButton && canCreate ? (
-            <button
-              type="button"
-              ref={createTriggerRef}
-              aria-haspopup="dialog"
-              aria-expanded={open && direct}
-              className={`${buttonStyle} disabled:cursor-not-allowed disabled:opacity-60`}
-              disabled={disabled}
-              onClick={() => {
-                setDirectCreate(true)
-                onOpen()
-              }}
-            >
-              Создать клиента
-            </button>
-          ) : null}
-        </div>
       ) : <p className="break-words text-sm">{selectedName || 'Клиент не выбран'}{contact ? ` · ${contact}` : ''}</p>}
-      {open && canEdit && <ClientPickerDialog
+      {(inline || open) && canEdit && <ClientLookup
         companyId={companyId} context={context} clients={clients} selectedId={selectedId}
-        direct={direct} onChoose={onChoose} onClose={() => {
-          const returnTrigger = direct ? createTriggerRef : triggerRef
-          setDirectCreate(false)
+        inline={inline} open={open} searchRef={searchRef} fieldError={inline ? fieldError : undefined}
+        onOpen={onOpen} onChoose={onChoose} onClose={(restoreFocus = true) => {
           onClose()
-          requestAnimationFrame(() => (returnTrigger.current || triggerRef.current)?.focus())
+          if (restoreFocus) requestAnimationFrame(() => (triggerRef.current || searchRef.current)?.focus())
         }} initialForm={initialForm}
         onFormStateChange={onFormStateChange} onDirtyChange={onDirtyChange}
       />}
