@@ -393,12 +393,26 @@ function Wizard({
       setRentalMinutes(Math.max(1, nextDuration || 60))
     }
   }
-  const addableServices = step === 2 && canEditServices
-    ? [...servicesById.values()].filter(
-      (service) => isPartyServiceAvailable(service, draft) &&
-        !draft.serviceSelections.some((item) => String(item.serviceId) === String(service._id))
-    )
+  const compatibleServices = step === 2 && canEditServices
+    ? [...servicesById.values()].filter((service) => isPartyServiceAvailable(service, draft))
     : []
+  const addableServices = compatibleServices.filter(
+    (service) => !draft.serviceSelections.some((item) => String(item.serviceId) === String(service._id))
+  )
+  let servicePickerMessage = ''
+  if (step === 2 && canEditServices && addableServices.length === 0) {
+    if (compatibleServices.length > 0) {
+      servicePickerMessage = 'Все подходящие услуги уже добавлены.'
+    } else if (servicesById.size === 0) {
+      servicePickerMessage = canManageCatalog
+        ? 'В справочнике пока нет услуг. Чтобы создать услугу, нажмите «+».'
+        : 'В справочнике пока нет услуг. Попросите администратора добавить услугу.'
+    } else {
+      servicePickerMessage = canManageCatalog
+        ? 'Для выбранного типа заказа и места нет доступных услуг. Измените тип или место либо проверьте настройки доступности услуги.'
+        : 'Для выбранного типа заказа и места нет доступных услуг. Измените тип или место либо попросите администратора проверить доступность услуги.'
+    }
+  }
   const addService = (serviceId) =>
     selectServices([...draft.serviceSelections, { serviceId: String(serviceId), quantity: 1 }])
   const serviceDetails = (service) =>
@@ -994,7 +1008,11 @@ function Wizard({
                   const service = servicesById.get(String(item.serviceId))
                   return (
                     <div
-                      className="grid items-end gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-[minmax(0,1fr)_7rem_auto]"
+                      className={`grid items-end gap-3 rounded-xl border border-slate-200 p-3 ${
+                        service?.repeatable
+                          ? 'sm:grid-cols-[minmax(0,1fr)_7rem_auto]'
+                          : 'sm:grid-cols-[minmax(0,1fr)_auto]'
+                      }`}
                       key={String(item.serviceId)}
                     >
                       <div>
@@ -1002,40 +1020,38 @@ function Wizard({
                         <p className="mt-1 text-sm text-slate-600">
                           {item.durationMinutes || 0} мин за выполнение
                           {canPrice ? ` · ${money(item.unitPrice)}` : ''}
+                          {!service?.repeatable && Number(item.quantity) > 1
+                            ? ` · ${item.quantity} шт.`
+                            : ''}
                           {draft.placeType === 'company_location' &&
                           item.includedRentalMinutes
                             ? ` · аренда включена: ${item.includedRentalMinutes} мин`
                             : ''}
                         </p>
                       </div>
-                      <label className="text-sm">
-                        Количество
-                        <input
-                          className={input}
-                          type="number"
-                          min={1}
-                          max={
-                            service?.repeatable
-                              ? service.maxQuantity || 100000
-                              : Math.max(1, Number(item.quantity))
-                          }
-                          step={1}
-                          disabled={
-                            !can('orders.servicesIds', 'edit') ||
-                            !service?.repeatable
-                          }
-                          value={item.quantity}
-                          onChange={(event) =>
-                            selectServices(
-                              draft.serviceSelections.map((entry, position) =>
-                                position === index
-                                  ? { ...entry, quantity: event.target.value }
-                                  : entry
+                      {service?.repeatable ? (
+                        <label className="text-sm">
+                          Количество
+                          <input
+                            className={input}
+                            type="number"
+                            min={1}
+                            max={service.maxQuantity || 100000}
+                            step={1}
+                            disabled={!canEditServices}
+                            value={item.quantity}
+                            onChange={(event) =>
+                              selectServices(
+                                draft.serviceSelections.map((entry, position) =>
+                                  position === index
+                                    ? { ...entry, quantity: event.target.value }
+                                    : entry
+                                )
                               )
-                            )
-                          }
-                        />
-                      </label>
+                            }
+                          />
+                        </label>
+                      ) : null}
                       <div className="flex flex-wrap gap-2">
                         {canManageCatalog && canEditServices && service && (
                           <button type="button" className={button} aria-label={`Редактировать услугу ${item.title}`}
@@ -1095,6 +1111,10 @@ function Wizard({
                     ))}
                 </select>
               </label>
+              ) : servicePickerMessage ? (
+                <p className="min-w-0 flex-1 self-center text-sm text-slate-700">
+                  {servicePickerMessage}
+                </p>
               ) : null}
               {canManageCatalog && canEditServices && (
                 <button type="button" className={`${button} inline-grid size-11 shrink-0 place-items-center`} aria-label="Создать услугу" title="Создать услугу" aria-haspopup="dialog"

@@ -143,7 +143,7 @@ export const createPartyOrderPaymentService = ({
     }
     if (!(await supportsTransactions()))
       fail(
-        'Сервер пока не готов к безопасному сохранению заказа с бронированием и платежами. Обратитесь к администратору.',
+        'Не удалось сохранить заказ. Подключение к базе данных не поддерживает транзакции. Обратитесь к администратору.',
         503,
         'partycrm_initial_payment_transaction_required'
       )
