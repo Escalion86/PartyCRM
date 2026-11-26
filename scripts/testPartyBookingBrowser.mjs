@@ -607,6 +607,29 @@ export async function runPartyBookingBrowserTest({
     await scheduleDialog.getByRole('button', { name: 'Сохранить график', exact: true }).click()
     await scheduleDialog.waitFor({ state: 'hidden' })
     console.log('PASS browser: structured address, catalog service editing and schedule inside the order wizard')
+    const bookingMonth = dialog.getByRole('combobox', { name: 'Месяц', exact: true })
+    const bookingYear = dialog.getByRole('combobox', { name: 'Год', exact: true })
+    const selectCalendarPeriod = async (field, value, dateFrom, days) => {
+      const [response] = await Promise.all([
+        page.waitForResponse((candidate) => {
+          const request = candidate.request()
+          return new URL(request.url()).pathname === '/api/party/orders/availability' &&
+            request.method() === 'POST' && request.postDataJSON()?.dateFrom === dateFrom
+        }),
+        field.selectOption(value),
+      ])
+      assert.equal(response.request().postDataJSON().days, days)
+      return response
+    }
+    const initialYear = await bookingYear.inputValue()
+    const otherMonth = (await bookingMonth.inputValue()) === '10' ? '01' : '10'
+    assert.ok((await selectCalendarPeriod(bookingMonth, otherMonth, `${initialYear}-${otherMonth}-01`, 31)).ok())
+    assert.equal(await bookingYear.inputValue(), initialYear)
+    if (initialYear === '2027') {
+      assert.ok((await selectCalendarPeriod(bookingYear, '2028', `2028-${otherMonth}-01`, 31)).ok())
+    }
+    assert.ok((await selectCalendarPeriod(bookingYear, '2027', `2027-${otherMonth}-01`, 31)).ok())
+    assert.equal(await bookingMonth.inputValue(), otherMonth)
     let failAvailability = true
     await page.route('**/api/party/orders/availability', async (route) => {
       if (failAvailability && route.request().postDataJSON()?.dateFrom === '2027-11-01') {
@@ -614,7 +637,7 @@ export async function runPartyBookingBrowserTest({
         await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { code: 'qa_booking_unavailable', message: 'Проверка временно недоступна' } }) })
       } else await route.continue()
     })
-    await dialog.getByLabel('Месяц', { exact: true }).fill('2027-11')
+    assert.equal((await selectCalendarPeriod(bookingMonth, '11', '2027-11-01', 30)).status(), 503)
     await dialog.getByText('Проверка временно недоступна', { exact: true }).waitFor()
     await dialog.getByRole('button', { name: 'Повторить проверку', exact: true }).click()
     await dialog
@@ -1015,6 +1038,66 @@ export async function runPartyBookingBrowserTest({
       })
       assert.ok(clientRequests.length > 0)
       assert.ok(clientRequests.every((tenantId) => tenantId === String(company._id)))
+
+      await page.goto(`${origin}/company/settings/documents`)
+      const providerFullName = page.getByLabel('ФИО или полное название поставщика', { exact: true })
+      const providerDisplayName = page.getByLabel('Краткое название для документов', { exact: true })
+      const providerName = 'ИП Иванов Иван Иванович'
+      const shortProviderName = 'ИП Иванов'
+      const isSettingsPatch = (request) => new URL(request.url()).pathname === documentSettingsPath &&
+        request.method() === 'PATCH'
+      const requisitesPatches = []
+      const recordRequisitesPatch = (request) => {
+        if (isSettingsPatch(request)) requisitesPatches.push(request.postDataJSON())
+      }
+      page.on('request', recordRequisitesPatch)
+      try {
+        await providerFullName.fill('')
+        await providerFullName.pressSequentially('ИП ')
+        assert.equal(await providerFullName.inputValue(), 'ИП ')
+        await providerFullName.pressSequentially('Иванов Иван Иванович')
+        assert.equal(await providerFullName.inputValue(), providerName)
+        assert.equal(requisitesPatches.length, 0)
+
+        const [fullNameSaved, displayNameSaved] = await Promise.all([
+          page.waitForResponse((response) => isSettingsPatch(response.request()) &&
+            response.request().postDataJSON().documents?.requisites?.providerFullName === providerName &&
+            response.request().postDataJSON().documents?.requisites?.providerDisplayName !== shortProviderName),
+          page.waitForResponse((response) => isSettingsPatch(response.request()) &&
+            response.request().postDataJSON().documents?.requisites?.providerDisplayName === shortProviderName),
+          (async () => {
+            await providerDisplayName.fill(shortProviderName)
+            await providerDisplayName.blur()
+          })(),
+        ])
+        assert.ok(fullNameSaved.ok() && displayNameSaved.ok())
+        assert.equal(requisitesPatches.length, 2)
+        const savedRequisites = (await documentCompanies.findOne(documentCompanyFilter)).settings.documents.requisites
+        assert.equal(savedRequisites.providerFullName, providerName)
+        assert.equal(savedRequisites.providerDisplayName, shortProviderName)
+      } finally {
+        page.off('request', recordRequisitesPatch)
+      }
+      console.log('PASS browser: company requisites preserve spaces while typing and save both fields on blur')
+
+      await page.getByRole('button', { name: 'Ещё', exact: true }).click()
+      const mobileManagement = page.locator('#party-primary-mobile-menu details').filter({
+        has: page.getByText('Управление', { exact: true }),
+      })
+      await mobileManagement.getByRole('link', { name: 'Документы', exact: true }).waitFor()
+      assert.equal(await mobileManagement.getByText('Настройки компании', { exact: true }).count(), 0)
+      await page.keyboard.press('Escape')
+
+      for (const documentName of ['договора', 'акта']) {
+        const chooseFile = page.getByRole('button', { name: `Выбрать файл ${documentName}`, exact: true })
+        const [chooser] = await Promise.all([
+          page.waitForEvent('filechooser'),
+          chooseFile.press('Enter'),
+        ])
+        assert.equal(await chooser.element().getAttribute('accept'), '.docx')
+        assert.equal(await chooser.element().isVisible(), false)
+        await chooser.setFiles([])
+      }
     } finally {
       page.off('request', recordContractClientRequest)
       await page.evaluate(() => window.partyContractDownload?.restore())
@@ -1360,6 +1443,44 @@ export async function runPartyBookingBrowserTest({
     await serviceEditor.getByRole('button', { name: 'Отмена', exact: true }).click()
     console.log('PASS browser: service restrictions can be disabled without losing availability settings')
 
+    const ticketProvidersPath = '**/api/party/ticketing/providers'
+    const ticketProviderMethods = []
+    const mockTicketProviders = (route) => {
+      const method = route.request().method()
+      ticketProviderMethods.push(method)
+      if (method !== 'GET') return route.abort()
+      return route.fulfill({ json: { success: true, data: {
+        encryptionReady: true,
+        providers: [{ provider: 'ticketscloud', title: 'Ticketscloud', configured: true, status: 'verified', revision: 1 }],
+      } } })
+    }
+    await page.route(ticketProvidersPath, mockTicketProviders)
+    try {
+      await page.goto(`${origin}/company/settings/integrations`, { waitUntil: 'domcontentloaded' })
+      const calendarAccordion = page.getByRole('button', { name: /^Google Calendar/ })
+      const ticketAccordion = page.getByRole('button', { name: /^Билетные сервисы и кассы/ })
+      await ticketAccordion.getByText('Интеграция подключена', { exact: true }).waitFor({ state: 'attached' })
+      for (const accordion of [calendarAccordion, ticketAccordion]) {
+        assert.equal(await accordion.getAttribute('aria-expanded'), 'false')
+        assert.ok(await accordion.getAttribute('aria-controls'))
+      }
+      const ticketPanel = page.locator(`[id="${await ticketAccordion.getAttribute('aria-controls')}"]`)
+      await ticketAccordion.press('Enter')
+      const ticketKey = ticketPanel.getByLabel('API-ключ Ticketscloud', { exact: true })
+      await ticketKey.fill('unsaved-ticket-key')
+      assert.equal(await ticketAccordion.getAttribute('aria-expanded'), 'true')
+      await ticketAccordion.click()
+      await ticketPanel.waitFor({ state: 'hidden' })
+      assert.equal(await ticketAccordion.getAttribute('aria-expanded'), 'false')
+      await ticketAccordion.click()
+      assert.equal(await ticketKey.inputValue(), 'unsaved-ticket-key')
+      await ticketKey.clear()
+      assert.deepEqual([...new Set(ticketProviderMethods)], ['GET'])
+    } finally {
+      await page.unroute(ticketProvidersPath, mockTicketProviders)
+    }
+    console.log('PASS browser: ticket integration accordion keeps its draft when collapsed and reopened')
+
     await page.goto(`${origin}/company/settings/order-types`, { waitUntil: 'domcontentloaded' })
     await page.getByRole('button', { name: 'Добавить тип', exact: true }).click()
     await page.getByRole('dialog', { name: 'Новый тип заказа', exact: true }).getByLabel('Название типа').waitFor()
@@ -1394,6 +1515,18 @@ export async function runPartyBookingBrowserTest({
     await page.reload({ waitUntil: 'domcontentloaded' })
     await preview.waitFor()
     assert.equal(await preview.getAttribute('src'), logoUrl)
+    await page.setViewportSize({ width: 1280, height: 844 })
+    const sidebar = page.locator('aside').filter({
+      has: page.getByRole('navigation', { name: 'Основная навигация', exact: true }),
+    })
+    const sidebarLogo = sidebar.getByRole('img', { name: /^Логотип/ })
+    await sidebarLogo.waitFor()
+    const [sidebarBounds, logoBounds] = await Promise.all([sidebar.boundingBox(), sidebarLogo.boundingBox()])
+    assert.ok(sidebarBounds && logoBounds)
+    const sidebarCenter = sidebarBounds.x + sidebarBounds.width / 2
+    const logoCenter = logoBounds.x + logoBounds.width / 2
+    assert.ok(Math.abs(sidebarCenter - logoCenter) <= 1, 'The company logo is not centered in the sidebar')
+    await page.setViewportSize({ width: 390, height: 844 })
     await branding.getByRole('button', { name: 'Убрать логотип', exact: true }).click()
     await branding.getByRole('button', { name: 'Сохранить оформление', exact: true }).click()
     await branding.getByText('Оформление сохранено', { exact: true }).waitFor()

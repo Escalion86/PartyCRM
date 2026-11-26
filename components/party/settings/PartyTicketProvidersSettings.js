@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
+import PartyIntegrationCard from './PartyIntegrationCard'
 
 const button = 'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50'
 const field = 'min-h-11 min-w-0 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm'
@@ -13,6 +14,14 @@ const initialPeriod = () => {
   yesterday.setDate(today.getDate() - 1)
   const local = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
   return { from: local(yesterday), to: local(today) }
+}
+
+const getProvidersIndicatorState = (data, error) => {
+  if (error) return 'warning'
+  if (!data) return 'loading'
+  const configured = data.providers.filter((provider) => provider.provider !== 'krasbilet' && provider.configured)
+  if (!data.encryptionReady || configured.some((provider) => provider.status !== 'verified')) return 'warning'
+  return configured.length ? 'connected' : 'disconnected'
 }
 
 function ProviderForm({ connection, companyId, encryptionReady, onConnection }) {
@@ -82,12 +91,41 @@ function CompanyTicketProvidersSettings({ activeCompanyId }) {
     if (activeCompanyId) apiJson('/api/party/ticketing/providers', { headers: { 'x-partycrm-company-id': activeCompanyId } }).then((result) => { if (live) setData(result.data) }).catch((cause) => { if (live) setError(cause.message || 'Не удалось загрузить подключения') })
     return () => { live = false }
   }, [activeCompanyId, version])
-  return <section className="min-w-0 rounded-2xl border border-sky-100 bg-white"><details className="group"><summary className="min-h-20 cursor-pointer px-5 py-4"><span className="font-semibold text-slate-900">Билетные сервисы и кассы</span><span className="mt-1 block text-sm text-slate-500">Ticketscloud, Эвотор и статус подключения Красбилета. Чтение и сверка данных.</span></summary><div className="grid min-w-0 gap-4 border-t border-sky-100 p-4 sm:p-5">
-    {error ? <div role="alert" className="grid gap-2 text-sm text-red-800">{error}<button type="button" onClick={() => { setError(''); setData(null); setVersion((value) => value + 1) }} className={`${button} justify-self-start`}>Повторить загрузку</button></div> : !data ? <p className="text-sm text-slate-500">Загружаем подключения…</p> : <>
-      {!data.encryptionReady ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Защищённое хранилище токенов не настроено. Обратитесь к администратору сервера.</p> : null}
-      {data.providers.map((connection) => connection.provider === 'krasbilet' ? <div key={connection.provider} className="rounded-xl border border-dashed border-slate-200 p-4"><h3 className="font-semibold">Красбилет</h3><p className="mt-2 text-sm text-slate-600">{connection.limitation}</p></div> : <ProviderForm key={`${activeCompanyId}:${connection.provider}`} companyId={activeCompanyId} connection={connection} encryptionReady={data.encryptionReady} onConnection={(next) => setData((value) => ({ ...value, providers: value.providers.map((row) => row.provider === next.provider ? next : row) }))} />)}
-    </>}
-  </div></details></section>
+  return (
+    <PartyIntegrationCard
+      title="Билетные сервисы и кассы"
+      description="Ticketscloud, Эвотор и статус подключения Красбилета. Чтение и сверка данных."
+      indicatorState={getProvidersIndicatorState(data, error)}
+      keepMounted
+    >
+      <div className="grid min-w-0 gap-4">
+        {error ? (
+          <div role="alert" className="grid gap-2 text-sm text-red-800">
+            {error}
+            <button type="button" onClick={() => { setError(''); setData(null); setVersion((value) => value + 1) }} className={`${button} justify-self-start`}>
+              Повторить загрузку
+            </button>
+          </div>
+        ) : !data ? <p className="text-sm text-slate-500">Загружаем подключения…</p> : <>
+          {!data.encryptionReady ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Защищённое хранилище токенов не настроено. Обратитесь к администратору сервера.</p> : null}
+          {data.providers.map((connection) => connection.provider === 'krasbilet' ? (
+            <div key={connection.provider} className="rounded-xl border border-dashed border-slate-200 p-4">
+              <h3 className="font-semibold">Красбилет</h3>
+              <p className="mt-2 text-sm text-slate-600">{connection.limitation}</p>
+            </div>
+          ) : (
+            <ProviderForm
+              key={`${activeCompanyId}:${connection.provider}`}
+              companyId={activeCompanyId}
+              connection={connection}
+              encryptionReady={data.encryptionReady}
+              onConnection={(next) => setData((value) => ({ ...value, providers: value.providers.map((row) => row.provider === next.provider ? next : row) }))}
+            />
+          ))}
+        </>}
+      </div>
+    </PartyIntegrationCard>
+  )
 }
 
 export default function PartyTicketProvidersSettings({ activeCompanyId }) {

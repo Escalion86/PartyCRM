@@ -74,7 +74,7 @@ function OrderBoardCard({
             className="grid w-[3.625rem] rounded-lg bg-sky-50 px-1.5 py-1.5 text-center text-xs font-semibold leading-tight text-sky-900 tabular-nums"
           >
             <span className="text-2xl leading-none">{dateParts.day}</span>
-            <span>{dateParts.month}</span>
+            <span>{dateParts.month.replace(/\.$/, '')}</span>
             <span className="mt-1 border-t border-sky-200 pt-1">{dateParts.hour}:{dateParts.minute}</span>
           </time>
         )}

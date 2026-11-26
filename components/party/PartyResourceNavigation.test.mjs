@@ -69,11 +69,11 @@ const setup = ({
   role = 'performer',
   permissions,
   active,
+  pathname = `/${variant}/resources`,
 } = {}) => {
   const redirects = [],
     listeners = new Map()
   let current = membership({ role, permissions, active })
-  const pathname = `${variant}/resources`.replace(/^/, '/')
   const window = {
     location: { hash: '', pathname },
     addEventListener: (name, handler) => {
@@ -221,3 +221,42 @@ test('company navigation reflects active inventory and ticketing modules after s
   assert.ok(h.moduleLinks().includes('/company/ticketing'))
   h.host.dispose()
 })
+
+for (const [role, pathname] of [
+  ['owner', '/company/settings'],
+  ['admin', '/company/settings/documents'],
+]) {
+  test(`company settings are direct links under management for ${role}`, async () => {
+    const h = setup({ variant: 'company', role, pathname })
+    await h.host.flush()
+    const navigation = [...nodes(h.host.value)]
+    const management = navigation.find((node) => node.props?.group?.id === 'management')
+    assert.ok(management)
+    assert.deepEqual(
+      management.props.group.items.filter((item) => item.href.startsWith('/company/settings')).map((item) => item.href),
+      companySettings.COMPANY_SETTINGS_TABS.map((item) => item.href)
+    )
+    assert.equal(management.props.active, true)
+    assert.equal(navigation.some((node) => node.props?.item?.label === 'Настройки компании'), false)
+    const settingsLinks = [...nodes(management.props.children)].filter(
+      (node) => node.props?.item?.href.startsWith('/company/settings')
+    )
+    assert.deepEqual(
+      settingsLinks.filter((node) => node.props.active).map((node) => node.props.item.href),
+      [pathname]
+    )
+    h.host.dispose()
+  })
+}
+
+for (const [role, active] of [['performer', true], ['location_owner', true], ['admin', false]]) {
+  test(`company settings links are hidden for ${role} with active membership ${active}`, async () => {
+    const h = setup({ variant: 'company', role, active })
+    await h.host.flush()
+    assert.equal(
+      [...nodes(h.host.value)].some((node) => node.props?.item?.href.startsWith('/company/settings')),
+      false
+    )
+    h.host.dispose()
+  })
+}

@@ -6,6 +6,17 @@ import { partyDateInZone } from '@helpers/partyWorkingSchedule'
 
 const button =
   'min-h-11 cursor-pointer rounded-lg border px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50'
+const calendarSelect =
+  'mt-1 min-h-11 w-full cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 disabled:cursor-not-allowed'
+const monthFormatter = new Intl.DateTimeFormat('ru-RU', {
+  month: 'long',
+  timeZone: 'UTC',
+})
+const calendarMonths = Array.from({ length: 12 }, (_, index) => ({
+  value: String(index + 1).padStart(2, '0'),
+  label: monthFormatter.format(Date.UTC(2000, index, 1)),
+}))
+
 export default function PartyOrderAvailabilityPicker({
   companyId,
   orderId,
@@ -26,6 +37,13 @@ export default function PartyOrderAvailabilityPicker({
   )
   const [retry, setRetry] = useState(0)
   const [state, setState] = useState({ key: '', data: null, error: '' })
+  const [calendarYear, calendarMonth] = month.split('-')
+  const firstYear = Math.max(1, Number(calendarYear) - 10)
+  const lastYear = Math.min(9999, Number(calendarYear) + 10)
+  const calendarYears = Array.from(
+    { length: lastYear - firstYear + 1 },
+    (_, index) => String(firstYear + index).padStart(4, '0')
+  )
   const key = JSON.stringify([
     companyId,
     orderId,
@@ -100,23 +118,48 @@ export default function PartyOrderAvailabilityPicker({
     })
   const weekday = new Date(`${month}-01T12:00:00Z`).getUTCDay()
   const offset = (weekday + 6) % 7
+  const changeCalendarMonth = (year, monthNumber) => {
+    setMonth(`${year}-${monthNumber}`)
+    setDay('')
+  }
   return (
     <div className="min-w-0 space-y-4">
-      <label className="block text-sm">
-        Месяц
-        <input
-          type="month"
-          className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-          value={month}
-          disabled={disabled}
-          onChange={(event) => {
-            if (event.target.value) {
-              setMonth(event.target.value)
-              setDay('')
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,7rem)] gap-3">
+        <label className="block text-sm">
+          Месяц
+          <select
+            className={calendarSelect}
+            value={calendarMonth}
+            disabled={disabled}
+            onChange={(event) =>
+              changeCalendarMonth(calendarYear, event.target.value)
             }
-          }}
-        />
-      </label>
+          >
+            {calendarMonths.map(({ value, label }) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-sm">
+          Год
+          <select
+            className={calendarSelect}
+            value={calendarYear}
+            disabled={disabled}
+            onChange={(event) =>
+              changeCalendarMonth(event.target.value, calendarMonth)
+            }
+          >
+            {calendarYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {!valid ? (
         <p className="text-sm text-slate-600">
           Выберите место и длительность, чтобы увидеть доступное время.

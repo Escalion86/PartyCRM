@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import useCompanySettings from '../useCompanySettings'
 
@@ -70,12 +70,63 @@ const readFileAsBase64 = (file) =>
     reader.readAsDataURL(file)
   })
 
+const getRequisiteValue = (requisites, key) =>
+  requisites[key] || (key === 'providerStatus' ? 'individual_entrepreneur' : '')
+
+const getProposalValue = (documents, key) =>
+  key === 'proposalValidityDays' ? String(documents[key] || 14) : documents[key] || ''
+
+const clearSavedDraft = (setDrafts, key, value) =>
+  setDrafts((previous) => {
+    if (previous[key] !== value) return previous
+    const next = { ...previous }
+    delete next[key]
+    return next
+  })
+
+function DocxTemplateFileButton({ documentName, disabled, onFileSelected }) {
+  const inputRef = useRef(null)
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Выбрать файл ${documentName}`}
+        disabled={disabled}
+        className="mt-4 min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+        onClick={() => inputRef.current?.click()}
+      >
+        Выбрать файл
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".docx"
+        hidden
+        disabled={disabled}
+        onChange={async (event) => {
+          const input = event.currentTarget
+          try {
+            await onFileSelected(input.files?.[0])
+          } finally {
+            input.value = ''
+          }
+        }}
+      />
+    </>
+  )
+}
+
 export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
   const { settings, access, loading, saving, error, savePatch } =
     useCompanySettings(activeCompanyId)
   const [readingTemplate, setReadingTemplate] = useState(false)
   const [fileError, setFileError] = useState('')
   const [proposalDrafts, setProposalDrafts] = useState({})
+  const [requisiteDrafts, setRequisiteDrafts] = useState({})
+  const [pendingDocumentSaves, setPendingDocumentSaves] = useState(0)
+  const focusedRequisite = useRef(null)
+  const documentSaves = useRef(null)
 
   const documents = settings?.documents ?? {}
   const requisites = documents.requisites ?? {}
@@ -85,39 +136,68 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
     proposalPaymentTerms: documents.proposalPaymentTerms || '',
     proposalIncludedText: documents.proposalIncludedText || '',
   }
-  usePartyUnsavedChanges(Object.entries(proposalDrafts).some(([key, value]) => value !== proposalValues[key]), {
-    label: 'настройки документов', scope: activeCompanyId, pending: readingTemplate,
+  const hasDrafts = Object.entries(requisiteDrafts).some(([key, value]) => value !== getRequisiteValue(requisites, key)) ||
+    Object.entries(proposalDrafts).some(([key, value]) => value !== proposalValues[key])
+  usePartyUnsavedChanges(hasDrafts, {
+    label: 'настройки документов', scope: activeCompanyId, pending: readingTemplate || pendingDocumentSaves > 0,
   })
   useEffect(() => {
+    documentSaves.current = { tail: Promise.resolve(), latest: null }
+    focusedRequisite.current = null
+    setPendingDocumentSaves(0)
+    setReadingTemplate(false)
+    setRequisiteDrafts({})
     setProposalDrafts({})
     setFileError('')
+    return () => { documentSaves.current = null }
   }, [activeCompanyId])
+
+  const saveDocuments = (getPatch) => {
+    const queue = documentSaves.current
+    if (!queue) return Promise.resolve(false)
+    const next = queue.tail.then(async () => {
+      if (documentSaves.current !== queue) return false
+      const current = queue.latest ?? documents
+      const patch = getPatch(current)
+      if (patch) {
+        const result = await savePatch({ documents: patch })
+        queue.latest = result?.settings?.documents ?? { ...current, ...patch }
+      }
+      return documentSaves.current === queue
+    })
+    queue.tail = next.catch(() => {})
+    setPendingDocumentSaves((count) => count + 1)
+    return next.finally(() => {
+      if (documentSaves.current === queue) setPendingDocumentSaves((count) => count - 1)
+    })
+  }
 
   const changeProposalField = (key, value) => setProposalDrafts((previous) => ({ ...previous, [key]: value }))
   const saveProposalField = async (key, input) => {
     const value = key === 'proposalValidityDays' ? String(Math.min(365, Math.max(1, Number(input) || 14))) : input
     changeProposalField(key, value)
     try {
-      if (value !== proposalValues[key]) await savePatch({ documents: { ...documents, [key]: key === 'proposalValidityDays' ? Number(value) : value } })
-      setProposalDrafts((previous) => {
-        if (previous[key] !== value) return previous
-        const next = { ...previous }
-        delete next[key]
-        return next
+      const saved = await saveDocuments((current) => {
+        if (value === getProposalValue(current, key)) return null
+        return { [key]: key === 'proposalValidityDays' ? Number(value) : value }
       })
+      if (saved) clearSavedDraft(setProposalDrafts, key, value)
     } catch {} // The settings hook displays the error; keep the draft for retry.
   }
 
-  const saveRequisite = (key, value) =>
-    savePatch({
-      documents: {
-        ...documents,
-        requisites: {
-          ...requisites,
-          [key]: value,
-        },
-      },
-    }).catch(() => null)
+  const changeRequisite = (key, value) => setRequisiteDrafts((previous) => ({ ...previous, [key]: value }))
+  const saveRequisite = async (key, value) => {
+    changeRequisite(key, value)
+    try {
+      const saved = await saveDocuments((current) => {
+        const currentRequisites = current.requisites ?? {}
+        const normalized = value.trim()
+        if (normalized === getRequisiteValue(currentRequisites, key)) return null
+        return { requisites: { ...currentRequisites, [key]: normalized } }
+      })
+      if (saved && focusedRequisite.current !== key) clearSavedDraft(setRequisiteDrafts, key, value)
+    } catch {} // The settings hook displays the error; keep the draft for retry.
+  }
 
   const saveDocxTemplate = async (type, file) => {
     if (!file) return
@@ -129,28 +209,20 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
       return
     }
 
+    const queue = documentSaves.current
     setReadingTemplate(true)
     setFileError('')
     try {
       const base64 = await readFileAsBase64(file)
-      const nextDocuments = { ...documents }
-
-      if (type === 'contract') {
-        nextDocuments.contractDocxTemplateBase64 = base64
-        nextDocuments.contractDocxTemplateFileName = file.name
-      } else if (type === 'act') {
-        nextDocuments.actDocxTemplateBase64 = base64
-        nextDocuments.actDocxTemplateFileName = file.name
-      } else {
-        nextDocuments.proposalDocxTemplateBase64 = base64
-        nextDocuments.proposalDocxTemplateFileName = file.name
-      }
-
-      await savePatch({ documents: nextDocuments })
+      if (documentSaves.current !== queue) return
+      await saveDocuments(() => ({
+        [`${type}DocxTemplateBase64`]: base64,
+        [`${type}DocxTemplateFileName`]: file.name,
+      }))
     } catch (cause) {
-      setFileError(cause.message || 'Не удалось загрузить шаблон')
+      if (documentSaves.current === queue) setFileError(cause.message || 'Не удалось загрузить шаблон')
     } finally {
-      setReadingTemplate(false)
+      if (documentSaves.current === queue) setReadingTemplate(false)
     }
   }
 
@@ -192,7 +264,7 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
               Статус поставщика
             </span>
             <select
-              value={requisites.providerStatus || 'individual_entrepreneur'}
+              value={requisiteDrafts.providerStatus ?? getRequisiteValue(requisites, 'providerStatus')}
               onChange={(event) =>
                 saveRequisite('providerStatus', event.target.value)
               }
@@ -209,9 +281,14 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
               </span>
               <input
                 type="text"
-                value={requisites[field.key] || ''}
+                value={requisiteDrafts[field.key] ?? getRequisiteValue(requisites, field.key)}
                 placeholder={field.placeholder}
-                onChange={(event) => saveRequisite(field.key, event.target.value)}
+                onFocus={() => { focusedRequisite.current = field.key }}
+                onChange={(event) => changeRequisite(field.key, event.target.value)}
+                onBlur={(event) => {
+                  focusedRequisite.current = null
+                  saveRequisite(field.key, event.target.value)
+                }}
                 className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
               />
             </label>
@@ -229,48 +306,36 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <label className="rounded-2xl border border-sky-100 bg-white p-5">
+        <div className="rounded-2xl border border-sky-100 bg-white p-5">
           <div className="text-sm font-semibold">DOCX-шаблон договора</div>
           <div className="mt-1 text-xs text-slate-500">
             Текущий:{' '}
             {documents.contractDocxTemplateFileName || 'не загружен'}
           </div>
-          <input
-            type="file"
-            accept=".docx"
+          <DocxTemplateFileButton
+            documentName="договора"
             disabled={readingTemplate}
-            className="mt-4 block text-sm"
-            onChange={async (event) => {
-              const input = event.target
-              try { await saveDocxTemplate('contract', input.files?.[0]) }
-              finally { input.value = '' }
-            }}
+            onFileSelected={(file) => saveDocxTemplate('contract', file)}
           />
           <div className="mt-4 text-xs leading-5 text-slate-500">
             Без пользовательского файла используется встроенный шаблон договора.
           </div>
-        </label>
+        </div>
 
-        <label className="rounded-2xl border border-sky-100 bg-white p-5">
+        <div className="rounded-2xl border border-sky-100 bg-white p-5">
           <div className="text-sm font-semibold">DOCX-шаблон акта</div>
           <div className="mt-1 text-xs text-slate-500">
             Текущий: {documents.actDocxTemplateFileName || 'не загружен'}
           </div>
-          <input
-            type="file"
-            accept=".docx"
+          <DocxTemplateFileButton
+            documentName="акта"
             disabled={readingTemplate}
-            className="mt-4 block text-sm"
-            onChange={async (event) => {
-              const input = event.target
-              try { await saveDocxTemplate('act', input.files?.[0]) }
-              finally { input.value = '' }
-            }}
+            onFileSelected={(file) => saveDocxTemplate('act', file)}
           />
           <div className="mt-4 text-xs leading-5 text-slate-500">
             Без пользовательского файла используется встроенный шаблон акта.
           </div>
-        </label>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
@@ -356,7 +421,7 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
         </label>
       </div>
 
-      {saving || readingTemplate ? (
+      {saving || readingTemplate || pendingDocumentSaves > 0 ? (
         <p className="text-xs text-slate-500">Сохраняем изменения...</p>
       ) : null}
     </div>
