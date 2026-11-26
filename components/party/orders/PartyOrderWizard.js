@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faCheck } from '@fortawesome/free-solid-svg-icons/faCheck'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faPencilAlt } from '@fortawesome/free-solid-svg-icons/faPencilAlt'
 import Modal from '@components/Modal'
@@ -375,7 +376,7 @@ function Wizard({
         })
       : 'Не указано'
   const edit = (patch) => {
-    setDraft((previous) => ({ ...previous, ...patch }))
+    setDraft((previous) => ({ ...previous, ...(typeof patch === 'function' ? patch(previous) : patch) }))
     setError('')
     setValidationStep(null)
   }
@@ -655,7 +656,7 @@ function Wizard({
       selectedId={draft.clientId}
       savedName={order.client?.name}
       canEdit={canEditClient}
-      inlineSearch={leadMode}
+      showCreateAction={leadMode}
       disabled={disabled}
       open={clientPickerVisible}
       fieldError={validationStep === 4 && invalidBriefField !== null ? undefined : fieldError(leadMode ? -1 : 4)}
@@ -961,11 +962,12 @@ function Wizard({
                   disabled={!canEditAddress}
                   canManage={canManageCatalog}
                   canEditDetails={can('orders.clientAddress', 'edit')}
-                  onChange={(clientAddress) => {
+                  onChange={(update) => edit((previous) => {
+                    const clientAddress = update(previous.clientAddress)
                     const line = formatAddressPoolShort({ ...clientAddress, comment: '' })
-                    const previousLine = formatAddressPoolShort({ ...draft.clientAddress, comment: '' })
-                    edit({ clientAddress, customAddress: line || (previousLine ? '' : draft.customAddress) })
-                  }}
+                    const previousLine = formatAddressPoolShort({ ...previous.clientAddress, comment: '' })
+                    return { clientAddress, customAddress: line || (previousLine ? '' : previous.customAddress) }
+                  })}
                 />
               )}
             </>
@@ -1003,71 +1005,79 @@ function Wizard({
                   </button>
                 </div>
               ) : null}
-              <div className="space-y-3">
-                {items.map((item, index) => {
-                  const service = servicesById.get(String(item.serviceId))
-                  return (
-                    <div
-                      className={`grid items-end gap-3 rounded-xl border border-slate-200 p-3 ${
-                        service?.repeatable
-                          ? 'sm:grid-cols-[minmax(0,1fr)_7rem_auto]'
-                          : 'sm:grid-cols-[minmax(0,1fr)_auto]'
-                      }`}
-                      key={String(item.serviceId)}
-                    >
-                      <div>
-                        <p className="font-semibold">{item.title}</p>
-                        <p className="mt-1 text-sm text-slate-600">
-                          {item.durationMinutes || 0} мин за выполнение
-                          {canPrice ? ` · ${money(item.unitPrice)}` : ''}
-                          {!service?.repeatable && Number(item.quantity) > 1
-                            ? ` · ${item.quantity} шт.`
-                            : ''}
-                          {draft.placeType === 'company_location' &&
-                          item.includedRentalMinutes
-                            ? ` · аренда включена: ${item.includedRentalMinutes} мин`
-                            : ''}
-                        </p>
-                      </div>
-                      {service?.repeatable ? (
-                        <label className="text-sm">
-                          Количество
-                          <input
-                            className={input}
-                            type="number"
-                            min={1}
-                            max={service.maxQuantity || 100000}
-                            step={1}
-                            disabled={!canEditServices}
-                            value={item.quantity}
-                            onChange={(event) =>
-                              selectServices(
-                                draft.serviceSelections.map((entry, position) =>
-                                  position === index
-                                    ? { ...entry, quantity: event.target.value }
-                                    : entry
-                                )
-                              )
-                            }
-                          />
-                        </label>
-                      ) : null}
-                      <div className="flex flex-wrap gap-2">
-                        {canManageCatalog && canEditServices && service && (
-                          <button type="button" className={button} aria-label={`Редактировать услугу ${item.title}`}
-                            onClick={(event) => openServiceEditor(String(item.serviceId), event.currentTarget)}>
-                            <FontAwesomeIcon icon={faPencilAlt} aria-hidden="true" />
-                          </button>
-                        )}
-                        <button className={button} type="button" disabled={!canEditServices}
-                          onClick={() => selectServices(draft.serviceSelections.filter((_, position) => position !== index))}>
-                          Убрать
-                        </button>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              {items.length ? (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-slate-900">Выбранные услуги</h3>
+                  <ul className="space-y-3" role="list" aria-label="Выбранные услуги">
+                    {items.map((item, index) => {
+                      const service = servicesById.get(String(item.serviceId))
+                      return (
+                        <li
+                          className={`grid items-end gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-950 ${
+                            service?.repeatable
+                              ? 'sm:grid-cols-[minmax(0,1fr)_7rem_auto]'
+                              : 'sm:grid-cols-[minmax(0,1fr)_auto]'
+                          }`}
+                          key={String(item.serviceId)}
+                        >
+                          <div className="min-w-0">
+                            <p className="flex items-start gap-2 font-semibold">
+                              <FontAwesomeIcon icon={faCheck} aria-hidden="true" className="mt-1 size-4 shrink-0 text-sky-700" />
+                              <span className="min-w-0 [overflow-wrap:anywhere]">{item.title}</span>
+                            </p>
+                            <p className="mt-1 pl-6 text-sm text-sky-900">
+                              {item.durationMinutes || 0} мин за выполнение
+                              {canPrice ? ` · ${money(item.unitPrice)}` : ''}
+                              {!service?.repeatable && Number(item.quantity) > 1
+                                ? ` · ${item.quantity} шт.`
+                                : ''}
+                              {draft.placeType === 'company_location' &&
+                              item.includedRentalMinutes
+                                ? ` · аренда включена: ${item.includedRentalMinutes} мин`
+                                : ''}
+                            </p>
+                          </div>
+                          {service?.repeatable ? (
+                            <label className="text-sm">
+                              Количество
+                              <input
+                                className={input}
+                                type="number"
+                                min={1}
+                                max={service.maxQuantity || 100000}
+                                step={1}
+                                disabled={!canEditServices}
+                                value={item.quantity}
+                                onChange={(event) =>
+                                  selectServices(
+                                    draft.serviceSelections.map((entry, position) =>
+                                      position === index
+                                        ? { ...entry, quantity: event.target.value }
+                                        : entry
+                                    )
+                                  )
+                                }
+                              />
+                            </label>
+                          ) : null}
+                          <div className="flex flex-wrap gap-2">
+                            {canManageCatalog && canEditServices && service && (
+                              <button type="button" className={`${button} bg-white`} aria-label={`Редактировать услугу ${item.title}`}
+                                onClick={(event) => openServiceEditor(String(item.serviceId), event.currentTarget)}>
+                                <FontAwesomeIcon icon={faPencilAlt} aria-hidden="true" />
+                              </button>
+                            )}
+                            <button className={`${button} bg-white`} type="button" disabled={!canEditServices}
+                              onClick={() => selectServices(draft.serviceSelections.filter((_, position) => position !== index))}>
+                              Убрать
+                            </button>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ) : null}
               {preservedItems.length ? (
                 <div className="rounded-xl border border-slate-200 p-3 text-sm">
                   <p className="font-semibold">Согласованные дополнительные позиции</p>

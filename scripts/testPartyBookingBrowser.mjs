@@ -227,10 +227,11 @@ export async function runPartyBookingBrowserTest({
     const clientTrigger = dialog.getByRole('button', { name: /^Основной клиент/ })
     const clientPicker = page.getByRole('dialog', { name: 'Выбор клиента', exact: true })
     const newClientDialog = page.getByRole('dialog', { name: 'Новый клиент', exact: true })
-    const clientSearch = dialog.getByLabel('Поиск клиента', { exact: true })
+    const clientSearch = clientPicker.getByLabel('Поиск клиента', { exact: true })
+    const clientResults = clientPicker.getByRole('list', { name: 'Клиенты', exact: true })
     const clientOptionsPath = '/api/party/order-options/clients'
-    const searchClients = async (query, scope = dialog, metric = null) => {
-      const fill = () => scope.getByLabel('Поиск клиента', { exact: true }).fill(query)
+    const searchClients = async (query, metric = null) => {
+      const fill = () => clientSearch.fill(query)
       const [response] = await Promise.all([
         page.waitForResponse((candidate) => {
           const url = new URL(candidate.url())
@@ -244,15 +245,11 @@ export async function runPartyBookingBrowserTest({
       return (await response.json()).data
     }
     const selectExistingClient = async (metric = null) => {
-      let scope = dialog
-      if (await clientTrigger.isVisible()) {
-        const open = () => clientTrigger.click()
-        await (metric ? leadAction(metric, 'clicks', open) : open())
-        scope = clientPicker
-      }
-      const matches = await searchClients(`8 ${String(client.phone).slice(1)}`, scope, metric)
+      const open = () => clientTrigger.click()
+      await (metric ? leadAction(metric, 'clicks', open) : open())
+      const matches = await searchClients(`8 ${String(client.phone).slice(1)}`, metric)
       assert.ok(matches.some((person) => String(person._id) === String(client._id)))
-      const choose = () => scope.getByRole('list', { name: 'Клиенты', exact: true }).getByRole('button', { name: client.firstName }).click()
+      const choose = () => clientResults.getByRole('button', { name: client.firstName }).click()
       await (metric ? leadAction(metric, 'clicks', choose) : choose())
       await clientPicker.waitFor({ state: 'hidden' })
       assert.ok((await clientTrigger.textContent()).includes(client.firstName))
@@ -303,27 +300,69 @@ export async function runPartyBookingBrowserTest({
     assert.ok((await recoveredSearch.json()).data.some((person) => String(person._id) === String(client._id)))
     await newClientDialog.waitFor({ state: 'hidden' })
     assert.equal((await clientSearch.inputValue()).replace(/\D/g, '').slice(-10), String(client.phone).slice(-10))
-    await dialog.getByRole('list', { name: 'Клиенты', exact: true }).getByRole('button', { name: client.firstName }).click()
+    await clientResults.getByRole('button', { name: client.firstName }).click()
+    await clientPicker.waitFor({ state: 'hidden' })
     assert.ok((await clientTrigger.textContent()).includes(client.firstName))
     assert.equal(await clientsCollection.countDocuments({ tenantId: company._id, phone: client.phone }), existingPhoneCount)
     await clientTrigger.click()
     await clientPicker.getByRole('button', { name: 'Убрать клиента', exact: true }).click()
-    await clientSearch.waitFor()
-    console.log('PASS browser: duplicate phone returns to authorized inline lookup and selects the existing client without another record')
+    await clientPicker.waitFor({ state: 'hidden' })
+    console.log('PASS browser: duplicate phone opens authorized lookup and selects the existing client without another record')
+
+    const longClientMatches = [
+      ...Array.from({ length: 39 }, (_, index) => ({
+        _id: String(new Types.ObjectId()),
+        name: `Клиент для проверки прокрутки ${index + 1}`,
+      })),
+      { _id: String(client._id), name: client.firstName },
+    ]
+    const isLongClientSearch = (url) => url.pathname === clientOptionsPath &&
+      Boolean(url.searchParams.get('q')?.startsWith('Проверка прокрутки '))
+    await page.route(isLongClientSearch, (route) => route.fulfill({
+      json: { success: true, data: longClientMatches },
+    }))
+    try {
+      const leadLayout = page.getByRole('dialog', { name: 'Новая заявка', exact: true, includeHidden: true })
+      const lastClient = longClientMatches.at(-1)
+      await checkLayout()
+      for (const width of [390, 1280]) {
+        await page.setViewportSize({ width, height: 844 })
+        const before = await leadLayout.boundingBox()
+        await clientTrigger.click()
+        assert.equal((await searchClients(`Проверка прокрутки ${width}`)).length, longClientMatches.length)
+        await clientResults.getByRole('button', { name: longClientMatches[0].name, exact: true }).waitFor()
+        const lastResult = clientResults.getByRole('button').last()
+        assert.ok((await lastResult.textContent()).includes(lastClient.name))
+        const during = await leadLayout.boundingBox()
+        assert.ok(before && during && Math.abs(during.height - before.height) <= 1, 'Client matches resize the lead form')
+        assert.equal(await leadLayout.locator('[aria-label="Клиенты"]').count(), 0)
+        const scrolled = await clientResults.evaluate((list) => {
+          const overflow = getComputedStyle(list).overflowY
+          list.scrollTop = list.scrollHeight
+          return ['auto', 'scroll'].includes(overflow) && list.scrollTop > 0
+        })
+        assert.ok(scrolled, 'Matching clients should scroll within their list')
+        await lastResult.click()
+        await clientPicker.waitFor({ state: 'hidden' })
+        assert.ok((await clientTrigger.textContent()).includes(lastClient.name))
+        await clientTrigger.click()
+        await clientPicker.getByRole('button', { name: 'Убрать клиента', exact: true }).click()
+        await clientPicker.waitFor({ state: 'hidden' })
+      }
+    } finally {
+      await page.unroute(isLongClientSearch)
+    }
+    console.log('PASS browser: many client matches scroll independently at 390 and 1280 px')
 
     const leadComment = 'Проверка короткой заявки и восстановления'
     await leadAction('newClient', 'inputs', () => dialog.getByLabel('Суть обращения').fill(leadComment))
     assert.equal(await clientPicker.count(), 0)
-    for (const width of [390, 1280]) {
-      await page.setViewportSize({ width, height: 844 })
-      assert.ok(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
-      assert.ok(await clientSearch.isVisible())
-    }
     await page.setViewportSize({ width: 390, height: 844 })
     const newClientQuery = '8 (900) 000-04-67'
     const newClientName = 'Проверочный'
-    assert.deepEqual(await searchClients(newClientQuery, dialog, 'newClient'), [])
-    const createClient = dialog.getByRole('button', { name: 'Создать клиента', exact: true })
+    await leadAction('newClient', 'clicks', () => clientTrigger.click())
+    assert.deepEqual(await searchClients(newClientQuery, 'newClient'), [])
+    const createClient = clientPicker.getByRole('button', { name: 'Создать клиента', exact: true })
     await leadAction('newClient', 'clicks', () => createClient.click())
     const clientPhone = newClientDialog.getByLabel('Телефон', { exact: true })
     assert.equal((await clientPhone.inputValue()).replace(/\D/g, ''), '9000000467')
@@ -352,6 +391,7 @@ export async function runPartyBookingBrowserTest({
     assert.equal(savedClient?.firstName, newClientName)
     assert.equal(String(savedClient?.phone), '79000000467')
     await newClientDialog.waitFor({ state: 'hidden' })
+    await clientPicker.waitFor({ state: 'hidden' })
     assert.ok((await clientTrigger.textContent()).includes(newClientName))
     const [newLeadResponse] = await Promise.all([
       page.waitForResponse((response) => new URL(response.url()).pathname === '/api/party/orders' && response.request().method() === 'POST'),
@@ -372,7 +412,7 @@ export async function runPartyBookingBrowserTest({
     await selectExistingClient('existingClient')
     await leadAction('existingClient', 'inputs', () => dialog.getByLabel('Суть обращения').fill(leadComment))
     assert.equal(await dialog.getByLabel('Суть обращения').inputValue(), leadComment)
-    console.log('PASS browser: inline client search, prefill and create cancellation preserve the lead')
+    console.log('PASS browser: client picker, prefill and create cancellation preserve the lead')
     const { key: draftKey } = getPartyOrderWizardDraftScope({ tenantId: company._id, staff: { _id: staffId } })
     await page.waitForFunction(({ key, clientId, comment }) => {
       const saved = sessionStorage.getItem(key)
@@ -481,21 +521,55 @@ export async function runPartyBookingBrowserTest({
     await dialog.getByRole('button', { name: 'Далее', exact: true }).click()
     await place.selectOption('client_address')
     const addressEditor = dialog.getByRole('group', { name: 'Адрес выезда', exact: true })
-    await addressEditor.getByLabel('Город', { exact: true }).fill('Красноярск')
+    const city = addressEditor.getByRole('combobox', { name: 'Город', exact: true })
+    const cityName = 'Красноярск'
+    const cityOption = city.getByRole('option', { name: cityName, exact: true })
+    const townsPath = '/api/party/order-options/towns'
+    await addressEditor.getByRole('button', { name: 'Добавить город', exact: true }).click()
+    assert.equal(await cityOption.count(), 0)
+    await addressEditor.getByLabel('Новый город', { exact: true }).fill(cityName)
+    const [savedTownResponse] = await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname === townsPath && response.request().method() === 'POST'),
+      addressEditor.getByRole('button', { name: 'Сохранить город', exact: true }).click(),
+    ])
+    assert.equal(savedTownResponse.ok(), true)
+    await cityOption.waitFor({ state: 'attached' })
+    assert.equal(await city.inputValue(), cityName)
+
+    const duplicateTownResponse = await page.request.post(`${origin}${townsPath}`, {
+      headers: { 'x-partycrm-company-id': String(company._id) },
+      data: { town: cityName.toLocaleLowerCase('ru') },
+    })
+    assert.equal(duplicateTownResponse.ok(), true)
+    assert.equal((await duplicateTownResponse.json()).data.town, cityName)
+    const companyWithTown = await connection.db.collection('companies').findOne({ _id: company._id })
+    assert.deepEqual(companyWithTown.settings.towns.filter((town) => town.toLocaleLowerCase('ru') === 'красноярск'), [cityName])
+
     await addressEditor.getByLabel('Улица', { exact: true }).fill('Тестовая')
     await addressEditor.getByLabel('Дом', { exact: true }).fill('12')
     await place.selectOption('company_location')
-    await place.selectOption('client_address')
+    const [townsResponse] = await Promise.all([
+      page.waitForResponse((response) => new URL(response.url()).pathname === townsPath && response.request().method() === 'GET'),
+      place.selectOption('client_address'),
+    ])
+    assert.equal(townsResponse.ok(), true)
+    assert.ok((await townsResponse.json()).data.towns.includes(cityName))
+    await cityOption.waitFor({ state: 'attached' })
+    assert.equal(await city.inputValue(), cityName)
     assert.equal(await addressEditor.getByLabel('Улица', { exact: true }).inputValue(), 'Тестовая')
+    console.log('PASS browser: offsite city is selected, retained and available from the company catalog without duplicates')
     await place.selectOption('company_location')
     await room.selectOption(String(location._id))
     await checkLayout()
     await dialog.getByRole('button', { name: 'Далее', exact: true }).click()
     await dialog.getByRole('button', { name: /^Добавить «Программа»/ }).click()
+    const selectedServices = dialog.getByRole('list', { name: 'Выбранные услуги', exact: true })
+    await selectedServices.getByText('Программа', { exact: true }).waitFor()
     await dialog.getByText('Все подходящие услуги уже добавлены.', { exact: true }).waitFor()
     const quantity = dialog.getByLabel('Количество', { exact: true })
     assert.equal(await quantity.isEnabled(), true)
     await dialog.getByRole('button', { name: 'Убрать', exact: true }).click()
+    await selectedServices.waitFor({ state: 'hidden' })
     await dialog.getByRole('button', { name: 'Создать услугу', exact: true }).click()
     const newService = page.getByRole('dialog', { name: 'Новая услуга', exact: true })
     const newServiceTitle = 'Услуга проверки мастера'
@@ -503,6 +577,7 @@ export async function runPartyBookingBrowserTest({
     await newService.getByLabel('Длительность, мин', { exact: true }).fill('45')
     await newService.getByRole('button', { name: 'Сохранить', exact: true }).click()
     await newService.waitFor({ state: 'hidden' })
+    await selectedServices.getByText(newServiceTitle, { exact: true }).waitFor()
     assert.equal(await quantity.count(), 0)
     await dialog.getByRole('button', { name: `Редактировать услугу ${newServiceTitle}`, exact: true }).click()
     const editService = page.getByRole('dialog', { name: 'Редактировать услугу', exact: true })
@@ -514,6 +589,14 @@ export async function runPartyBookingBrowserTest({
     await dialog
       .getByLabel('Добавить услугу', { exact: true })
       .selectOption(String(service._id))
+    await selectedServices.getByText('Программа', { exact: true }).waitFor()
+    await dialog.getByRole('button', { name: `Добавить «${newServiceTitle}»` }).click()
+    const selectedNewService = selectedServices.getByRole('listitem').filter({ hasText: newServiceTitle })
+    await selectedNewService.waitFor()
+    assert.equal(await selectedServices.getByRole('listitem').count(), 2)
+    await selectedNewService.getByRole('button', { name: 'Убрать', exact: true }).click()
+    await selectedNewService.waitFor({ state: 'hidden' })
+    assert.equal(await selectedServices.getByRole('listitem').count(), 1)
     await dialog.getByLabel('Количество', { exact: true }).fill('2')
     await checkLayout()
     await dialog.getByRole('button', { name: 'Далее', exact: true }).click()
@@ -850,6 +933,104 @@ export async function runPartyBookingBrowserTest({
     assert.equal(await advancedMode.count(), 0)
     assert.equal(await ordinaryMode.count(), 0)
     assert.equal(await orderFormLayout.count(), 0)
+
+    const financeTab = modeEditor.getByRole('tab', { name: 'Финансы', exact: true })
+    const downloadContract = modeEditor.getByRole('button', { name: 'Скачать DOCX', exact: true })
+    const documentSettingsPath = '/api/party/company-settings'
+    const contractClientPath = `/api/party/clients/${client._id}`
+    const settingsLoaded = (response) => new URL(response.url()).pathname === documentSettingsPath &&
+      response.request().method() === 'GET'
+    const clientRequests = []
+    const recordContractClientRequest = (request) => {
+      if (new URL(request.url()).pathname === contractClientPath && request.method() === 'GET') {
+        clientRequests.push(request.headers()['x-partycrm-company-id'])
+      }
+    }
+    const documentCompanies = connection.db.collection('companies')
+    const documentCompanyFilter = { _id: company._id }
+    const previousDocuments = await documentCompanies.findOne(documentCompanyFilter, {
+      projection: { trialEndsAt: 1, 'settings.documents': 1 },
+    })
+    page.on('request', recordContractClientRequest)
+    try {
+      const [lockedSettings] = await Promise.all([
+        page.waitForResponse(settingsLoaded),
+        financeTab.click(),
+      ])
+      assert.equal((await lockedSettings.json()).data.access.allowDocuments, false)
+      await modeEditor.getByText(/на текущем тарифе/i).waitFor()
+      assert.equal(await downloadContract.count(), 0)
+      assert.equal(clientRequests.length, 0)
+
+      await documentCompanies.updateOne(documentCompanyFilter, { $set: {
+        trialEndsAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        'settings.documents.requisites.providerFullName': 'Организатор проверки',
+      } })
+      await page.goto(ordinaryEditorUrl)
+      const [enabledSettings] = await Promise.all([
+        page.waitForResponse(settingsLoaded),
+        financeTab.click(),
+      ])
+      assert.equal((await enabledSettings.json()).data.access.allowDocuments, true)
+      await modeEditor.getByText('Договор оказания услуг', { exact: true }).waitFor()
+      await modeEditor.getByLabel('№ договора', { exact: true }).fill('23')
+      await modeEditor.getByLabel('Дата договора', { exact: true }).fill('2027-11-14')
+
+      await page.evaluate(() => {
+        const originalClick = HTMLAnchorElement.prototype.click
+        const originalCreateObjectURL = URL.createObjectURL
+        const blobs = new Map()
+        const capture = { document: null }
+        URL.createObjectURL = function (blob) {
+          const url = originalCreateObjectURL.call(this, blob)
+          blobs.set(url, blob)
+          return url
+        }
+        HTMLAnchorElement.prototype.click = function () {
+          if (!this.download.endsWith('.docx')) return originalClick.call(this)
+          const { download: name, href } = this
+          const blob = blobs.get(href)
+          if (!blob) {
+            capture.document = { name }
+            return
+          }
+          void blob.slice(0, 4).arrayBuffer().then((buffer) => {
+            capture.document = { name, type: blob.type, header: [...new Uint8Array(buffer)] }
+          })
+        }
+        capture.restore = () => {
+          HTMLAnchorElement.prototype.click = originalClick
+          URL.createObjectURL = originalCreateObjectURL
+          delete window.partyContractDownload
+        }
+        window.partyContractDownload = capture
+      })
+      await downloadContract.click()
+      await page.waitForFunction(() => window.partyContractDownload.document)
+      const contract = await page.evaluate(() => window.partyContractDownload.document)
+      assert.deepEqual(contract, {
+        name: 'Договор №23 от 14.11.2027.docx',
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        header: [0x50, 0x4b, 0x03, 0x04],
+      })
+      assert.ok(clientRequests.length > 0)
+      assert.ok(clientRequests.every((tenantId) => tenantId === String(company._id)))
+    } finally {
+      page.off('request', recordContractClientRequest)
+      await page.evaluate(() => window.partyContractDownload?.restore())
+      const restore = { $set: {}, $unset: {} }
+      for (const [field, value] of Object.entries({
+        trialEndsAt: previousDocuments?.trialEndsAt,
+        'settings.documents': previousDocuments?.settings?.documents,
+      })) {
+        if (value === undefined) restore.$unset[field] = ''
+        else restore.$set[field] = value
+      }
+      await documentCompanies.updateOne(documentCompanyFilter, restore)
+    }
+    console.log('PASS browser: ordinary order editor exports a DOCX contract only on an allowed plan')
+    await page.goto(ordinaryEditorUrl)
+    await modeEditor.locator('dl[aria-label="Параметры заказа"]').waitFor()
 
     const statusBadge = modeEditor.getByText('Статус заказа', { exact: true }).locator('..')
     const wizardLauncher = modeEditor.getByRole('button', { name: 'Редактировать по шагам', exact: true })
@@ -1284,12 +1465,13 @@ export async function runPartyBookingBrowserTest({
       const managerClientTrigger = managerDialog.getByRole('button', { name: /^Основной клиент:/ })
       const managerHeaders = { 'x-partycrm-company-id': String(company._id) }
       const managerLookup = async (query) => {
+        await managerClientTrigger.click()
         const [response] = await Promise.all([
           managerPage.waitForResponse((candidate) => {
             const url = new URL(candidate.url())
             return url.pathname === clientOptionsPath && candidate.request().method() === 'GET' && url.searchParams.get('q') === query
           }),
-          managerDialog.getByLabel('Поиск клиента', { exact: true }).fill(query),
+          managerPicker.getByLabel('Поиск клиента', { exact: true }).fill(query),
         ])
         assert.equal(response.status(), 200)
         return (await response.json()).data
@@ -1302,7 +1484,8 @@ export async function runPartyBookingBrowserTest({
       await openManagerLead()
       const managerMatches = await managerLookup(String(client.phone))
       assert.ok(managerMatches.some((person) => String(person._id) === String(client._id)))
-      await managerDialog.getByRole('list', { name: 'Клиенты', exact: true }).getByRole('button', { name: client.firstName }).click()
+      await managerPicker.getByRole('list', { name: 'Клиенты', exact: true }).getByRole('button', { name: client.firstName }).click()
+      await managerPicker.waitFor({ state: 'hidden' })
       assert.ok((await managerClientTrigger.textContent()).includes(client.firstName))
       await managerClientTrigger.click()
       await managerPicker.getByRole('button', { name: 'Создать клиента', exact: true }).click()
@@ -1315,6 +1498,7 @@ export async function runPartyBookingBrowserTest({
       assert.equal(managerClientResponse.status(), 201)
       const managerClient = (await managerClientResponse.json()).data
       await managerClientForm.waitFor({ state: 'hidden' })
+      await managerPicker.waitFor({ state: 'hidden' })
       await managerDialog.getByRole('textbox', { name: /^Суть обращения/ }).fill('Заявка менеджера с ограниченной должностью')
       const [managerLeadResponse] = await Promise.all([
         managerPage.waitForResponse((response) => new URL(response.url()).pathname === '/api/party/orders' && response.request().method() === 'POST'),
@@ -1333,13 +1517,15 @@ export async function runPartyBookingBrowserTest({
       const hiddenPhoneMatches = await managerLookup(managerClient.name)
       assert.ok(hiddenPhoneMatches.some((person) => person._id === managerClient._id))
       assert.ok(hiddenPhoneMatches.every((person) => person.phone === undefined && person.email === undefined))
-      assert.equal(await managerDialog.getByText('9000000488', { exact: false }).count(), 0)
+      assert.equal(await managerPicker.getByText('9000000488', { exact: false }).count(), 0)
+      assert.equal(await managerPicker.getByRole('button', { name: 'Создать клиента', exact: true }).count(), 0)
       const createDenied = await managerPage.request.post(`${origin}${clientOptionsPath}`, { headers: managerHeaders, data: { firstName: 'Недоступный клиент' } })
       assert.equal(createDenied.status(), 403)
       console.log('PASS browser: phone and client-creation restrictions mask lookup data and reject direct creation')
 
       await connection.db.collection('roles').updateOne({ _id: managerPositionId }, { $set: { permissions: { ...intakePermissions, 'orders.clientId': 'read' } }, $inc: { revision: 1 } })
       await openManagerLead()
+      assert.equal(await managerClientTrigger.count(), 0)
       assert.equal(await managerDialog.getByLabel('Поиск клиента', { exact: true }).count(), 0)
       assert.equal(await managerDialog.getByRole('button', { name: 'Создать клиента', exact: true }).count(), 0)
       const lookupDenied = await managerPage.request.get(`${origin}${clientOptionsPath}?q=${encodeURIComponent(managerClient.name)}`, { headers: managerHeaders })

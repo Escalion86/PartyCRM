@@ -114,7 +114,8 @@ export async function PATCH(req) {
   // Keep schedule writes in their validated, revision-guarded endpoint. Dotted
   // updates also preserve a schedule changed since this settings read.
   const updateSet = Object.fromEntries(Object.entries(nextSettings)
-    .filter(([key]) => isGenericSetting(key) && !['modules', 'branding'].includes(key))
+    .filter(([key]) => isGenericSetting(key) && !['modules', 'branding'].includes(key) &&
+      (key !== 'towns' || Object.hasOwn(filteredBody, 'towns')))
     .map(([key, value]) => [`settings.${key}`, value]))
   if (Object.hasOwn(filteredBody, 'branding')) {
     for (const key of ['palette', 'logoUrl']) {

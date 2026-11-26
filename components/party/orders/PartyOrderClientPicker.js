@@ -26,28 +26,31 @@ const newClientForm = (phone = null) => ({
 })
 
 function ClientLookup({
-  companyId, context, clients, selectedId, onChoose, onOpen, onClose,
-  initialForm, onFormStateChange, onDirtyChange, inline, open, searchRef, fieldError,
+  companyId, context, clients, selectedId, onChoose, onClose,
+  initialForm, onFormStateChange, onDirtyChange, startWithCreate, canCreate,
 }) {
   const [search, setSearch] = useState('')
   const [lookup, setLookup] = useState(null)
   const [retry, setRetry] = useState(0)
-  const [creating, setCreating] = useState(() =>
-    open && canCreateClient(context) && initialForm?.open ? initialForm : null
-  )
+  const [creating, setCreating] = useState(() => {
+    if (!canCreate) return null
+    if (initialForm?.open) return initialForm
+    return startWithCreate ? newClientForm() : null
+  })
   const [dirty, setDirty] = useState(false)
   const [busy, setBusy] = useState(false)
   const [clipboardMessage, setClipboardMessage] = useState('')
+  const searchRef = useRef(null)
   const createButtonRef = useRef(null)
   const createRef = useRef(null)
   const initialFocusRef = useRef(null)
+  const openedDirectly = useRef(startWithCreate)
   const cancelledForm = useRef(null)
   const canReadName = canPartyAccess(context, { resource: 'orders.client.name' })
   const canReadPhone = canPartyAccess(context, { resource: 'orders.client.phone' })
   const canReadEmail = canPartyAccess(context, { resource: 'orders.client.email' })
   const canSearch = canReadName || canReadPhone || canReadEmail
   const query = canSearch ? search.trim() : ''
-  const canCreate = canCreateClient(context)
   const searchHint = [canReadName && 'имя', canReadPhone && 'телефон', !canReadName && !canReadPhone && canReadEmail && 'email'].filter(Boolean).join(' или ')
 
   useEffect(() => {
@@ -78,10 +81,9 @@ function ClientLookup({
     if (!createInput) return
     const frame = requestAnimationFrame(() => createInput.focus())
     return () => cancelAnimationFrame(frame)
-  }, [creating, searchRef])
+  }, [creating])
 
-  const showRecent = !inline || !canSearch
-  const results = query ? lookup?.clients || [] : showRecent ? clients.slice(0, 40) : []
+  const results = query ? lookup?.clients || [] : clients.slice(0, 40)
   const loading = Boolean(query && (lookup?.query !== query || lookup.retry !== retry))
   const handleDirtyChange = useCallback((value) => {
     setDirty(value)
@@ -102,7 +104,6 @@ function ClientLookup({
     searchRef.current?.focus()
   }
   const startCreating = () => {
-    if (inline) onOpen()
     if (cancelledForm.current?.query === query) {
       setCreating(cancelledForm.current.form)
       return
@@ -110,18 +111,21 @@ function ClientLookup({
     const phone = canPartyAccess(context, { resource: 'orders.client.phone', action: 'edit' }) ? normalizePhoneNumber(query) : null
     setCreating(newClientForm(phone ? Number(phone) : null))
   }
-  const cancelCreating = (keepDraft, returnQuery = query) => {
+  const returnToLookup = (keepDraft, returnQuery = query) => {
+    openedDirectly.current = false
     cancelledForm.current = keepDraft && initialForm?.open ? { query: returnQuery, form: initialForm } : null
     setCreating(null)
-    if (inline) onClose(false)
-    else onFormStateChange(null)
+    onFormStateChange(null)
     requestAnimationFrame(() => {
-      const target = returnQuery || !inline ? searchRef.current || createButtonRef.current : createButtonRef.current
-      target?.focus()
+      (searchRef.current || createButtonRef.current)?.focus()
     })
   }
+  const cancelCreating = (keepDraft) => {
+    if (openedDirectly.current) onClose(true)
+    else returnToLookup(keepDraft)
+  }
   const findExisting = (phone) => {
-    cancelCreating(true, phone)
+    returnToLookup(true, phone)
     setSearch(phone)
     setRetry((value) => value + 1)
   }
@@ -158,7 +162,6 @@ function ClientLookup({
                 value={search}
                 maxLength={120}
                 placeholder={searchHint}
-                {...fieldError}
                 className={`mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base placeholder:text-slate-600 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60 ${focusStyle}`}
                 onChange={(event) => {
                   setSearch(event.target.value)
@@ -171,14 +174,14 @@ function ClientLookup({
             </button>}
           </div>}
           {clipboardMessage && <p className="text-sm text-slate-600" role="status">{clipboardMessage}</p>}
-          {!inline && createButton}
+          {createButton}
           {loading ? <p className="text-sm text-slate-600" role="status">Ищем клиентов…</p> : query && lookup?.error ? (
             <div className="space-y-2 text-sm">
               <p role="alert" className="text-red-800">{lookup.error}</p>
               <button type="button" className={buttonStyle} onClick={() => setRetry((value) => value + 1)}>Повторить поиск</button>
             </div>
           ) : results.length ? (
-            <ul className={`divide-y divide-slate-200 rounded-lg border border-slate-200 ${inline ? 'max-h-56 overflow-y-auto overscroll-contain' : ''}`} aria-label="Клиенты">
+            <ul className="max-h-[min(22rem,45dvh)] divide-y divide-slate-200 overflow-y-auto overscroll-contain rounded-lg border border-slate-200" aria-label="Клиенты">
               {results.map((client) => {
                 const phone = phoneOf(client)
                 return (
@@ -191,12 +194,11 @@ function ClientLookup({
                 )
               })}
             </ul>
-          ) : query || showRecent ? <p className="text-sm text-slate-600" role="status">{query ? 'Клиенты не найдены. Измените запрос.' : 'Клиентов пока нет.'}</p> : null}
-          {inline && createButton}
+          ) : <p className="text-sm text-slate-600" role="status">{query ? 'Клиенты не найдены. Измените запрос.' : 'Клиентов пока нет.'}</p>}
           {selectedId && <button type="button" className={buttonStyle} onClick={() => select(null)}>Убрать клиента</button>}
         </div>
   )
-  const modal = !inline || creating ? (
+  return (
     <Modal
       open
       title={creating ? 'Новый клиент' : 'Выбор клиента'}
@@ -213,26 +215,27 @@ function ClientLookup({
     >
       {createForm || lookupFields}
     </Modal>
-  ) : null
-  return inline ? <>{lookupFields}{modal}</> : modal
+  )
 }
 
 export default function PartyOrderClientPicker({
   companyId, context, clients, selectedId, savedName, canEdit, disabled, open,
   onOpen, onClose, onChoose, initialForm, onFormStateChange, onDirtyChange, fieldError,
-  inlineSearch = false,
+  showCreateAction = false,
 }) {
   const triggerRef = useRef(null)
-  const searchRef = useRef(null)
-  const inline = inlineSearch && !selectedId && canEdit && (!open || canCreateClient(context))
+  const createButtonRef = useRef(null)
+  const [startWithCreate, setStartWithCreate] = useState(false)
+  const canCreate = canCreateClient(context)
   const selected = clients.find((client) => String(client._id) === selectedId)
   const selectedName = selected ? nameOf(selected) : selectedId ? savedName || 'Сохранённый клиент' : ''
   const contact = phoneOf(selected) || selected?.email || ''
   const valueLabel = [selectedName || 'выбрать клиента', contact].filter(Boolean).join(' · ')
   return (
     <div className="min-w-0 sm:max-w-sm">
-      {!inline && <p className="mb-1 text-sm font-medium">Основной клиент</p>}
-      {inline ? null : canEdit ? (
+      <p className="mb-1 text-sm font-medium">Основной клиент</p>
+      {canEdit ? (
+        <div className="flex flex-wrap items-start gap-2">
           <button
             type="button"
             ref={triggerRef}
@@ -241,8 +244,11 @@ export default function PartyOrderClientPicker({
             aria-expanded={open}
             {...fieldError}
             disabled={disabled}
-            className={`flex min-h-11 w-full min-w-0 cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm hover:bg-sky-50 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60 ${focusStyle}`}
-            onClick={onOpen}
+            className={`flex min-h-11 min-w-0 flex-1 basis-44 cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm hover:bg-sky-50 aria-invalid:border-red-700 disabled:cursor-not-allowed disabled:opacity-60 ${focusStyle}`}
+            onClick={() => {
+              setStartWithCreate(false)
+              onOpen()
+            }}
           >
             <span className="min-w-0 break-words">
               <span className={selectedName ? 'font-semibold' : 'text-slate-600'}>{selectedName || 'Выбрать клиента'}</span>
@@ -250,13 +256,31 @@ export default function PartyOrderClientPicker({
             </span>
             <FontAwesomeIcon icon={faChevronDown} className="shrink-0 text-slate-600" aria-hidden="true" />
           </button>
+          {showCreateAction && canCreate && (
+            <button
+              type="button"
+              ref={createButtonRef}
+              className={`${buttonStyle} shrink-0 disabled:cursor-not-allowed disabled:opacity-60`}
+              aria-haspopup="dialog"
+              disabled={disabled}
+              onClick={() => {
+                setStartWithCreate(true)
+                onOpen()
+              }}
+            >
+              Создать клиента
+            </button>
+          )}
+        </div>
       ) : <p className="break-words text-sm">{selectedName || 'Клиент не выбран'}{contact ? ` · ${contact}` : ''}</p>}
-      {(inline || open) && canEdit && <ClientLookup
+      {open && canEdit && <ClientLookup
         companyId={companyId} context={context} clients={clients} selectedId={selectedId}
-        inline={inline} open={open} searchRef={searchRef} fieldError={inline ? fieldError : undefined}
-        onOpen={onOpen} onChoose={onChoose} onClose={(restoreFocus = true) => {
+        canCreate={canCreate} startWithCreate={startWithCreate}
+        onChoose={onChoose} onClose={(restoreCreateFocus = false) => {
           onClose()
-          if (restoreFocus) requestAnimationFrame(() => (triggerRef.current || searchRef.current)?.focus())
+          setStartWithCreate(false)
+          const target = restoreCreateFocus ? createButtonRef : triggerRef
+          requestAnimationFrame(() => target.current?.focus())
         }} initialForm={initialForm}
         onFormStateChange={onFormStateChange} onDirtyChange={onDirtyChange}
       />}

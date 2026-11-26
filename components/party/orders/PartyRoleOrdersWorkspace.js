@@ -72,6 +72,9 @@ const PartyRoleOrdersBoard = dynamic(() => import('./PartyRoleOrdersBoard'))
 const PartyOrderWizard = dynamic(() => import('./PartyOrderWizard'))
 const PartyAdvancedOrderEditor = dynamic(() => import('./PartyAdvancedOrderEditor'))
 const PartyOrderReadModal = dynamic(() => import('./PartyOrderReadModal'))
+const PartySavedOrderContract = dynamic(() =>
+  import('./PartyOrderDocumentsSection').then(({ PartySavedOrderContract }) => PartySavedOrderContract)
+)
 const PartyPaymentExpectationsPanel = dynamic(() => import('./PartyPaymentExpectationsPanel'))
 const PartyOrderInvitationPanel = dynamic(() => import('@components/party/invitations/PartyOrderInvitationPanel'))
 
@@ -205,6 +208,9 @@ function RoleOrderEditor({
   const tabId = useId()
   const can = (resource, action = 'read') =>
     canPartyAccess(context, { resource, action })
+  const canDownloadContract =
+    existing && ['owner', 'admin'].includes(context?.role) &&
+    !isPartyRestrictedManagementContext(context) && can('documents')
   const editable = (field) =>
     !(order.bookingVersion === 1 && ['title', 'servicesIds', 'eventDate', 'dateEnd', 'durationMinutes', 'placeType', 'locationId', 'customAddress', 'contractAmount'].includes(field)) &&
     !unresolvedCreate &&
@@ -411,6 +417,7 @@ function RoleOrderEditor({
       id: 'finance',
       title: 'Финансы',
       show:
+        canDownloadContract ||
         visible('contractAmount') ||
         can('finance.payments') ||
         can('finance.expenses') ||
@@ -1257,6 +1264,15 @@ function RoleOrderEditor({
             ) : null}
             {item.id === 'finance' ? (
               <div className="space-y-4">
+                {canDownloadContract ? (
+                  <PartySavedOrderContract
+                    companyId={companyId}
+                    order={order}
+                    services={options.services}
+                    disabled={blocked || busy || childDirty}
+                    unsaved={changes.dirty || contractAmountInvalid}
+                  />
+                ) : null}
                 <PartyPaymentExpectationsPanel companyId={companyId} order={order} context={context} disabled={busy || changes.dirty || Object.entries(reportDirty).some(([key, value]) => key !== 'expectations' && value)} onSaved={onSaved} onDirtyChange={dirtyExpectations} />
                 <PartyRoleOrderPayments
                   companyId={companyId}
