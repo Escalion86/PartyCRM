@@ -26,6 +26,7 @@ export const getPartyVenueBookingModel = ({ readOnly = false } = {}) =>
         occupiedFrom: 1,
         occupiedUntil: 1,
       })
+      schema.index({ tenantId: 1, locationId: 1, sourceType: 1, startsAt: 1, endsAt: 1 })
     },
   })
 

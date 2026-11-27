@@ -25,6 +25,7 @@ import { getPartyClientModel } from '@server/partyModels'
 import {
   findPartyOrderConflicts,
   hasPartyOrderConflicts,
+  withPartyOrderStaffSchedule,
 } from '@server/partyOrderConflicts'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
 import { filterPartyOrderPayloadByTariffAccess } from '@helpers/partyTariffAccess'
@@ -52,6 +53,9 @@ const getId = async (params) => {
   const resolved = await params
   return resolved?.id
 }
+
+const calendarPreferenceFields = ['calendarImportChecked', 'googleCalendarSyncDisabled']
+const calendarIdentityFields = ['calendarImportedAt', 'googleCalendarEventId', 'googleCalendarCalendarId', 'googleCalendarEventUrl', 'googleCalendarImportKey', 'hasGoogleCalendarEvent']
 
 const buildOrderClientSnapshot = async ({ tenantId, payload }) => {
   if (!payload.clientId) return payload
@@ -122,8 +126,8 @@ export async function PATCH(req, { params }) {
     return partyError(400, 'partycrm_invalid_order_id', 'Некорректный id')
   }
 
-  const body = await parseJsonBody(req)
-  if (['fulfillment', 'initialPayment', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint'].some((field) => Object.hasOwn(body, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие проведения или оплаты', 'validation')
+  const requestBody = await parseJsonBody(req)
+  if (['fulfillment', 'initialPayment', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint'].some((field) => Object.hasOwn(requestBody, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие проведения или оплаты', 'validation')
   const PartyOrders = await getPartyOrderModel()
   const currentOrder = await PartyOrders.findOne({
     _id: id,
@@ -133,6 +137,38 @@ export async function PATCH(req, { params }) {
   if (!currentOrder || !canPartyAccess(context, { resource: 'orders', order: currentOrder })) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
+
+  const requestFields = Object.keys(requestBody)
+  if (requestFields.length && requestFields.every((field) => calendarPreferenceFields.includes(field))) {
+    if (requestFields.some((field) => typeof requestBody[field] !== 'boolean')) {
+      return partyError(400, 'partycrm_invalid_order_calendar_preferences', 'Передайте логические значения настроек Google Calendar', 'validation')
+    }
+    const fieldGuard = guardPartyOrderPatch(context, requestBody, currentOrder)
+    if (!fieldGuard.ok) return partyError(403, 'partycrm_forbidden_order_fields', 'Нет права изменять настройки Google Календаря этого заказа', 'permission', { fields: fieldGuard.forbiddenFields })
+    if ((Object.hasOwn(requestBody, 'calendarImportChecked') && !currentOrder.calendarImportedAt) ||
+        (Object.hasOwn(requestBody, 'googleCalendarSyncDisabled') && !currentOrder.googleCalendarEventId)) {
+      return partyError(409, 'partycrm_order_calendar_link_required', 'У заказа нет подходящего связанного события Google', 'validation')
+    }
+
+    const order = await PartyOrders.findOneAndUpdate(
+      { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
+      { $set: requestBody },
+      { returnDocument: 'after' }
+    ).lean()
+    if (!order) return partyError(409, 'partycrm_order_revision_conflict', 'Заказ изменился. Обновите его перед сохранением.', 'conflict')
+    return NextResponse.json({ success: true, data: filterPartyOrderForAccess(context, order) })
+  }
+
+  // Older editors submit the whole order, including mirrored calendar metadata.
+  const body = Object.fromEntries(Object.entries(requestBody).filter(([field]) =>
+    !calendarPreferenceFields.includes(field) && !calendarIdentityFields.includes(field)
+  ))
+  const isMultiPlace = body.bookingVersion === 2 || currentOrder.bookingVersion === 2
+  if (body.bookingVersion !== 2 && Object.hasOwn(body, 'places'))
+    return partyError(400, 'partycrm_multi_place_editor_required', 'Откройте мастер многоместного заказа', 'validation')
+  if (isMultiPlace && Array.isArray(body.assignedStaff) &&
+      new Set(body.assignedStaff.map((entry) => String(entry?.staffId || '').toLowerCase())).size !== body.assignedStaff.length)
+    return partyError(400, 'partycrm_invalid_assignment_place', 'Исполнителя можно назначить на заказ только один раз', 'validation')
 
   if (body.bookingVersion !== 1 && currentOrder.bookingVersion !== 1 && Object.hasOwn(body, 'serviceSelections'))
     return partyError(
@@ -189,18 +225,28 @@ export async function PATCH(req, { params }) {
   }
 
   if (isStatusOnlyPatch) {
+    if (currentOrder.bookingVersion === 2 && nextStatus === 'active' &&
+        (!currentOrder.clientId || !currentOrder.orderTypeId || !currentOrder.places?.length ||
+          currentOrder.places.some((place) => !place.rental || !place.eventDate || !place.dateEnd)))
+      return partyError(400, 'partycrm_booking_invalid', 'Для подтверждения выберите тип, клиента и время всех площадок', 'validation')
     let order
     try {
-      order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, previousOrder: currentOrder, nextOrder: { ...currentOrder, status: nextStatus }, work: async ({ session, legacy }) => {
-        if (['draft', 'active'].includes(nextStatus)) {
-          const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: { ...currentOrder, status: nextStatus }, excludeOrderId: id, sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }), session, checkLocation: legacy })
-          if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
+      const nextOrder = { ...currentOrder, status: nextStatus }
+      order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, previousOrder: currentOrder, nextOrder, work: async ({ session, legacy }) => {
+        const work = async (currentSession) => {
+          if (['draft', 'active'].includes(nextStatus)) {
+            const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: nextOrder, excludeOrderId: id, sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }), session: currentSession, checkLocation: legacy })
+            if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
+          }
+          return PartyOrders.findOneAndUpdate(
+            { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
+            { $set: { status: nextStatus, ...(nextStatus === 'closed' ? { eventBrief: await snapshotPartyBriefForClose({ tenantId: context.tenantId, order: currentOrder }) } : {}) }, $inc: { commercialRevision: 1 } },
+            { returnDocument: 'after', ...(currentSession ? { session: currentSession } : {}) }
+          ).lean()
         }
-        return PartyOrders.findOneAndUpdate(
-          { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
-          { $set: { status: nextStatus, ...(nextStatus === 'closed' ? { eventBrief: await snapshotPartyBriefForClose({ tenantId: context.tenantId, order: currentOrder }) } : {}) }, $inc: { commercialRevision: 1 } },
-          { returnDocument: 'after', ...(session ? { session } : {}) }
-        ).lean()
+        return nextOrder.eventDate && nextOrder.dateEnd && nextOrder.assignedStaff?.length
+          ? withPartyOrderStaffSchedule({ tenantId: context.tenantId, payload: nextOrder, session, work })
+          : work(session)
       } })
     } catch (cause) {
       return partyError(cause.status || 500, cause.code || 'partycrm_order_save_failed', cause.status ? cause.message : 'Не удалось сохранить заказ', 'validation', cause.conflicts ? { conflicts: maskPartyOrderConflicts(context, cause.conflicts) } : {})
@@ -278,7 +324,7 @@ export async function PATCH(req, { params }) {
   if (!canPartySetOffsiteOrder(context.company, payload, currentOrder))
     return partyError(409, 'partycrm_offsite_disabled', PARTY_OFFSITE_DISABLED_MESSAGE, 'validation')
   try {
-    if (body.bookingVersion === 1 || currentOrder.bookingVersion === 1) {
+    if (isMultiPlace || body.bookingVersion === 1 || currentOrder.bookingVersion === 1) {
       const { preparePartyOrderBooking } = await import('@server/partyOrderBooking')
       payload = await preparePartyOrderBooking({ context, body, payload, previous: currentOrder })
     }
@@ -299,7 +345,7 @@ export async function PATCH(req, { params }) {
   // A stale editor must never resurrect the embedded ledger after migration.
   if (currentOrder.legacyLedgerMigrationId) payload.transactions = []
   const touchesCommercialFields = [
-    'serviceSelections', 'orderTypeId', 'rental', 'discount',
+    'places', 'serviceSelections', 'orderTypeId', 'rental', 'discount',
     'servicesIds',
     'serviceTitle',
     'contractAmount',
@@ -327,10 +373,12 @@ export async function PATCH(req, { params }) {
   const orderItemsChanged =
     JSON.stringify(payload.orderItems || []) !==
     JSON.stringify(currentOrder.orderItems || [])
+  const placesChanged = Object.hasOwn(body, 'places') &&
+    JSON.stringify(payload.places || []) !== JSON.stringify(currentOrder.places || [])
   const commercialChanged =
-    touchesCommercialFields && (servicesOrAmountChanged || orderItemsChanged)
+    touchesCommercialFields && (servicesOrAmountChanged || orderItemsChanged || placesChanged)
   if (commercialChanged) {
-    if (servicesOrAmountChanged && !orderItemsChanged && payload.bookingVersion !== 1) payload.orderItems = []
+    if (servicesOrAmountChanged && !orderItemsChanged && ![1, 2].includes(payload.bookingVersion)) payload.orderItems = []
     payload.agreedProposal = {}
     payload.commercialRevision = currentCommercialRevision + 1
   }
@@ -349,7 +397,7 @@ export async function PATCH(req, { params }) {
 
   if (
     hasClientOrServiceFields &&
-    !(payload.bookingVersion === 1 && payload.status === 'draft') &&
+    !([1, 2].includes(payload.bookingVersion) && payload.status === 'draft') &&
     !payload.clientId &&
     !payload.client.name &&
     payload.servicesIds.length === 0 &&
@@ -405,9 +453,14 @@ export async function PATCH(req, { params }) {
   let order
   try {
     order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, previousOrder: currentOrder, nextOrder: limitedPayload, work: async ({ session, legacy }) => {
-      const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, excludeOrderId: id, sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }), session, checkLocation: legacy })
-      if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
-      return PartyOrders.findOneAndUpdate({ _id: id, tenantId: context.tenantId, ...revisionFilter }, { $set: limitedPayload }, { returnDocument: 'after', ...(session ? { session } : {}) }).lean()
+      const work = async (currentSession) => {
+        const conflicts = await findPartyOrderConflicts({ PartyOrders, tenantId: context.tenantId, payload: limitedPayload, excludeOrderId: id, sharedLocationOrderIds: await getPartySharedLocationOrderIds({ tenantId: context.tenantId, orderId: id }), session: currentSession, checkLocation: legacy })
+        if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
+        return PartyOrders.findOneAndUpdate({ _id: id, tenantId: context.tenantId, ...revisionFilter }, { $set: limitedPayload }, { returnDocument: 'after', ...(currentSession ? { session: currentSession } : {}) }).lean()
+      }
+      return limitedPayload.eventDate && limitedPayload.dateEnd && limitedPayload.assignedStaff?.length
+        ? withPartyOrderStaffSchedule({ tenantId: context.tenantId, payload: limitedPayload, session, work })
+        : work(session)
     } })
   } catch (cause) {
     return partyError(cause.status || 500, cause.code || 'partycrm_order_save_failed', cause.status ? cause.message : 'Не удалось сохранить заказ', 'validation', cause.conflicts ? { conflicts: maskPartyOrderConflicts(context, cause.conflicts) } : {})

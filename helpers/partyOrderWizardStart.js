@@ -1,5 +1,6 @@
 import { formatAddressPoolShort } from './addressPool.js'
 import { isPartyCompanyModuleEnabled } from './partyCompanyModules.js'
+import { PARTY_ORDER_WIZARD_STEP } from './partyOrderWizardSteps.js'
 
 export const canOpenPartyOrderWizard = (order, can) =>
   Boolean(order?._id) &&
@@ -24,7 +25,21 @@ const getProgramDuration = (order, services) => {
 
 export const getPartyOrderWizardInitialStep = ({ order, can, company, services = [], locations = [] }) => {
   if (!canOpenPartyOrderWizard(order, can)) return null
-  if (can('orders.title', 'edit') && !hasId(order.orderTypeId)) return 0
+  if (can('orders.clientId', 'edit') && !hasId(order.clientId)) return PARTY_ORDER_WIZARD_STEP.client
+  if (can('orders.title', 'edit') && !hasId(order.orderTypeId)) return PARTY_ORDER_WIZARD_STEP.type
+
+  if (order.bookingVersion === 2) {
+    if (can('orders.locationId', 'edit') && (!order.places?.length || order.places.some(({ locationId }) => !hasId(locationId))))
+      return PARTY_ORDER_WIZARD_STEP.place
+    if (can('orders.eventDate', 'edit') && can('orders.dateEnd', 'edit') &&
+      order.places?.some(({ eventDate, dateEnd, rental }) => {
+        const start = timeOf(eventDate)
+        const end = timeOf(dateEnd)
+        return !Number.isFinite(start) || !Number.isFinite(end) || start < timeOf(rental?.startsAt) ||
+          end > timeOf(rental?.endsAt) || !Number.isFinite(timeOf(rental?.startsAt)) || !Number.isFinite(timeOf(rental?.endsAt))
+      })) return PARTY_ORDER_WIZARD_STEP.time
+    return null
+  }
 
   const offsiteAllowed = isPartyCompanyModuleEnabled(company, 'offsite')
   const placeType = order.placeType || (
@@ -35,28 +50,27 @@ export const getPartyOrderWizardInitialStep = ({ order, can, company, services =
   const canReadPlace = can('orders.placeType')
   const canEditAddress = can('orders.customAddress', 'edit') || can('orders.clientAddress', 'edit')
   if (canReadPlace && placeType === 'company_location' && can('orders.locationId', 'edit') && !hasId(order.locationId))
-    return 1
+    return PARTY_ORDER_WIZARD_STEP.place
   if (canReadPlace && placeType === 'client_address' && canEditAddress) {
     const address = String(order.customAddress || '').trim() || formatAddressPoolShort({ ...order.clientAddress, comment: '' })
-    if (!address.trim()) return 1
+    if (!address.trim()) return PARTY_ORDER_WIZARD_STEP.place
   }
 
   const duration = getProgramDuration(order, services)
   if (canReadPlace && placeType === 'client_address' && can('orders.servicesIds', 'edit') && !(duration > 0))
-    return 2
+    return PARTY_ORDER_WIZARD_STEP.services
 
   if (can('orders.eventDate', 'edit') && can('orders.dateEnd', 'edit')) {
     const start = timeOf(order.eventDate)
-    if (!Number.isFinite(start)) return 3
+    if (!Number.isFinite(start)) return PARTY_ORDER_WIZARD_STEP.time
     if (canReadPlace && placeType === 'company_location') {
       // Legacy venue orders use their event interval until an explicit rental is set.
       const rentalStart = order.rental ? timeOf(order.rental.startsAt) : start
       const rentalEnd = timeOf(order.rental ? order.rental.endsAt : order.dateEnd)
       if (!Number.isFinite(rentalStart) || !Number.isFinite(rentalEnd) ||
         rentalEnd <= rentalStart || start < rentalStart || start + duration * 60000 > rentalEnd)
-        return 3
+        return PARTY_ORDER_WIZARD_STEP.time
     }
   }
-  if (can('orders.clientId', 'edit') && !hasId(order.clientId)) return 4
   return null
 }

@@ -14,10 +14,17 @@ export const sanitizePartyOrderForPerformer = ({
   const assignment = (order.assignedStaff ?? []).find(
     (item) => String(item.staffId) === staffId
   )
-  const locationKey = order.locationId
-    ? `${String(order.tenantId)}:${String(order.locationId)}`
+  const place = order.bookingVersion === 2 && assignment?.placeId
+    ? order.places?.find((item) => item.id === assignment.placeId)
+    : null
+  const locationId = place?.locationId || order.locationId
+  const locationKey = locationId
+    ? `${String(order.tenantId)}:${String(locationId)}`
     : ''
-  const location = locationKey ? locationsById.get(locationKey) : null
+  const location = place ? {
+    _id: place.locationId, title: place.locationTitle,
+    address: { street: place.locationAddress || '' },
+  } : locationKey ? locationsById.get(locationKey) : null
   const clientCandidate = order.clientId
     ? clientsById.get(`${String(order.tenantId)}:${String(order.clientId)}`)
     : null
@@ -93,12 +100,14 @@ export const sanitizePartyOrderForPerformer = ({
   const responsibleStaff = responsibleStaffKey
     ? staffById.get(responsibleStaffKey)
     : null
-  const serviceTitles = Array.isArray(order.servicesIds)
+  const serviceTitles = place
+    ? (order.orderItems || []).filter((item) => item.placeId === place.id).map((item) => item.title).filter(Boolean)
+    : Array.isArray(order.servicesIds)
     ? order.servicesIds
         .map((serviceId) => servicesById.get(String(serviceId))?.title)
         .filter(Boolean)
     : []
-  if (order.serviceTitle && !serviceTitles.includes(order.serviceTitle)) {
+  if (!place && order.serviceTitle && !serviceTitles.includes(order.serviceTitle)) {
     serviceTitles.push(order.serviceTitle)
   }
 
@@ -111,8 +120,8 @@ export const sanitizePartyOrderForPerformer = ({
     companyRole: membership.role,
     title: order.title || order.serviceTitle || 'Заказ',
     status: order.status,
-    eventDate: order.eventDate,
-    dateEnd: order.dateEnd,
+    eventDate: place ? place.eventDate : order.eventDate,
+    dateEnd: place ? place.dateEnd : order.dateEnd,
     placeType: order.placeType,
     location: location
       ? {
@@ -122,7 +131,7 @@ export const sanitizePartyOrderForPerformer = ({
         }
       : null,
     customAddress: order.customAddress || '',
-    serviceTitle: order.serviceTitle || '',
+    serviceTitle: place ? serviceTitles.join(', ') : order.serviceTitle || '',
     serviceTitles,
     performerComment: order.performerComment || '',
     onsiteContact: onsite

@@ -127,6 +127,11 @@ export const syncPartyOrderToCompanyCalendar = async ({
   access,
   dependencies = {},
 } = {}) => {
+  const imported = Boolean(order?.calendarImportedAt)
+  if (order?.googleCalendarSyncDisabled === true ||
+      (imported && (!previousOrder || order.status === 'canceled'))) {
+    return { ok: false, status: 'skipped' }
+  }
   const settings = getSettings(company)
   const client = dependencies.client
   const now =
@@ -156,6 +161,47 @@ export const syncPartyOrderToCompanyCalendar = async ({
   let failureIdentityPatch = {}
 
   try {
+    const buildOrderPayload = dependencies.buildOrderPayload || buildPartyOrderCalendarPayload
+    const orderPayloadContext = {
+      order,
+      settings,
+      company,
+      transactions: dependencies.transactions,
+      location: dependencies.location,
+      services: dependencies.services,
+      staff: dependencies.staff,
+      domain: dependencies.domain,
+    }
+
+    if (imported) {
+      const mainPayload = buildOrderPayload(orderPayloadContext)
+      if (!mainPayload) return { ok: false, status: 'skipped' }
+
+      // Only explicit order edits can update the source event. Keep its other Google settings intact.
+      const changes = {}
+      if (order.title && order.title !== previousOrder.title) changes.summary = order.title
+      const dateChanged = ['eventDate', 'dateEnd', 'durationMinutes'].some((field) =>
+        String(order[field] ?? '') !== String(previousOrder[field] ?? '')
+      )
+      if (dateChanged) {
+        changes.start = mainPayload.start
+        changes.end = mainPayload.end
+      }
+      const placeChanged = ['placeType', 'locationId', 'customAddress', 'clientAddress', 'places'].some((field) =>
+        JSON.stringify(order[field] ?? null) !== JSON.stringify(previousOrder[field] ?? null)
+      )
+      if (settings.syncSettings?.showLocation && placeChanged) changes.location = mainPayload.location
+      if (!Object.keys(changes).length) return { ok: false, status: 'skipped' }
+      if (!order.googleCalendarCalendarId || !order.googleCalendarEventId) throw new Error('Missing source event identity')
+
+      await client.patchEvent(order.googleCalendarCalendarId, order.googleCalendarEventId, changes)
+      await flushCredentials(client)
+      const orderPatch = baseSuccessPatch(now)
+      await persistPatch({ company, order, patch: orderPatch, dependencies })
+      await persistCompanyStateBestEffort({ company, lastSyncAt: now, lastSyncError: '', dependencies })
+      return { ok: true, status: 'synced', orderPatch }
+    }
+
     const calendarChanged =
       Boolean(order?.googleCalendarCalendarId) && oldCalendarId !== calendarId
 
@@ -206,25 +252,17 @@ export const syncPartyOrderToCompanyCalendar = async ({
       return { ok: true, status: 'deleted', orderPatch }
     }
 
-    const buildOrderPayload =
-      dependencies.buildOrderPayload || buildPartyOrderCalendarPayload
-    const mainPayload = buildOrderPayload({
-      order,
-      settings,
-      company,
-      transactions: dependencies.transactions,
-      location: dependencies.location,
-      services: dependencies.services,
-      staff: dependencies.staff,
-      domain: dependencies.domain,
-    })
+    const mainPayload = buildOrderPayload(orderPayloadContext)
     let mainEventId = ''
     if (mainPayload) {
       mainEventId = await upsertEvent({
         client,
         calendarId,
         eventId: calendarChanged ? '' : String(order?.googleCalendarEventId || ''),
-        payload: mainPayload,
+        payload: {
+          ...mainPayload,
+          extendedProperties: { private: { partycrmOrderId: idOf(order), partycrmTenantId: idOf(company) } },
+        },
       })
     } else if (!calendarChanged && order?.googleCalendarEventId) {
       failureIdentityPatch = {

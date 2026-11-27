@@ -38,6 +38,19 @@ const companyRequisites = {
   defaultTown: 'Красноярск',
 }
 
+test('contract uses the company venue and its local event time', () => {
+  const variables = getPartyContractTemplateVariablesMap({
+    order: { ...order, eventDate: '2026-11-28T19:30:00Z', placeType: 'company_location' },
+    locationTitle: 'Большой зал',
+    locationAddress: 'Красноярск, Ленина, 10',
+    docMeta: { timeZone: 'Asia/Krasnoyarsk' },
+  })
+  assert.equal(variables['МЕСТО ПРОВЕДЕНИЯ'], 'Большой зал')
+  assert.equal(variables['АДРЕС СОБЫТИЯ'], 'Красноярск, Ленина, 10')
+  assert.match(variables['ДАТА СОБЫТИЯ'], /29 ноября/)
+  assert.equal(variables['ВРЕМЯ СОБЫТИЯ'], '02:30')
+})
+
 test('party contract fills company, client, order and service variables', () => {
   const variables = getPartyContractTemplateVariablesMap({
     order,

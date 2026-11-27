@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 
 const statusMessages = {
   accepted: 'Это приглашение уже использовано.',
@@ -30,7 +31,7 @@ export default function PartyStaffInviteClient({ token }) {
       apiJson(`/api/party/invites/${encodeURIComponent(token)}`, {
         cache: 'no-store',
       }),
-      fetch('/api/party/auth/me', { cache: 'no-store' })
+      partyFetch('/api/party/auth/me', { cache: 'no-store' })
         .then((response) => (response.ok ? response.json() : null))
         .catch(() => null),
     ])

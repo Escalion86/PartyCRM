@@ -126,3 +126,34 @@ test('new orders cannot claim shared venue exclusions without an existing order'
   })
   assert.equal(calls[0]._id, undefined)
 })
+
+test('staff conflicts honor half-open windows of assigned venues inside overlapping orders', async () => {
+  const at = (hour) => new Date(Date.UTC(2026, 7, 1, hour))
+  const current = {
+    bookingVersion: 2, eventDate: at(10), dateEnd: at(15),
+    places: [
+      { id: 'first', eventDate: at(10), dateEnd: at(15) },
+      { id: 'second', eventDate: at(13), dateEnd: at(15) },
+    ],
+    assignedStaff: [{ staffId: 'staff', placeId: 'second' }],
+  }
+  const existing = {
+    bookingVersion: 2, eventDate: at(10), dateEnd: at(16),
+    places: [
+      { id: 'early', eventDate: at(10), dateEnd: at(13) },
+      { id: 'late', eventDate: at(13), dateEnd: at(16) },
+    ],
+    assignedStaff: [{ staffId: 'staff', placeId: 'early' }],
+  }
+  const check = () => findPartyOrderConflicts({
+    PartyOrders: { find: () => createQuery([existing]) },
+    tenantId: 'tenant',
+    checkLocation: false,
+    payload: current,
+  })
+  assert.deepEqual((await check()).staffConflicts, [])
+  existing.assignedStaff[0].placeId = 'late'
+  assert.equal((await check()).staffConflicts.length, 1)
+  existing.assignedStaff[0].placeId = null
+  assert.equal((await check()).staffConflicts.length, 1)
+})

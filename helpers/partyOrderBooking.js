@@ -68,6 +68,22 @@ export const validatePartyServiceQuantity = (service, value) => {
   return quantity
 }
 
+export const calculatePartyBookingDiscount = (subtotalKopecks, discount) => {
+  if (!Number.isSafeInteger(subtotalKopecks) || subtotalKopecks < 0)
+    partyBookingFailure('Сумма заказа слишком велика')
+  if (!['amount', 'percent'].includes(discount?.type))
+    partyBookingFailure('Выберите вид скидки')
+  const discountValue = Number(discount.value || 0)
+  if (!Number.isFinite(discountValue) || discountValue < 0 || (discount.type === 'percent' && discountValue > 100))
+    partyBookingFailure('Проверьте размер скидки')
+  const discountKopecks = discount.type === 'percent'
+    ? Math.round((subtotalKopecks * discountValue) / 100)
+    : partyMoneyKopecks(discountValue)
+  if (discountKopecks > subtotalKopecks)
+    partyBookingFailure('Скидка не может превышать стоимость заказа')
+  return discountKopecks
+}
+
 export const calculatePartyBooking = ({
   items = [],
   rental = null,
@@ -116,27 +132,7 @@ export const calculatePartyBooking = ({
   const billedHours = Math.ceil(payableMinutes / 60)
   const rentalKopecks = billedHours * partyMoneyKopecks(hourlyRate)
   const subtotalKopecks = servicesKopecks + rentalKopecks
-  if (!['amount', 'percent'].includes(discount?.type))
-    partyBookingFailure('Выберите вид скидки')
-  const discountValue = Number(discount.value || 0)
-  if (
-    !Number.isFinite(discountValue) ||
-    discountValue < 0 ||
-    (discount.type === 'percent' && discountValue > 100)
-  )
-    partyBookingFailure('Проверьте размер скидки')
-  const discountKopecks =
-    discount.type === 'percent'
-      ? Math.round((subtotalKopecks * discountValue) / 100)
-      : partyMoneyKopecks(discountValue)
-  if (discountKopecks > subtotalKopecks)
-    partyBookingFailure('Скидка не может превышать стоимость заказа')
-  if (
-    ![servicesKopecks, rentalKopecks, subtotalKopecks, discountKopecks].every(
-      Number.isSafeInteger
-    )
-  )
-    partyBookingFailure('Сумма заказа слишком велика')
+  const discountKopecks = calculatePartyBookingDiscount(subtotalKopecks, discount)
   return {
     servicesKopecks,
     durationMinutes,

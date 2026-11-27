@@ -10,6 +10,8 @@ import { compileFunction } from 'node:vm'
 import mongoose, { Schema, Types } from 'mongoose'
 import * as booking from '../helpers/partyOrderBooking.js'
 import * as serviceConfiguration from '../helpers/partyServiceConfiguration.js'
+import * as multiPlace from '../helpers/partyMultiPlaceBooking.js'
+import { formatAddressPoolShort } from '../helpers/addressPool.js'
 import * as schedules from '../helpers/partyWorkingSchedule.js'
 import * as permissions from '../helpers/partyRolePermissions.js'
 import * as brief from '../helpers/partyBriefTemplates.js'
@@ -22,6 +24,7 @@ import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../help
 import { sharePartyLocationBooking } from '../helpers/partySharedLocationBooking.js'
 import { parsePartyIsoDate } from '../helpers/partyIsoDate.js'
 import { canAccessPartyTransaction } from '../server/partyTransactionAccess.js'
+import { findPartyOrderConflicts, withPartyOrderStaffSchedule } from '../server/partyOrderConflicts.js'
 import {
   createPartyVenueBookingService,
   createPartyOrderVenueWriter,
@@ -131,6 +134,7 @@ try {
     'partyLocationsSchema',
     'partyOrdersSchema',
     'partyServicesSchema',
+    'partyStaffSchema',
     'partyTransactionsSchema',
     'partyOrderTypesSchema',
     'partyPaymentExpectationsSchema',
@@ -147,7 +151,7 @@ try {
   const getters = await compile(
     'server/partyModels.js',
     { ...base, ...schemas },
-    '{getPartyCompanyModel,getPartyClientModel,getPartyLocationModel,getPartyOrderModel,getPartyServiceModel,getPartyTransactionModel,getPartyOrderTypeModel,getPartyPaymentExpectationModel}'
+    '{getPartyCompanyModel,getPartyClientModel,getPartyLocationModel,getPartyOrderModel,getPartyServiceModel,getPartyStaffModel,getPartyTransactionModel,getPartyOrderTypeModel,getPartyPaymentExpectationModel}'
   )
   const models = Object.fromEntries(
     await Promise.all(
@@ -160,6 +164,7 @@ try {
     Locations,
     Orders,
     Services,
+    Staff,
     Transactions,
     OrderTypes,
     Expectations,
@@ -169,6 +174,7 @@ try {
     'Location',
     'Order',
     'Service',
+    'Staff',
     'Transaction',
     'OrderType',
     'PaymentExpectation',
@@ -260,7 +266,7 @@ try {
   const typeHelpers = await compile(
     'server/partyOrderTypes.js',
     { ...modelGetters, ...booking },
-    '{ensurePartyOrderTypes,normalizePartyOrderTypeTitle}'
+    '{ensurePartyOrderTypes,normalizePartyOrderTypeTitle,validatePartyServiceBookingSettings}'
   )
   const prepare = await compile(
     'server/partyOrderBooking.js',
@@ -270,6 +276,9 @@ try {
       ...schedules,
       ...serviceConfiguration,
       ...permissions,
+      ...multiPlace,
+      formatAddressPoolShort,
+      parsePartyIsoDate,
       ...brief,
       ...briefService,
       ...typeHelpers,
@@ -484,6 +493,158 @@ try {
     }
   )
   await check(
+    'multi-place service lines preserve local pricing and only reserve the full set of rooms atomically',
+    async () => {
+      const day = '2026-12-05'
+      const time = (value) => at(value, day)
+      const room = await Locations.create({
+        tenantId, title: 'Второй зал для интеграционного теста', capacity: 40, hourlyRentalRate: 1500,
+        address: { town: 'Город', street: 'Вторая', house: '10', comment: 'Скрытая ремарка' },
+        rentalConfiguration: multiPlace.normalizePartyLocationRentalConfiguration({
+          extras: { fields: [{ id: 'tech', type: 'select', title: 'Техника', options: [{ id: 'speaker', title: 'Колонка', priceDelta: 300 }] }] },
+        }),
+      })
+      const activity = await Services.create({
+        tenantId, title: 'Программа в двух залах', price: 2500, duration: 30, includedRentalMinutes: 30,
+        configuration: serviceConfiguration.normalizePartyServiceConfiguration({
+          fields: [{ id: 'format', type: 'select', title: 'Формат', options: [{ id: 'long', title: 'Длинная программа', priceDelta: 500, durationDelta: 60 }] }],
+        }),
+      })
+      const body = {
+        bookingVersion: 2,
+        orderTypeId: String(type._id),
+        discount: { type: 'amount', value: 500 },
+        places: [
+          { id: 'first', locationId: String(location._id), eventDate: time('14:00'),
+            rental: { startsAt: time('14:00'), endsAt: time('16:00') },
+            serviceSelections: [{ lineId: 'activity-a', serviceId: String(activity._id), quantity: 1, parameters: { values: { format: 'long' } } }] },
+          { id: 'second', locationId: String(room._id), guestCount: 30, eventDate: time('14:30'),
+            rental: { startsAt: time('14:30'), endsAt: time('15:30') },
+            parameters: { extras: { values: { tech: 'speaker' } } },
+            serviceSelections: [{ lineId: 'activity-b', serviceId: String(activity._id), quantity: 1, parameters: { values: {} } }] },
+        ],
+      }
+      const input = { ...emptyPayload, status: 'active', clientId: client._id }
+      const payload = await prepare({ context, body, payload: input })
+      assert.equal(payload.contractAmount, 8800)
+      assert.equal(payload.durationMinutes, 90)
+      assert.equal(payload.dateEnd.toISOString(), time('15:30'))
+      assert.deepEqual(payload.servicesIds, [String(activity._id)])
+      assert.deepEqual(payload.places.map((place) => place.pricingSnapshot.rentalKopecks), [200000, 150000])
+      assert.deepEqual(payload.orderItems.map((item) => item.eventDate.toISOString()), [time('14:00'), time('14:30')])
+      const write = (nextOrder) => venueWrite({
+        tenantId, nextOrder,
+        work: async ({ session }) => (await Orders.create([{ ...nextOrder, tenantId }], { session }))[0],
+      })
+      const release = (order) => venueWrite({
+        tenantId, previousOrder: order, nextOrder: null,
+        work: ({ session }) => Orders.findOneAndDelete({ _id: order._id, tenantId }, { session }).lean(),
+      })
+      let blocker, saved
+      try {
+        blocker = await write({
+          ...emptyPayload, locationId: room._id,
+          status: 'active', eventDate: new Date(time('14:45')), dateEnd: new Date(time('15:15')),
+        })
+        await assert.rejects(write(payload), { status: 409 })
+        assert.equal(await Orders.countDocuments({ tenantId, bookingVersion: 2 }), 0)
+        assert.equal(await Bookings.countDocuments({ tenantId, sourceType: 'order_place' }), 0)
+        await release(blocker)
+        blocker = null
+        saved = await write(payload)
+        assert.equal(await Bookings.countDocuments({ tenantId, orderId: saved._id, sourceType: 'order_place' }), 2)
+        const previous = await Orders.findById(saved._id).lean()
+        assert.equal(previous.places[1].guestCount, 30)
+        assert.equal(previous.places[1].timeZone, 'Asia/Krasnoyarsk')
+        assert.equal(previous.places[1].locationAddress.includes('Скрытая'), false)
+        assert.equal(previous.places[1].locationConfiguration.details[0], 'Техника: Колонка')
+        assert.equal(previous.orderItems[0].serviceConfiguration.details[0], 'Формат: Длинная программа')
+        await Locations.updateOne({ _id: room._id }, { $set: { rentalConfiguration: null, hourlyRentalRate: 1 } })
+        const unchanged = await prepare({ context, body, payload: input, previous })
+        assert.equal(unchanged.contractAmount, 8800)
+        await assert.rejects(prepare({ context, body: { locationId: String(room._id) }, payload: input, previous }), { code: 'partycrm_multi_place_editor_required' })
+        const ordinaryEdit = await prepare({ context, body: { adminComment: 'Заметка' }, payload: { ...input, adminComment: 'Заметка' }, previous })
+        assert.deepEqual(ordinaryEdit.places, previous.places)
+        assert.deepEqual(ordinaryEdit.orderItems, previous.orderItems)
+        await release(saved)
+        assert.equal(await Bookings.countDocuments({ tenantId, orderId: saved._id, sourceType: 'order_place' }), 0)
+        saved = null
+      } finally {
+        if (blocker) await release(blocker)
+        if (saved) await release(saved)
+        await Locations.deleteOne({ _id: room._id, tenantId })
+        await Services.deleteOne({ _id: activity._id, tenantId })
+      }
+    }
+  )
+  await check(
+    'simultaneous multi-place orders cannot assign the same performer across different rooms',
+    async () => {
+      const performer = await Staff.create({ tenantId, firstName: 'Исполнитель' })
+      const room = await Locations.create({ tenantId, title: 'Зал для одновременной программы' })
+      const start = at('14:00', '2026-12-06')
+      const end = at('15:00', '2026-12-06')
+      const reserveFor = async (locationId) => {
+        const prepared = await prepare({
+          context,
+          body: {
+            bookingVersion: 2,
+            orderTypeId: String(type._id),
+            places: [{
+              id: 'stage',
+              locationId: String(locationId),
+              eventDate: start,
+              rental: { startsAt: start, endsAt: end },
+              serviceSelections: [],
+            }],
+          },
+          payload: {
+            ...emptyPayload,
+            status: 'active',
+            clientId: client._id,
+            assignedStaff: [{ staffId: performer._id, placeId: 'stage' }],
+          },
+        })
+        return venueWrite({
+          tenantId,
+          nextOrder: prepared,
+          work: ({ session }) => withPartyOrderStaffSchedule({
+            tenantId,
+            payload: prepared,
+            session,
+            getStaffModel: modelGetters.getPartyStaffModel,
+            work: async (session) => {
+              const conflicts = await findPartyOrderConflicts({
+                PartyOrders: Orders, tenantId, payload: prepared, session, checkLocation: false,
+              })
+              if (conflicts.staffConflicts.length)
+                throw Object.assign(new Error('Исполнитель занят'), { status: 409 })
+              return (await Orders.create([{ ...prepared, tenantId }], { session }))[0]
+            },
+          }),
+        })
+      }
+      try {
+        const results = await Promise.allSettled([reserveFor(location._id), reserveFor(room._id)])
+        assert.equal(results.filter((result) => result.status === 'fulfilled').length, 1)
+        assert.equal(results.find((result) => result.status === 'rejected')?.reason.status, 409)
+        const orders = await Orders.find({ tenantId, 'assignedStaff.staffId': performer._id }).lean()
+        assert.equal(orders.length, 1)
+        assert.equal(await Bookings.countDocuments({ tenantId, orderId: orders[0]._id, sourceType: 'order_place' }), 1)
+      } finally {
+        const orders = await Orders.find({ tenantId, 'assignedStaff.staffId': performer._id }).lean()
+        for (const order of orders) {
+          await venueWrite({
+            tenantId, previousOrder: order, nextOrder: null,
+            work: ({ session }) => Orders.findOneAndDelete({ tenantId, _id: order._id }, { session }).lean(),
+          })
+        }
+        await Staff.deleteOne({ tenantId, _id: performer._id })
+        await Locations.deleteOne({ tenantId, _id: room._id })
+      }
+    }
+  )
+  await check(
     'configured services calculate and persist exact terms, protect scheduling and retain catalog snapshots',
     async () => {
       const flexible = await Services.create({
@@ -557,6 +718,100 @@ try {
       assert.equal(updated.dateEnd.toISOString(), at('12:30'))
       assert.equal(updated.orderItems[0].serviceConfiguration.basePrice, 1000)
       assert.deepEqual(updated.orderItems[0].serviceConfiguration.parameters, regular)
+    }
+  )
+  await check(
+    'custom service parameters round-trip through the catalog APIs and their order snapshot survives catalog edits',
+    async () => {
+      const routeDeps = {
+        ...modelGetters,
+        ...serviceConfiguration,
+        ...typeHelpers,
+        getPartyRequestContext: async ({ req, managementOnly }) => {
+          assert.equal(managementOnly, true)
+          return { context: { ...context, tenantId: String(req.tenantId || tenantId) } }
+        },
+        parseJsonBody: async (req) => req.body,
+        isValidObjectId: mongoose.isObjectIdOrHexString,
+        NextResponse: { json: (body, { status }) => ({ body, status }) },
+        partyError: (status, code, message) => ({ status, body: { error: { code, message } } }),
+      }
+      const { GET, POST } = await compile('app/api/party/services/route.js', routeDeps, '{GET,POST}')
+      const PUT = await compile('app/api/party/services/[id]/route.js', routeDeps, 'PUT')
+      const configuration = { fields: [
+        { id: 'distance', title: 'Расстояние выезда', type: 'number', unit: 'км', required: true, allowDecimal: true, min: 1, max: 100, pricePerUnit: 40, durationPerUnit: 4 },
+        { id: 'rooms', title: 'Число комнат', type: 'ranges', unit: 'комн.', required: true, mode: 'base', tiers: [
+          { min: 1, max: 10, price: 1300, durationMinutes: 35 },
+          { min: 11, max: 20, price: 1500, durationMinutes: 45, includedUnits: 10, pricePerUnit: 50, maxPrice: 1700 },
+        ] },
+        { id: 'setup', title: 'Подготовка', type: 'ranges', unit: 'час', mode: 'adjustment', tiers: [
+          { min: 0, max: 10, price: -100, durationMinutes: -5 },
+        ] },
+        { id: 'format', title: 'Формат', type: 'select', required: true, options: [
+          { id: 'long', title: 'Длинный', priceDelta: 300, durationDelta: 15 },
+        ] },
+        { id: 'extras', title: 'Дополнительные материалы', type: 'checkboxes', options: [
+          { id: 'photo', title: 'Фото', priceDelta: 100, durationDelta: 5 },
+          { id: 'gift', title: 'Подарок', priceDelta: 250, durationDelta: 10 },
+        ] },
+      ] }
+      const created = await POST({ body: { title: 'Игра с произвольным расчётом', price: 900, duration: 30, configuration } })
+      assert.equal(created.status, 201)
+      const id = String(created.body.data._id)
+      const serviceParams = { params: Promise.resolve({ id }) }
+      const persisted = serviceConfiguration.normalizePartyServiceConfiguration(configuration)
+      assert.deepEqual((await Services.findById(id).lean()).configuration, persisted)
+      const listed = await GET({ nextUrl: new URL('https://party.test/api/party/services') })
+      assert.deepEqual(listed.body.data.find((item) => String(item._id) === id).configuration, persisted)
+      assert.equal((await PUT({ tenantId: foreignTenantId, body: { configuration: null } }, serviceParams)).status, 404)
+      assert.equal((await PUT({ body: { title: 'Игра по заявке' } }, serviceParams)).status, 200)
+      assert.deepEqual((await Services.findById(id).lean()).configuration, persisted)
+      const invalidConfig = await PUT({ body: { configuration: { fields: [{ id: 'bad', title: 'Число', type: 'number' }] } } }, serviceParams)
+      assert.equal(invalidConfig.status, 400)
+      assert.deepEqual((await Services.findById(id).lean()).configuration, persisted)
+
+      const parameters = { values: { distance: 2.5, rooms: 12, setup: 5, format: 'long', extras: ['photo', 'gift'] } }
+      const payload = { ...emptyPayload, placeType: 'client_address', locationId: null, eventDate: at('12:00') }
+      const body = { bookingVersion: 1, serviceSelections: [{ serviceId: id, quantity: 1, parameters }] }
+      const prepared = await prepare({ context, body, payload })
+      assert.equal(prepared.contractAmount, 2250)
+      assert.equal(prepared.durationMinutes, 80)
+      assert.equal(prepared.dateEnd.toISOString(), at('13:20'))
+      const saved = await Orders.create({ tenantId, ...prepared })
+      const previous = await Orders.findById(saved._id).lean()
+      const snapshot = previous.orderItems[0].serviceConfiguration
+      assert.deepEqual(snapshot.parameters, parameters)
+      assert.deepEqual(snapshot.definition, persisted)
+      assert.equal(snapshot.details.length, 5)
+      const operator = {
+        ...context,
+        role: 'admin',
+        staff: { ...context.staff, role: 'admin' },
+        position: { permissions: { orders: 'read', 'orders.servicesIds': 'read' } },
+      }
+      const restrictedView = permissions.filterPartyOrderForAccess(operator, previous)
+      assert.equal(restrictedView.orderItems, undefined)
+      const visibleSnapshot = restrictedView.serviceSelections[0].serviceConfiguration
+      assert.equal(visibleSnapshot.basePrice, undefined)
+      assert.deepEqual(visibleSnapshot.parameters, parameters)
+      assert.deepEqual(visibleSnapshot.definition, serviceConfiguration.redactPartyServiceConfigurationPrices(persisted))
+
+      assert.equal((await PUT({ body: { configuration: null, price: 9999, duration: 120 } }, serviceParams)).status, 200)
+      const edited = await prepare({ context, previous, payload: previous, body: {
+        serviceSelections: [{ serviceId: id, quantity: 1, parameters: { values: { ...parameters.values, distance: 1.25 } } }],
+      } })
+      assert.equal(edited.contractAmount, 2200)
+      assert.equal(edited.durationMinutes, 75)
+      assert.deepEqual(edited.orderItems[0].serviceConfiguration.definition, snapshot.definition)
+
+      const optionalConfiguration = serviceConfiguration.normalizePartyServiceConfiguration({
+        fields: [{ id: 'gift', title: 'Подарок', type: 'checkboxes', options: [{ id: 'box', title: 'Коробка', priceDelta: 150 }] }],
+      })
+      assert.equal((await PUT({ body: { configuration: optionalConfiguration } }, serviceParams)).status, 200)
+      const optionalBody = { bookingVersion: 1, serviceSelections: [{ serviceId: id, quantity: 1, parameters: { values: {} } }] }
+      const optionalOrder = await Orders.create({ tenantId, ...await prepare({ context, body: optionalBody, payload }) })
+      const optionalSaved = await Orders.findById(optionalOrder._id).lean()
+      assert.deepEqual(optionalSaved.orderItems[0].serviceConfiguration.parameters, { values: {} })
     }
   )
   await check(

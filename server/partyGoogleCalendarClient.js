@@ -170,6 +170,19 @@ const createPartyGoogleCalendarClient = (
           accessRole: item.accessRole,
         }))
     },
+    listEvents(calendarId, { timeMin, timeMax, pageToken } = {}) {
+      return call(() => calendar.events.list({
+        calendarId,
+        timeMin,
+        timeMax,
+        pageToken,
+        singleEvents: true,
+        showDeleted: false,
+        orderBy: 'startTime',
+        maxResults: 250,
+        fields: 'nextPageToken,timeZone,items(id,status,eventType,summary,description,location,start,end,htmlLink,extendedProperties/private)',
+      }))
+    },
     insertEvent(calendarId, requestBody) {
       return call(() => calendar.events.insert({ calendarId, requestBody }))
     },
@@ -177,6 +190,9 @@ const createPartyGoogleCalendarClient = (
       return call(() =>
         calendar.events.update({ calendarId, eventId, requestBody })
       )
+    },
+    patchEvent(calendarId, eventId, requestBody) {
+      return call(() => calendar.events.patch({ calendarId, eventId, requestBody, sendUpdates: 'none' }))
     },
     deleteEvent(calendarId, eventId) {
       return call(() => calendar.events.delete({ calendarId, eventId }))

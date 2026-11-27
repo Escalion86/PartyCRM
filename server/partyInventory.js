@@ -230,7 +230,7 @@ export const reservePartyOrderInventory = async ({
       previous.releasedReason === 'manual'
     )
       return { saved: false, released: true }
-    const reconciled = reconcileInventoryServiceItems(order, previous)
+    const reconciled = reconcileInventoryServiceItems(order, !automatic && order.bookingVersion === 2 ? null : previous)
     const allowed = new Set((order.servicesIds ?? []).map(inventoryId))
     if (automatic) {
       // orderItems keep the accepted proposal as a historical snapshot and may
@@ -248,6 +248,15 @@ export const reservePartyOrderInventory = async ({
         'Добавьте выбранные услуги в заказ перед резервированием'
       )
     if (!automatic) {
+      if (order.bookingVersion === 2) {
+        const rows = new Map(reconciled.serviceItems.map((item) => [item.serviceLineId, item]))
+        for (const item of serviceItems) {
+          const line = rows.get(item?.serviceLineId)
+          if (!line || line.serviceId !== inventoryId(item.serviceId) ||
+              !(+new Date(item.startAt) <= +new Date(line.startAt) && +new Date(item.endAt) >= +new Date(line.endAt)))
+            throw inventoryValidationError('Резерв должен покрывать время выбранной услуги на её площадке')
+        }
+      }
       serviceItems = serviceItems.map((item) => ({
         ...item,
         quantityMode: 'manual',

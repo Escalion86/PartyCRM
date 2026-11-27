@@ -33,11 +33,48 @@ const optionGroupSchema = new Schema(
   { _id: false }
 )
 
+const serviceParameterTierSchema = new Schema(
+  {
+    min: { type: Number, required: true },
+    max: Number,
+    price: Number,
+    durationMinutes: Number,
+    includedUnits: Number,
+    pricePerUnit: Number,
+    maxPrice: Number,
+  },
+  { _id: false }
+)
+
+const serviceParameterSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    title: { type: String, required: true },
+    type: {
+      type: String,
+      required: true,
+      enum: ['number', 'ranges', 'select', 'checkboxes'],
+    },
+    required: Boolean,
+    unit: String,
+    allowDecimal: Boolean,
+    min: Number,
+    max: Number,
+    pricePerUnit: Number,
+    durationPerUnit: Number,
+    mode: { type: String, enum: ['base', 'adjustment'] },
+    tiers: { type: [serviceParameterTierSchema], default: undefined },
+    options: { type: [serviceAdjustmentSchema], default: undefined },
+  },
+  { _id: false }
+)
+
 const serviceConfigurationSchema = new Schema(
   {
-    participantTiers: { type: [participantTierSchema], default: [] },
-    addons: { type: [serviceAdjustmentSchema], default: [] },
-    optionGroups: { type: [optionGroupSchema], default: [] },
+    fields: { type: [serviceParameterSchema], default: undefined },
+    participantTiers: { type: [participantTierSchema], default: undefined },
+    addons: { type: [serviceAdjustmentSchema], default: undefined },
+    optionGroups: { type: [optionGroupSchema], default: undefined },
   },
   { _id: false }
 )

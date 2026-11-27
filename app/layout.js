@@ -5,11 +5,13 @@ import '../fonts/FuturaPT.css'
 
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter'
 import ClientErrorLogger from '@components/ClientErrorLogger'
+import PartyImpersonationControl from '@components/party/PartyImpersonationControl'
 import PartyUnsavedChangesBootstrap from '@components/party/navigation/PartyUnsavedChangesBootstrap'
 import DevelopmentServiceWorkerCleanup from '@components/DevelopmentServiceWorkerCleanup'
 import ServiceWorkerRegistration from '@components/ServiceWorkerRegistration'
 import AppSnackbarProvider from '@components/AppSnackbarProvider'
 import AppQueryProvider from '@components/AppQueryProvider'
+import { PARTY_IMPERSONATION_UI_COOKIE } from '@helpers/partyImpersonationConstants'
 import Script from 'next/script'
 
 const rawDomain = process.env.DOMAIN || 'https://partycrm.ru'
@@ -80,6 +82,7 @@ export default function RootLayout({ children }) {
             <>
               <Script id="yandex-metrika" strategy="afterInteractive">
                 {`
+        if (!document.cookie.split('; ').some((cookie) => cookie.startsWith('${PARTY_IMPERSONATION_UI_COOKIE}='))) {
         (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
         m[i].l=1*new Date();
         for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
@@ -96,6 +99,7 @@ export default function RootLayout({ children }) {
           accurateTrackBounce:true,
           trackLinks:true
         });
+        }
       `}
               </Script>
               <noscript>
@@ -111,7 +115,10 @@ export default function RootLayout({ children }) {
             </>
           )}
           <AppQueryProvider>
-            <AppSnackbarProvider>{children}</AppSnackbarProvider>
+            <AppSnackbarProvider>
+              <PartyImpersonationControl />
+              {children}
+            </AppSnackbarProvider>
           </AppQueryProvider>
         </AppRouterCacheProvider>
       </body>

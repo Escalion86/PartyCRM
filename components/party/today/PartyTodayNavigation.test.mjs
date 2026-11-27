@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import test from 'node:test'
 import React from 'react'
 import { resolvePartyInboxCompanyLink } from '../../../helpers/partyInboxCompanyLink.js'
+import * as partyImpersonation from '../../../helpers/partyImpersonationClient.js'
 
 const require = createRequire(import.meta.url)
 const { transformSync } = require('next/dist/build/swc')
@@ -120,7 +121,7 @@ const host = ({
   }
   const active = compile(
     read('../../../helpers/partyActiveCompany.js'),
-    {},
+    { './partyImpersonationClient.js': partyImpersonation },
     { window, CustomEvent }
   )
   const publish = (id, options) => {
@@ -191,6 +192,7 @@ const host = ({
       react: mockReact,
       'next/navigation': { usePathname: () => location.pathname },
       'next/link': () => null,
+      '@helpers/partyImpersonationClient': partyImpersonation,
       '@helpers/partyActiveCompany': {
         ...active,
         publishPartyActiveCompanyId: publish,

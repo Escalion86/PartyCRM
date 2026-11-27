@@ -31,7 +31,21 @@ import PartyInitialExpectations from './PartyInitialExpectations'
 import usePartyOrderWizardDraft from './usePartyOrderWizardDraft'
 import { getPartyOrderWizardDraftScope } from '@helpers/partyOrderWizardDraft'
 import { emptyPartyOrderServiceParameters, previewPartyOrderService } from '@helpers/partyOrderServicePreview'
+import { PARTY_ORDER_WIZARD_STEP as STEP } from '@helpers/partyOrderWizardSteps'
 import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
+import { calculatePartyMultiPlaceTotal } from '@helpers/partyMultiPlaceBooking'
+import {
+  createPartyOrderPlaceDraft,
+  previewPartyOrderPlaceDraft,
+  serializePartyOrderPlaceDrafts,
+  storedPartyOrderPlaceDrafts,
+} from '@helpers/partyMultiPlaceOrderDraft'
+import {
+  PartyMultiPlaceFinance,
+  PartyMultiPlaceSelection,
+  PartyMultiPlaceServices,
+  PartyMultiPlaceTime,
+} from './PartyMultiPlaceOrderSteps'
 
 const input =
   'mt-1 min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 sm:text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 aria-invalid:border-red-700'
@@ -39,7 +53,7 @@ const button =
   'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
 const editorButton =
   'min-h-11 cursor-pointer rounded-lg px-2 py-2 text-sm font-semibold text-sky-800 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
-const steps = ['Тип', 'Место', 'Услуги', 'Время', 'Клиент и бриф', 'Финансы']
+const steps = ['Клиент', 'Тип', 'Место', 'Услуги', 'Время', 'Бриф', 'Финансы']
 const money = (value) => Number(value || 0).toLocaleString('ru-RU') + ' ₽'
 const selectionOf = (order) =>
   (order.serviceSelections || order.orderItems?.length
@@ -61,8 +75,9 @@ function Wizard({
   inboxId,
   options,
   refreshOrderTypes,
-  initialStep = 0,
+  initialStep = STEP.client,
   onSaved,
+  onQuickLeadSaved,
   onClose,
   onShowDetails,
   onSwitchToAdvanced,
@@ -78,9 +93,13 @@ function Wizard({
   const canManageCatalog = ['owner', 'admin'].includes(context.role) && !isPartyRestrictedManagementContext(context)
   const canCreateOrderType = canEditOrderType && canManageCatalog
   const canEditServices = can('orders.servicesIds', 'edit')
+  const canEditPlaces = ['orders.locationId', 'orders.servicesIds', 'orders.eventDate', 'orders.dateEnd']
+    .every((resource) => can(resource, 'edit')) && order.placesEditable !== false
   const canEditBrief = can('orders.eventBrief', 'edit')
   const canEditAddress = can('orders.customAddress', 'edit') || can('orders.clientAddress', 'edit')
-  const canCaptureLead = !existing && (can('orders.clientId', 'edit') || can('orders.adminComment', 'edit'))
+  const canReadClient = can('orders.clientId')
+  const canEditClient = can('orders.clientId', 'edit')
+  const canCaptureLead = !existing && (canEditClient || can('orders.adminComment', 'edit'))
   const timeZone = context.company?.settings?.timeZone || 'Asia/Krasnoyarsk'
   const [draft, setDraft] = useState(() => ({
     orderTypeId: order.orderTypeId ? String(order.orderTypeId) : '',
@@ -95,6 +114,7 @@ function Wizard({
       formatAddressPoolShort({ ...order.clientAddress, comment: '' }),
     clientAddress: normalizePartyPoolAddress(order.clientAddress),
     serviceSelections: selectionOf(order),
+    places: storedPartyOrderPlaceDrafts(order),
     eventDate: order.eventDate || '',
     rental:
       order.rental ||
@@ -124,7 +144,9 @@ function Wizard({
   const serviceEditorTrigger = useRef(null)
   const scheduleTrigger = useRef(null)
   const orderTypes = orderTypeCatalog ?? options.orderTypes ?? []
-  const startStep = existing ? initialStep : canCaptureLead ? -1 : 0
+  const firstBookingStep = canReadClient && !draft.clientId ? STEP.client : STEP.type
+  const requestedStep = existing ? initialStep : canCaptureLead ? STEP.lead : firstBookingStep
+  const startStep = requestedStep === STEP.client && !canReadClient ? STEP.type : requestedStep
   const [step, setStep] = useState(startStep)
   const [reachedStep, setReachedStep] = useState(startStep)
   const [clientForm, setClientForm] = useState(null)
@@ -133,7 +155,11 @@ function Wizard({
   const [validationStep, setValidationStep] = useState(null)
   const [invalidBriefField, setInvalidBriefField] = useState(null)
   const [briefValidation, setBriefValidation] = useState(null)
-  const briefKey = JSON.stringify([draft.orderTypeId, draft.serviceSelections.map((item) => item.serviceId)])
+  const multiPlace = Array.isArray(draft.places)
+  const selectedServiceIds = [...new Set((multiPlace && draft.places.length
+    ? draft.places.flatMap((place) => place.serviceSelections)
+    : draft.serviceSelections).map((item) => item.serviceId))]
+  const briefKey = JSON.stringify([draft.orderTypeId, selectedServiceIds])
   const updateBriefValidation = useCallback(
     (value) => setBriefValidation({ ...value, key: briefKey }),
     [briefKey]
@@ -142,7 +168,7 @@ function Wizard({
   const briefError = canEditBrief
     ? briefCheck?.missingLabel
       ? `Заполните поле «${briefCheck.missingLabel}», чтобы продолжить бронирование.`
-      : step === 4 && (briefCheck?.error || !briefCheck || briefCheck.loading)
+      : step === STEP.brief && (briefCheck?.error || !briefCheck || briefCheck.loading)
         ? briefCheck?.error
           ? 'Повторите загрузку брифа, чтобы продолжить.'
           : 'Дождитесь загрузки брифа.'
@@ -151,7 +177,7 @@ function Wizard({
   const stepSection = useRef(null)
   const stepHeading = useRef(null)
   const stepProgress = useRef(null)
-  const previousStep = useRef(startStep > 0 ? null : step)
+  const previousStep = useRef(startStep > STEP.client ? null : step)
   const [rentalMinutes, setRentalMinutes] = useState(() =>
     order.rental
       ? (+new Date(order.rental.endsAt) - +new Date(order.rental.startsAt)) /
@@ -167,6 +193,7 @@ function Wizard({
   const attempt = useRef(null)
   const saving = useRef(false)
   const baseline = useRef(JSON.stringify(draft))
+  const initialPlaces = useRef(JSON.stringify(draft.places))
   const baselineRentalMinutes = useRef(rentalMinutes)
   const dirty =
     JSON.stringify(draft) !== baseline.current ||
@@ -211,7 +238,7 @@ function Wizard({
   const recovery = usePartyOrderWizardDraft(draftScope, snapshot, dirty || busy || unresolved)
   const canPrice = can('finance.clientAmount')
   const disabled = busy || unresolved || !recovery.ready || Boolean(recovery.recovery)
-  const leadMode = step === -1
+  const leadMode = step === STEP.lead
   const errorId = 'party-order-wizard-field-error'
   useEffect(() => {
     if (previousStep.current !== step) {
@@ -231,7 +258,7 @@ function Wizard({
     setStep(index)
     setReachedStep((previous) => Math.max(previous, index))
     setValidationStep(index)
-    setInvalidBriefField(fromBrief || (index === 4 && message === briefError)
+    setInvalidBriefField(fromBrief || (index === STEP.brief && message === briefError)
       ? briefCheck?.missingId || ''
       : null)
     setError(message)
@@ -254,37 +281,38 @@ function Wizard({
     setReachedStep((previous) => Math.max(previous, index))
   }
   const startBooking = () => {
-    if (reachedStep < 0) {
+    if (reachedStep === STEP.lead) {
       const activeTypes = orderTypes.filter((type) => type.active !== false)
       const availableLocations = options.locations.filter(
         (location) => location.status === 'active' && location.bookingEnabled !== false
       )
+      const defaultPlace = can('orders.locationId', 'edit') && draft.placeType === 'company_location' &&
+        !draft.locationId && availableLocations.length === 1 ? singleLocationPatch(draft, availableLocations[0]._id) : {}
       setDraft((previous) => ({
         ...previous,
         ...(canEditOrderType && !previous.orderTypeId && activeTypes.length === 1
           ? { orderTypeId: String(activeTypes[0]._id) }
           : {}),
-        ...(can('orders.locationId', 'edit') &&
-        previous.placeType === 'company_location' &&
-        !previous.locationId &&
-        availableLocations.length === 1
-          ? { locationId: String(availableLocations[0]._id) }
-          : {}),
+        ...defaultPlace,
       }))
     }
-    navigateTo(0)
+    navigateTo(firstBookingStep)
   }
   const restore = () => {
     const saved = recovery.recovery
     setDraft(saved.draft)
     setBriefValidation(null)
-    setStep(saved.step)
-    setReachedStep(saved.reachedStep)
+    let restoredStep = saved.step
+    if (restoredStep === STEP.client && !canReadClient) {
+      restoredStep = saved.reachedStep >= STEP.brief ? STEP.brief : STEP.type
+    }
+    setStep(restoredStep)
+    setReachedStep(Math.max(restoredStep, saved.reachedStep))
     setRentalMinutes(saved.rentalMinutes)
     setInitialPayment(saved.initialPayment)
     setExpectations(saved.expectations)
     setClientForm(saved.clientForm || null)
-    setClientPickerOpen(Boolean(saved.clientForm?.open && !saved.attempt && !saved.unresolved && [-1, 4].includes(saved.step)))
+    setClientPickerOpen(Boolean(saved.clientForm?.open && !saved.attempt && !saved.unresolved && [STEP.lead, STEP.client].includes(restoredStep)))
     setCreatedClients(saved.createdClients || [])
     setClientFormVersion((previous) => previous + 1)
     attempt.current = saved.attempt || null
@@ -292,6 +320,9 @@ function Wizard({
     recovery.accept()
   }
   const location = updatedLocations[draft.locationId] || options.locations.find((item) => String(item._id) === draft.locationId)
+  const locations = options.locations.map((item) => updatedLocations[String(item._id)] || item)
+  const requiresPlaceEditor = !multiPlace && draft.placeType === 'company_location' && (location?.rentalConfiguration?.hourlyRate || location?.rentalConfiguration?.extras) &&
+    (!existing || String(order.locationId) !== draft.locationId)
   const clients = [
     ...options.clients,
     ...createdClients.filter(
@@ -313,8 +344,31 @@ function Wizard({
     return previewPartyOrderService(service, priorItems.get(id), selection)
   })
   const servicePreviews = previewServices(draft.serviceSelections)
-  const invalidService = servicePreviews.find(({ error }) => error)
-  const configurationError = invalidService
+  const invalidService = !multiPlace && servicePreviews.find(({ error }) => error)
+  const savedPlaces = new Map((order.places || []).map((place) => [place.id, place]))
+  const savedLines = order.orderItems || order.serviceSelections || []
+  const placePreviews = (draft.places || []).map((place) => {
+    const savedPlace = savedPlaces.get(place.id)
+    const preview = previewPartyOrderPlaceDraft({
+      place,
+      location: locations.find((item) => String(item._id) === place.locationId),
+      servicesById,
+      savedItems: savedLines,
+      savedPlace,
+      previousLocationId: order.bookingVersion !== 2 ? order.locationId : null,
+      previousPricingSnapshot: order.bookingVersion !== 2 ? order.pricingSnapshot : null,
+      previousTypeId: order.orderTypeId,
+      orderTypeId: draft.orderTypeId,
+    })
+    return !canEditPlaces && savedPlace ? { ...preview, pricingSnapshot: savedPlace.pricingSnapshot } : preview
+  })
+  const placeError = canEditPlaces && placePreviews.find(({ place, guestError, placeError, location: selected }) => !place.locationId || !selected || guestError || placeError)
+  const multiServiceError = canEditPlaces && (placePreviews.reduce((count, { lines }) => count + lines.length, 0) > 100
+    ? 'В заказе может быть до 100 позиций услуг.'
+    : placePreviews.find(({ serviceError }) => serviceError)?.serviceError)
+  const multiTimeError = canEditPlaces && placePreviews.find(({ timeError }) => timeError)?.timeError
+  const untimedPlace = canEditPlaces && placePreviews.find(({ timed }) => !timed)
+  const configurationError = multiPlace ? multiServiceError || '' : invalidService
     ? invalidService.configuration
       ? `Проверьте параметры услуги «${invalidService.item.title}».`
       : invalidService.error.message
@@ -344,7 +398,10 @@ function Wizard({
   let calculation,
     calculationError = ''
   try {
-    if (!invalidService) calculation = calculatePartyBooking({
+    if (multiPlace) {
+      if (placePreviews.length && placePreviews.every(({ pricingSnapshot }) => pricingSnapshot))
+        calculation = calculatePartyMultiPlaceTotal(placePreviews, draft.discount)
+    } else if (!invalidService) calculation = calculatePartyBooking({
       items: [...servicePreviews.map(({ item }) => item), ...preservedItems],
       rental: draft.rental,
       placeType: draft.placeType,
@@ -357,7 +414,7 @@ function Wizard({
   } catch (cause) {
     calculationError = cause.message
   }
-  const duration = invalidService ? 0 : Math.ceil(
+  const duration = multiPlace || invalidService ? 0 : Math.ceil(
     [...servicePreviews.map(({ item }) => item), ...preservedItems].reduce((total, item) =>
       total + (Number(item.durationMinutes) || 0) * (Number(item.quantity) || 0), 0)
   )
@@ -381,6 +438,34 @@ function Wizard({
     setError('')
     setValidationStep(null)
   }
+  const makePlace = (values) => createPartyOrderPlaceDraft({ id: crypto.randomUUID(), ...values })
+  const primaryPlace = (previous, overrides = {}) => makePlace({
+    locationId: previous.locationId,
+    eventDate: previous.eventDate,
+    rental: previous.rental,
+    serviceSelections: previous.serviceSelections.map((item) => ({ ...item, lineId: crypto.randomUUID() })),
+    ...overrides,
+  })
+  function singleLocationPatch(previous, id) {
+    const locationId = String(id)
+    const configured = options.locations.find((item) => String(item._id) === locationId)?.rentalConfiguration
+    return {
+      locationId, eventDate: '', rental: null,
+      ...(canEditPlaces && (configured?.hourlyRate || configured?.extras) ? {
+        places: [primaryPlace(previous, { locationId, eventDate: '', rental: null })],
+      } : {}),
+    }
+  }
+  const updatePlace = (id, patch) => edit((previous) => ({
+    places: previous.places.map((place) => place.id === id ? { ...place, ...patch } : place),
+  }))
+  const addPlace = () => {
+    const nextPlace = makePlace()
+    const places = draft.places || [primaryPlace(draft)]
+    if (places.length < 10) edit({ places: [...places, nextPlace] })
+  }
+  const openPlaceParameters = () => edit({ places: [primaryPlace(draft)] })
+  const removePlace = (id) => edit((previous) => ({ places: previous.places.filter((place) => place.id !== id) }))
   const selectServices = (selections, changedService) => {
     edit({ serviceSelections: selections })
     if (!draft.eventDate) {
@@ -390,14 +475,14 @@ function Wizard({
       setRentalMinutes(Math.max(1, nextDuration || 60))
     }
   }
-  const compatibleServices = step === 2 && canEditServices
+  const compatibleServices = step === STEP.services && canEditServices
     ? [...servicesById.values()].filter((service) => isPartyServiceAvailable(service, draft))
     : []
   const addableServices = compatibleServices.filter(
     (service) => !draft.serviceSelections.some((item) => String(item.serviceId) === String(service._id))
   )
   let servicePickerMessage = ''
-  if (step === 2 && canEditServices && addableServices.length === 0) {
+  if (step === STEP.services && canEditServices && addableServices.length === 0) {
     if (compatibleServices.length > 0) {
       servicePickerMessage = 'Все подходящие услуги уже добавлены.'
     } else if (servicesById.size === 0) {
@@ -413,7 +498,7 @@ function Wizard({
   const addServiceSelection = (service) => ({
     serviceId: String(service._id),
     quantity: 1,
-    ...(service.configuration ? { parameters: emptyPartyOrderServiceParameters() } : {}),
+    ...(service.configuration ? { parameters: emptyPartyOrderServiceParameters(service.configuration) } : {}),
   })
   const focusServiceParameters = (serviceId) => {
     const row = Array.from(stepSection.current?.querySelectorAll('[data-order-service-id]') || [])
@@ -459,9 +544,9 @@ function Wizard({
     await changeType(typeId)
     closeTypeCreate()
   }
-  const openServiceEditor = (serviceId, trigger) => {
+  const openServiceEditor = (serviceId, trigger, placeId) => {
     serviceEditorTrigger.current = trigger
-    setServiceEditor({ serviceId })
+    setServiceEditor({ serviceId, placeId })
   }
   const closeServiceEditor = (focusServiceId) => {
     setServiceEditor(null)
@@ -472,6 +557,14 @@ function Wizard({
   const applySavedService = (service, created) => {
     const serviceId = String(service._id)
     setCatalogChanges((previous) => ({ ...previous, [serviceId]: service }))
+    if (serviceEditor?.placeId) {
+      const place = draft.places.find((item) => item.id === serviceEditor.placeId)
+      if (created && place && isPartyServiceAvailable(service, { orderTypeId: draft.orderTypeId, placeType: 'company_location', locationId: place.locationId })) {
+        updatePlace(place.id, { serviceSelections: [...place.serviceSelections, { ...addServiceSelection(service), lineId: crypto.randomUUID() }] })
+      } else if (created) setError('Услуга сохранена. Проверьте её доступность для выбранного места.')
+      closeServiceEditor()
+      return
+    }
     if (!created || isPartyServiceAvailable(service, draft)) {
       const selections = created && !draft.serviceSelections.some((item) => item.serviceId === serviceId)
         ? [...draft.serviceSelections, addServiceSelection(service)]
@@ -509,18 +602,30 @@ function Wizard({
       : ''
   const stepError = (index) => {
     switch (index) {
-      case 0:
+      case STEP.client:
+        return canReadClient && !draft.clientId ? 'Выберите или создайте клиента.' : ''
+      case STEP.type:
         return draft.orderTypeId ? '' : 'Выберите тип заказа.'
-      case 1: {
+      case STEP.place: {
+        if (multiPlace) {
+          if (!canEditPlaces) return ''
+          if (placeError) return placeError.guestError || placeError.placeError?.message || 'Укажите доступное помещение у каждого места.'
+          return ''
+        }
+        if (requiresPlaceEditor) return canEditPlaces
+          ? 'Нажмите «Настроить аренду», чтобы выбрать параметры площадки.'
+          : 'Для расчёта аренды этой площадки нужны права на изменение места, услуг и времени.'
         const place = draft.placeType === 'company_location' ? draft.locationId : draft.customAddress.trim()
         return place ? '' : 'Укажите помещение или адрес выезда.'
       }
-      case 2:
+      case STEP.services:
+        if (multiPlace) return configurationError
         return configurationError || (incompatible.length ? 'Уберите несовместимые услуги или измените тип и место.' : durationError)
-      case 3:
+      case STEP.time:
+        if (multiPlace) return multiTimeError || (untimedPlace ? `Выберите время места «${untimedPlace.title}».` : '')
         return durationError || timeError || (draft.eventDate ? '' : 'Выберите свободное время.')
-      case 4:
-        return can('orders.clientId') && !draft.clientId ? 'Выберите или создайте клиента.' : briefError
+      case STEP.brief:
+        return briefError
       default:
         return ''
     }
@@ -538,20 +643,30 @@ function Wizard({
   const close = () => leaveWizard(onClose, 'close-order-wizard')
   const save = async (complete) => {
     if (saving.current || childDirty) return
-    if (!unresolved && (configurationError || (programTooLong && !leadMode))) {
-      reportValidation(2, configurationError || durationError)
+    const writePlaces = multiPlace && canEditPlaces && (!existing || order.bookingVersion !== 2 ||
+      String(order.orderTypeId || '') !== draft.orderTypeId || JSON.stringify(draft.places) !== initialPlaces.current)
+    if (!unresolved && writePlaces && (placeError || multiTimeError)) {
+      reportValidation(placeError ? STEP.place : STEP.time, placeError ? stepError(STEP.place) : multiTimeError)
       return
     }
-    if (!unresolved && !leadMode && draft.eventDate && timeError) {
-      reportValidation(3, timeError)
+    if (!unresolved && requiresPlaceEditor) {
+      reportValidation(STEP.place, stepError(STEP.place))
+      return
+    }
+    if (!unresolved && (multiPlace ? writePlaces && configurationError : configurationError || (programTooLong && !leadMode))) {
+      reportValidation(STEP.services, configurationError || durationError)
+      return
+    }
+    if (!unresolved && !multiPlace && !leadMode && draft.eventDate && timeError) {
+      reportValidation(STEP.time, timeError)
       return
     }
     if (!unresolved && leadMode && !draft.clientId && !draft.adminComment?.trim()) {
-      reportValidation(-1, 'Выберите клиента, создайте нового или запишите суть обращения.')
+      reportValidation(STEP.lead, 'Выберите клиента, создайте нового или запишите суть обращения.')
       return
     }
     if (!unresolved && complete) {
-      for (let index = 0; index < 5; index++) {
+      for (let index = STEP.client; index < STEP.finance; index++) {
         const message = stepError(index)
         if (message) {
           reportValidation(index, message)
@@ -565,11 +680,12 @@ function Wizard({
         for (const payment of expectations)
           normalizePartyPaymentExpectation(payment)
       const body = {
-        bookingVersion: 1,
+        bookingVersion: multiPlace ? 2 : 1,
+        ...(writePlaces ? { places: serializePartyOrderPlaceDrafts(placePreviews) } : {}),
         ...(can('orders.title', 'edit')
           ? { orderTypeId: draft.orderTypeId || null }
           : {}),
-        ...(can('orders.servicesIds', 'edit')
+        ...(!multiPlace && can('orders.servicesIds', 'edit')
           ? {
               serviceSelections: draft.serviceSelections.map(
                 ({ serviceId, quantity }, index) => ({
@@ -580,10 +696,10 @@ function Wizard({
               ),
             }
           : {}),
-        ...(can('orders.placeType', 'edit')
+        ...(!multiPlace && can('orders.placeType', 'edit')
           ? { placeType: draft.placeType }
           : {}),
-        ...(can('orders.locationId', 'edit')
+        ...(!multiPlace && can('orders.locationId', 'edit')
           ? {
               locationId:
                 draft.placeType === 'company_location'
@@ -597,10 +713,10 @@ function Wizard({
         ...(draft.placeType === 'client_address' && can('orders.clientAddress', 'edit') && draft.clientAddress
           ? { clientAddress: draft.clientAddress }
           : {}),
-        ...(can('orders.eventDate', 'edit')
+        ...(!multiPlace && can('orders.eventDate', 'edit')
           ? { eventDate: draft.eventDate || null }
           : {}),
-        ...(can('orders.eventDate', 'edit') && can('orders.dateEnd', 'edit')
+        ...(!multiPlace && can('orders.eventDate', 'edit') && can('orders.dateEnd', 'edit')
           ? {
               rental:
                 draft.placeType === 'company_location' ? draft.rental : null,
@@ -653,7 +769,8 @@ function Wizard({
       )
       onDirtyChange?.(false)
       recovery.clear()
-      onSaved?.(result.data, result.accessChanged || !result.data)
+      const handleSaved = leadMode && onQuickLeadSaved ? onQuickLeadSaved : onSaved
+      handleSaved?.(result.data, result.accessChanged || !result.data)
     } catch (cause) {
       if (
         !existing &&
@@ -668,7 +785,10 @@ function Wizard({
         setUnresolved(true)
       else if (!unresolved) attempt.current = null
       if (canEditBrief && cause.payload?.error?.code === 'partycrm_booking_brief_required') {
-        reportValidation(4, 'Заполните обязательные вопросы брифа, чтобы завершить бронирование.', true)
+        reportValidation(STEP.brief, 'Заполните обязательные вопросы брифа, чтобы завершить бронирование.', true)
+      } else if (multiPlace && cause.payload?.error?.code === 'partycrm_venue_conflict') {
+        setAvailabilityRefresh((value) => value + 1)
+        reportValidation(STEP.time, cause.message)
       } else {
         setError(cause.message || 'Не удалось сохранить заказ')
       }
@@ -677,9 +797,7 @@ function Wizard({
       setBusy(false)
     }
   }
-  const canReadClient = can('orders.clientId')
-  const canEditClient = can('orders.clientId', 'edit')
-  const clientPickerVisible = clientPickerOpen && canReadClient && canEditClient && (leadMode || step === 4)
+  const clientPickerVisible = clientPickerOpen && canReadClient && canEditClient && (leadMode || step === STEP.client)
   const clientFields = canReadClient ? (
     <PartyOrderClientPicker
       key={clientFormVersion}
@@ -689,10 +807,10 @@ function Wizard({
       selectedId={draft.clientId}
       savedName={order.client?.name}
       canEdit={canEditClient}
-      showCreateAction={leadMode}
+      showCreateAction
       disabled={disabled}
       open={clientPickerVisible}
-      fieldError={validationStep === 4 && invalidBriefField !== null ? undefined : fieldError(leadMode ? -1 : 4)}
+      fieldError={fieldError(leadMode ? STEP.lead : STEP.client)}
       initialForm={clientForm}
       onFormStateChange={setClientForm}
       onDirtyChange={childChanged}
@@ -749,7 +867,7 @@ function Wizard({
             <button
               type="button"
               className={button}
-              disabled={disabled || childDirty || step === (canCaptureLead ? -1 : 0)}
+              disabled={disabled || childDirty || step === (canCaptureLead ? STEP.lead : STEP.client)}
               onClick={() => navigateTo(step - 1)}
             >
               Назад
@@ -780,14 +898,14 @@ function Wizard({
             >
               Оформить бронирование
             </button>
-          ) : step < 5 ? (
+          ) : step < STEP.finance ? (
             <button
               type="button"
               className={`${button} bg-sky-700 !text-white hover:bg-sky-800`}
-              disabled={disabled || childDirty || (step === 0 && !orderTypes.length)}
+              disabled={disabled || childDirty || (step === STEP.type && !orderTypes.length)}
               onClick={() => {
                 const message = stepError(step)
-                if (step > 2 && configurationError) reportValidation(2, configurationError)
+                if (step > STEP.services && configurationError) reportValidation(STEP.services, configurationError)
                 else if (message) reportValidation(step, message)
                 else navigateTo(step + 1)
               }}
@@ -855,7 +973,7 @@ function Wizard({
                 aria-current={step === index ? 'step' : undefined}
                 className={`${button} ${step === index ? 'border-sky-700 bg-sky-50 text-sky-950' : 'border-transparent text-slate-600'}`}
                 onClick={() => {
-                  if (index > 2 && configurationError) reportValidation(2, configurationError)
+                  if (index > STEP.services && configurationError) reportValidation(STEP.services, configurationError)
                   else navigateTo(index)
                 }}
               >
@@ -881,7 +999,7 @@ function Wizard({
                     rows={3}
                     maxLength={2000}
                     value={draft.adminComment}
-                    {...fieldError(-1)}
+                    {...fieldError(STEP.lead)}
                     onChange={(event) => edit({ adminComment: event.target.value })}
                   />
                   <span className="mt-1 block text-xs text-slate-600">Внутренняя заметка менеджера.</span>
@@ -894,14 +1012,17 @@ function Wizard({
               )}
             </>
           ) : null}
-          {step === 0 ? (
+          {step === STEP.client ? (
+            clientFields || <p className="text-sm text-slate-600">Выбор клиента недоступен вашей должности.</p>
+          ) : null}
+          {step === STEP.type ? (
             <>
               <div className="flex items-end gap-2">
                 <label className="min-w-0 flex-1 text-sm">
                   Тип заказа
                   <select
                     aria-label="Тип заказа"
-                    {...fieldError(0)}
+                    {...fieldError(STEP.type)}
                     className={`${input} cursor-pointer`}
                     value={draft.orderTypeId}
                     disabled={!canEditOrderType}
@@ -945,7 +1066,11 @@ function Wizard({
               </p>
             </>
           ) : null}
-          {step === 1 ? (
+          {step === STEP.place && multiPlace ? (
+            <PartyMultiPlaceSelection previews={placePreviews} locations={locations} onAdd={addPlace} onRemove={removePlace} onUpdate={updatePlace}
+              canEdit={canEditPlaces && !disabled} canPrice={canPrice} showErrors={validationStep === STEP.place} />
+          ) : null}
+          {step === STEP.place && !multiPlace ? (
             <>
               <label className="block text-sm">
                 Место проведения
@@ -967,21 +1092,16 @@ function Wizard({
                 </select>
               </label>
               {draft.placeType === 'company_location' ? (
+                <div className="space-y-3">
                 <label className="block text-sm">
                   Помещение
                   <select
                     aria-label="Помещение"
-                  {...fieldError(1)}
+                  {...fieldError(STEP.place)}
                     className={`${input} cursor-pointer`}
                     value={draft.locationId}
                     disabled={!can('orders.locationId', 'edit')}
-                    onChange={(event) =>
-                      edit({
-                        locationId: event.target.value,
-                        eventDate: '',
-                        rental: null,
-                      })
-                    }
+                    onChange={(event) => edit(singleLocationPatch(draft, event.target.value))}
                   >
                     <option value="">Выберите помещение</option>
                     {options.locations.map((item) => (
@@ -991,6 +1111,11 @@ function Wizard({
                     ))}
                   </select>
                 </label>
+                {canEditPlaces && requiresPlaceEditor && <button className={button} type="button" onClick={openPlaceParameters}>Настроить аренду</button>}
+                {canEditPlaces && locations.some((item) => item.status !== 'archived' && item.bookingEnabled !== false && String(item._id) !== draft.locationId) && (
+                  <button type="button" className={button} disabled={!draft.locationId} onClick={addPlace}>Добавить место</button>
+                )}
+                </div>
               ) : (
                 <PartyOrderAddressEditor
                   companyId={companyId}
@@ -1009,7 +1134,12 @@ function Wizard({
               )}
             </>
           ) : null}
-          {step === 2 ? (
+          {step === STEP.services && multiPlace ? (
+            <PartyMultiPlaceServices previews={placePreviews} services={servicesById} orderTypeId={draft.orderTypeId}
+              update={updatePlace} canEdit={canEditPlaces && !disabled} canPrice={canPrice} canManageCatalog={canManageCatalog}
+              onOpenService={(placeId, serviceId, trigger) => openServiceEditor(serviceId, trigger, placeId)} showErrors={validationStep === STEP.services} />
+          ) : null}
+          {step === STEP.services && !multiPlace ? (
             <>
               {incompatible.length ? (
                 <div className="space-y-2 rounded-lg bg-amber-50 p-3 text-sm text-amber-950">
@@ -1114,7 +1244,7 @@ function Wizard({
                               configuration={configuration}
                               parameters={parameters}
                               error={serviceError}
-                              showError={validationStep === 2}
+                              showError={validationStep === STEP.services}
                               canEdit={canEditServices}
                               canPrice={canPrice}
                               onChange={(value) => changeSelection({ parameters: value })}
@@ -1123,7 +1253,7 @@ function Wizard({
                             <div className="sm:col-span-full">
                               <button className={editorButton} type="button"
                                 onClick={() => {
-                                  changeSelection({ parameters: emptyPartyOrderServiceParameters() })
+                                  changeSelection({ parameters: emptyPartyOrderServiceParameters(service.configuration) })
                                   requestAnimationFrame(() => focusServiceParameters(String(item.serviceId)))
                                 }}>
                                 Настроить по справочнику
@@ -1219,7 +1349,11 @@ function Wizard({
               </p>
             </>
           ) : null}
-          {step === 3 ? (
+          {step === STEP.time && multiPlace ? (
+            <PartyMultiPlaceTime previews={placePreviews} companyId={companyId} orderId={order._id} timeZone={timeZone}
+              onUpdate={updatePlace} canEdit={canEditPlaces && !disabled} refreshKey={availabilityRefresh} />
+          ) : null}
+          {step === STEP.time && !multiPlace ? (
             <>
               {draft.placeType === 'company_location' ? (
                 <label className="block text-sm">
@@ -1329,33 +1463,26 @@ function Wizard({
               ) : null}
             </>
           ) : null}
-          {step === 4 ? (
-            <>
-              {clientFields}
-              {can('orders.eventBrief') ? (
-                <PartyEventBriefEditor
-                  key={draft.orderTypeId}
-                  value={draft.eventBrief}
-                  onChange={(eventBrief) => edit({ eventBrief })}
-                  companyId={companyId}
-                  orderId={order._id || ''}
-                  orderTypeId={draft.orderTypeId}
-                  contactOptions={{ ...options, clients }}
-                  onContactDirtyChange={contactChanged}
-                  timeZone={timeZone}
-                  servicesIds={draft.serviceSelections.map(
-                    (item) => item.serviceId
-                  )}
-                  booking
-                  onValidationChange={canEditBrief ? updateBriefValidation : undefined}
-                  invalidFieldId={validationStep === 4 ? invalidBriefField : undefined}
-                  validationErrorId={errorId}
-                  disabled={disabled || !canEditBrief}
-                />
-              ) : null}
-            </>
+          {step === STEP.brief && can('orders.eventBrief') ? (
+            <PartyEventBriefEditor
+              key={draft.orderTypeId}
+              value={draft.eventBrief}
+              onChange={(eventBrief) => edit({ eventBrief })}
+              companyId={companyId}
+              orderId={order._id || ''}
+              orderTypeId={draft.orderTypeId}
+              contactOptions={{ ...options, clients }}
+              onContactDirtyChange={contactChanged}
+              timeZone={timeZone}
+              servicesIds={selectedServiceIds}
+              booking
+              onValidationChange={canEditBrief ? updateBriefValidation : undefined}
+              invalidFieldId={validationStep === STEP.brief ? invalidBriefField : undefined}
+              validationErrorId={errorId}
+              disabled={disabled || !canEditBrief}
+            />
           ) : null}
-          {step === 5 ? (
+          {step === STEP.finance ? (
             <>
               <div className="space-y-2 rounded-xl border border-slate-200 p-4">
                 <p className="font-semibold">
@@ -1365,21 +1492,22 @@ function Wizard({
                     order.orderTypeSnapshot ||
                     'Заказ'}
                 </p>
-                <p className="text-sm">
+                {multiPlace ? <PartyMultiPlaceFinance previews={placePreviews} timeZone={timeZone} canPrice={canPrice} /> : <><p className="text-sm">
                   {draft.placeType === 'company_location'
                     ? location?.title || 'Помещение не выбрано'
                     : draft.customAddress}
                 </p>
                 <p className="text-sm">
                   {dateText(draft.eventDate)} — {dateText(dateEnd)}
-                </p>
+                </p></>}
+                {multiPlace && calculation?.durationMinutes > 0 ? <p className="text-sm">Длительность события · {calculation.durationMinutes} мин</p> : null}
                 {canPrice && calculation ? (
                   <dl className="space-y-2 border-t border-slate-200 pt-3 text-sm tabular-nums">
-                    <div className="flex justify-between gap-3">
+                    {!multiPlace && <div className="flex justify-between gap-3">
                       <dt>Услуги</dt>
                       <dd>{money(calculation.servicesKopecks / 100)}</dd>
-                    </div>
-                    {draft.placeType === 'company_location' ? (
+                    </div>}
+                    {!multiPlace && draft.placeType === 'company_location' ? (
                       <div className="flex justify-between gap-3">
                         <dt>Аренда · {calculation.billedHours} ч к оплате</dt>
                         <dd>{money(calculation.rentalKopecks / 100)}</dd>

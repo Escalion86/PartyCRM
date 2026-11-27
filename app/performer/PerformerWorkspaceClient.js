@@ -389,9 +389,8 @@ export default function PerformerWorkspaceClient() {
       if (!result?.ok) {
         throw new Error('Не удалось создать push-подписку')
       }
-      await fetch('/api/party/performer/notifications', {
+      await apiJson('/api/party/performer/notifications', {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ notifications: { pushEnabled: true } }),
       })
       setPushMessage('Push-уведомления по назначениям подключены')

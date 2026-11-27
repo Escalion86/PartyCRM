@@ -1,6 +1,63 @@
 const hasDateRange = (payload) =>
   Boolean(payload?.eventDate && payload?.dateEnd)
 
+const assignmentWindow = (order, assignment) =>
+  order.bookingVersion === 2 && assignment.placeId
+    ? (order.places || []).find((place) => place.id === assignment.placeId)
+    : order
+
+const overlapsStaff = (order, other) => {
+  if (order.bookingVersion !== 2 && other.bookingVersion !== 2) return true
+  return (order.assignedStaff || []).some((assignment) => {
+    const range = assignmentWindow(order, assignment)
+    if (!hasDateRange(range)) return false
+    return (other.assignedStaff || []).some((candidate) => {
+      if (String(candidate.staffId) !== String(assignment.staffId)) return false
+      const target = assignmentWindow(other, candidate)
+      return hasDateRange(target) &&
+        +new Date(range.eventDate) < +new Date(target.dateEnd) &&
+        +new Date(range.dateEnd) > +new Date(target.eventDate)
+    })
+  })
+}
+
+// Lock existing employee documents in a consistent order. Venue locks alone
+// cannot serialize bookings for one employee in different rooms.
+const getPartyStaffScheduleModel = async () => (await import('./partyModels')).getPartyStaffModel()
+
+export const withPartyOrderStaffSchedule = async ({
+  tenantId,
+  payload,
+  session = null,
+  work,
+  getStaffModel = getPartyStaffScheduleModel,
+}) => {
+  const ids = [...new Set((payload.assignedStaff || [])
+    .filter((assignment) => assignment.staffId && hasDateRange(assignmentWindow(payload, assignment)))
+    .map((assignment) => String(assignment.staffId)))].sort()
+  if (!ids.length || payload.status === 'canceled') return work(session)
+  const Staff = await getStaffModel()
+  const run = async (current) => {
+    for (const id of ids) {
+      await Staff.updateOne({ tenantId, _id: id }, { $inc: { orderScheduleRevision: 1 } }, { session: current, timestamps: false })
+    }
+    return work(current)
+  }
+  if (session) return run(session)
+  const { supportsPartyVenueTransactions } = await import('./partyVenueBookings')
+  if (!(await supportsPartyVenueTransactions(Staff))) {
+    if (payload.bookingVersion === 2)
+      throw Object.assign(new Error('Для назначения исполнителей необходима поддержка транзакций'), { status: 503, code: 'partycrm_venue_transaction_required' })
+    return work(null)
+  }
+  const ownedSession = await Staff.db.startSession()
+  try {
+    return await ownedSession.withTransaction(() => run(ownedSession))
+  } finally {
+    await ownedSession.endSession()
+  }
+}
+
 const buildOverlapQuery = ({
   tenantId,
   eventDate,
@@ -44,19 +101,15 @@ export const findPartyOrderConflicts = async ({
     excludeOrderId,
   })
 
-  const conflictQueries = []
-
   const conflictQuery = (filter, fields) => {
     const query = PartyOrders.find(filter).select(fields)
     return (session ? query.session(session) : query).lean()
   }
-  if (
+  const locationConflicts = (
     checkLocation &&
     payload.placeType === 'company_location' &&
     payload.locationId
-  ) {
-    conflictQueries.push(
-      conflictQuery(
+  ) ? await conflictQuery(
         {
           ...overlapQuery,
           // Only IDs resolved from the stored tenant group by the caller are trusted.
@@ -66,33 +119,20 @@ export const findPartyOrderConflicts = async ({
           locationId: payload.locationId,
         },
         '_id title eventDate dateEnd locationId'
-      )
-    )
-  } else {
-    conflictQueries.push(Promise.resolve([]))
-  }
+      ) : []
 
   const staffIds = (payload.assignedStaff ?? [])
     .map((item) => item.staffId)
     .filter(Boolean)
 
-  if (staffIds.length > 0) {
-    conflictQueries.push(
-      conflictQuery(
+  const staffOrders = staffIds.length > 0 ? await conflictQuery(
         {
           ...overlapQuery,
           'assignedStaff.staffId': { $in: staffIds },
         },
-        '_id title eventDate dateEnd assignedStaff.staffId'
-      )
-    )
-  } else {
-    conflictQueries.push(Promise.resolve([]))
-  }
-
-  // MongoDB does not support parallel operations inside one transaction.
-  const locationConflicts = await conflictQueries[0]
-  const staffConflicts = await conflictQueries[1]
+        '_id title eventDate dateEnd assignedStaff.staffId assignedStaff.placeId bookingVersion places.id places.eventDate places.dateEnd'
+      ) : []
+  const staffConflicts = staffOrders.filter((order) => overlapsStaff(payload, order)).map(({ places: _places, ...order }) => order)
 
   return {
     locationConflicts,

@@ -108,10 +108,11 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
   const busy = []
   if (location) {
     const Bookings = await getPartyVenueBookingModel({ readOnly: true })
-    const [orders, tickets] = await Promise.all([
+    const [orders, bookings] = await Promise.all([
       Orders.find({
         tenantId: context.tenantId,
         locationId: location._id,
+        bookingVersion: { $ne: 2 },
         status: { $ne: 'canceled' },
         ...(selectedOrder ? { _id: { $ne: selectedOrder._id } } : {}),
         ...getPartyVenueOrderIntervalFilter({
@@ -126,11 +127,11 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
       Bookings.find({
         tenantId: context.tenantId,
         locationId: location._id,
-        sourceType: 'ticket_session',
+        sourceType: { $in: ['order_place', 'ticket_session'] },
         startsAt: { $lt: new Date(+to + preparation * 60000) },
         endsAt: { $gt: new Date(+from - cleanup * 60000) },
       })
-        .select('startsAt endsAt')
+        .select('startsAt endsAt sourceType orderId')
         .lean(),
     ])
     for (const order of orders) {
@@ -145,8 +146,10 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
       const window = getPartyVenueWindow({ ...order, endsAt }, location)
       if (window) busy.push(window)
     }
-    for (const ticket of tickets)
-      busy.push(getPartyVenueWindow(ticket, location))
+    for (const booking of bookings) {
+      if (booking.sourceType === 'order_place' && selectedOrder && String(booking.orderId) === String(selectedOrder._id)) continue
+      busy.push(getPartyVenueWindow(booking, location))
+    }
   }
   const days = []
   for (let index = 0; index < count; index++) {

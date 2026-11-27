@@ -87,10 +87,10 @@ export default function OrderInventoryPanel({
         const source = JSON.parse(sourceKey)
         const defaults = source.serviceItems.map((item, index) => ({
           ...item,
-          serviceLineId: item.serviceLineId || `${item.serviceId}:${index}`,
+          serviceLineId: item.lineId || item.serviceLineId || `${item.serviceId}:${index}`,
           quantity: item.quantity || 1,
-          startAt: item.startAt || source.eventDate,
-          endAt: item.endAt || source.dateEnd,
+          startAt: item.startAt || item.eventDate || source.eventDate,
+          endAt: item.endAt || item.dateEnd || source.dateEnd,
         }))
         setLines(
           saved?.data?.status === 'active' ? saved.data.serviceItems : defaults
@@ -166,9 +166,9 @@ export default function OrderInventoryPanel({
         resourceNorms: undefined,
         quantityMode: 'automatic',
         quantity: item.quantity || 1,
-        serviceLineId: item.serviceLineId || `${item.serviceId}:${index}`,
-        startAt: item.startAt || eventDate,
-        endAt: item.endAt || dateEnd,
+        serviceLineId: item.lineId || item.serviceLineId || `${item.serviceId}:${index}`,
+        startAt: item.startAt || item.eventDate || eventDate,
+        endAt: item.endAt || item.dateEnd || dateEnd,
       }))
     )
     setBaseKey(sourceKey)

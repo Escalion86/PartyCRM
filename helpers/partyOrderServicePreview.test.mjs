@@ -63,3 +63,29 @@ test('a catalog edit updates the cost and scheduled length for an unsaved config
   assert.equal(estimate(after).durationMinutes, 230)
   assert.equal(estimate(after).totalKopecks, 1540000)
 })
+
+test('custom fields combine arbitrary numbers, ranges and selected choices in the booking preview', () => {
+  const configuration = normalizePartyServiceConfiguration({ fields: [
+    { id: 'sets', title: 'Количество комплектов', type: 'number', unit: 'комплект', required: true, allowDecimal: true, max: 20, pricePerUnit: 120, durationPerUnit: 4 },
+    { id: 'days', title: 'Дни аренды', type: 'ranges', unit: 'день', required: true, mode: 'adjustment', tiers: [{ min: 1, max: 2, price: 1000, durationMinutes: 15 }] },
+    { id: 'style', title: 'Вариант подачи', type: 'select', options: [{ id: 'evening', title: 'Вечерний', priceDelta: 500, durationDelta: 10 }] },
+    { id: 'extras', title: 'Материалы', type: 'checkboxes', options: [{ id: 'paper', title: 'Бумага', priceDelta: 200, durationDelta: 5 }] },
+  ] })
+  const catalog = { title: 'Прокат', price: 4000, duration: 60, configuration }
+  const values = { sets: '2.5', days: '2', style: 'evening', extras: ['paper'] }
+  const result = previewPartyOrderService(catalog, null, { ...selection, parameters: { values } })
+  assert.equal(result.error, null)
+  assert.equal(result.item.unitPrice, 6000)
+  assert.equal(result.item.durationMinutes, 100)
+  assert.deepEqual(result.normalizedParameters, { values: { ...values, sets: 2.5, days: 2 } })
+
+  assert.deepEqual(emptyPartyOrderServiceParameters(configuration), { values: {} })
+  const empty = previewPartyOrderService(catalog, null, { serviceId: 'new', quantity: 1 })
+  assert.equal(empty.error.field, 'values.sets')
+
+  const prior = { title: 'Игра', serviceConfiguration: { definition, parameters, basePrice: 4000, baseDuration: 60 } }
+  const saved = previewPartyOrderService(catalog, prior, { serviceId: 'saved', quantity: 1 })
+  assert.equal(saved.error, null)
+  assert.equal(saved.item.unitPrice, 7200)
+  assert.equal(saved.configuration, definition)
+})

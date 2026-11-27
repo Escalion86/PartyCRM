@@ -28,7 +28,7 @@ const tenantId = 'a'.repeat(24), actorId = 'b'.repeat(24), orderId = 'c'.repeat(
 const owner = { tenantId, role: 'owner', staff: { _id: actorId, tenantId, role: 'owner', status: 'active' }, company: { settings: {} } }
 const body = { title: 'Мероприятие', serviceTitle: 'Шоу', contractAmount: 1000, initialPayment: { amount: '500.01', paymentMethod: 'cash' } }
 const actor = (grants) => ({ ...owner, role: 'performer', staff: { ...owner.staff, role: 'performer' }, position: { permissions: { orders: 'read', 'orders.create': 'edit', 'orders.title': 'edit', 'orders.serviceTitle': 'edit', 'finance.clientAmount': 'edit', 'finance.payments': 'edit', ...grants }, orderScope: {} } })
-function setup(context = owner, { storedInboxState = null, sourceOrderId = null, transactionsAvailable = true, configuredServiceId = null } = {}) {
+function setup(context = owner, { storedInboxState = null, sourceOrderId = null, transactionsAvailable = true, configuredServiceId = null, configuredLocationId = null } = {}) {
   let orders = [], payments = [], inboxState = storedInboxState, serial = Promise.resolve()
   const guards = [], effects = [], active = new Set()
   const q = (value) => ({ select() { return this }, session() { return this }, lean: async () => value })
@@ -86,7 +86,7 @@ function setup(context = owner, { storedInboxState = null, sourceOrderId = null,
         ? Number(filter.tenantId === tenantId && filter._id.$in.includes(configuredServiceId))
         : filter._id.$in.length,
     }),
-    getPartyLocationModel: async () => ({ exists: async () => true }),
+    getPartyLocationModel: async () => ({ findOne: (filter) => q({ _id: filter._id, rentalConfiguration: filter._id === configuredLocationId ? { extras: {} } : null }) }),
     getPartyCompanyTariffAccessState: async () => ({ access: {} }), filterPartyOrderPayloadByTariffAccess: (payload) => payload, canCreatePartyOrderByTariff: () => ({ ok: true }),
     withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     findPartyOrderConflicts: async () => ({}), hasPartyOrderConflicts: () => false,
@@ -133,6 +133,15 @@ test('legacy order creation directs newly configured services to the booking wiz
   const fixedResponse = await state.post({ servicesIds: ['f'.repeat(24)] }, '')
   assert.equal(fixedResponse.status, 201)
   assert.equal(state.orders.length, 1)
+})
+
+test('legacy order creation cannot bypass configured venue pricing', async () => {
+  const locationId = 'a'.repeat(24)
+  const state = setup(owner, { configuredLocationId: locationId })
+  const result = await state.post({ locationId, serviceTitle: 'Заявка в зале' }, '')
+  assert.equal(result.status, 409)
+  assert.equal(result.body.code, 'partycrm_multi_place_editor_required')
+  assert.equal(state.orders.length, 0)
 })
 
 test('an idempotency key remains supported if a short lead omits empty expectations', async () => {

@@ -100,6 +100,9 @@ test('inserts main and additional events and stores identifiers', async () => {
   })
 
   assert.deepEqual(calls.map((call) => call[0]), ['insert', 'insert', 'flush'])
+  assert.deepEqual(calls[0][2].extendedProperties?.private, {
+    partycrmOrderId: 'order-1', partycrmTenantId: 'company-1',
+  })
   assert.equal(result.ok, true)
   assert.equal(result.status, 'synced')
   assert.equal(result.orderPatch.googleCalendarEventId, 'created-1')
@@ -108,6 +111,47 @@ test('inserts main and additional events and stores identifiers', async () => {
   assert.equal(result.orderPatch.calendarSyncError, '')
   assert.equal(result.orderPatch.calendarSyncedAt.toISOString(), '2026-06-14T12:00:00.000Z')
   assert.deepEqual(persisted[0].patch, result.orderPatch)
+})
+
+const importedOrder = {
+  ...order,
+  title: 'Original title',
+  googleCalendarEventId: 'original-event',
+  googleCalendarCalendarId: 'original-calendar',
+  calendarImportedAt: '2026-06-14T12:00:00.000Z',
+}
+
+test('paused company sync never changes imported event, even on cancellation or calendar change', async () => {
+  const { calls, persisted, dependencies } = createHarness()
+  const result = await syncPartyOrderToCompanyCalendar({
+    company,
+    order: { ...importedOrder, status: 'canceled', googleCalendarSyncDisabled: true },
+    previousOrder: importedOrder,
+    access: { allowCalendarSync: true },
+    dependencies,
+  })
+  assert.equal(result.status, 'skipped')
+  assert.deepEqual(calls, [])
+  assert.deepEqual(persisted, [])
+})
+
+test('opted-in import patches only changed fields and never creates another event', async () => {
+  const patches = []
+  const { calls, persisted, dependencies } = createHarness({
+    clientOverrides: { patchEvent: async (...args) => patches.push(args) },
+    payloadOverrides: { main: { summary: 'CRM title', description: 'CRM description', reminders: {}, visibility: 'private' } },
+  })
+  const input = { company, order: { ...importedOrder, title: 'New title' }, access: { allowCalendarSync: true }, dependencies }
+  assert.equal((await syncPartyOrderToCompanyCalendar(input)).status, 'skipped')
+  assert.equal((await syncPartyOrderToCompanyCalendar({ ...input, previousOrder: importedOrder })).status, 'synced')
+  assert.deepEqual(patches, [['original-calendar', 'original-event', { summary: 'New title' }]])
+  assert.deepEqual(calls, [['flush']])
+  assert.equal(Object.hasOwn(persisted[0].patch, 'googleCalendarEventId'), false)
+
+  dependencies.client.patchEvent = async () => { throw Object.assign(new Error('Missing'), { code: 'event_missing' }) }
+  assert.equal((await syncPartyOrderToCompanyCalendar({ ...input, previousOrder: importedOrder })).status, 'failed')
+  assert.deepEqual(calls, [['flush'], ['flush']])
+  assert.deepEqual(persisted[1].patch, { calendarSyncError: 'calendar_sync_failed' })
 })
 
 test('updates existing main and additional events', async () => {
@@ -183,7 +227,10 @@ test('calendar switch creates events in the selected calendar and removes old on
   assert.deepEqual(calls.map((call) => call.slice(0, 3)), [
     ['delete', 'old-calendar', 'old-main'],
     ['delete', 'old-calendar', 'old-additional'],
-    ['insert', 'calendar-1', { summary: 'Order order-1' }],
+    ['insert', 'calendar-1', {
+      summary: 'Order order-1',
+      extendedProperties: { private: { partycrmOrderId: 'order-1', partycrmTenantId: 'company-1' } },
+    }],
     ['insert', 'calendar-1', { summary: 'Call' }],
     ['flush'],
   ])

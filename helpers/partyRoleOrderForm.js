@@ -40,6 +40,7 @@ const assignmentIdentity = (items = []) =>
   items.map((item) => ({
     staffId: String(item.staffId),
     role: item.role || 'performer',
+    placeId: item.placeId || null,
   }))
 
 export const partyOrderDateInput = (value) => {
@@ -110,6 +111,7 @@ export const buildPartyRoleOrderPatch = ({
       patch.assignedStaff = next.map((item) => ({
         staffId: item.staffId,
         role: item.role || 'performer',
+        ...(Object.hasOwn(item, 'placeId') ? { placeId: item.placeId || null } : {}),
         ...(canPartyAccess(context, {
           resource: 'finance.payouts',
           action: 'edit',

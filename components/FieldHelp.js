@@ -15,6 +15,7 @@ export default function FieldHelp({ text, label = 'поле' }) {
       <span className="pointer-events-auto relative inline-flex h-[1em] w-6 shrink-0 self-center align-middle">
         <Tooltip
           title={text}
+          describeChild
           open={open}
           onClose={() => setOpen(false)}
           disableFocusListener

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { apiJson } from "@helpers/apiClient"
 import { formatMoney } from "@helpers/formatMoney"
+import { readStoredPartyActiveCompanyId } from "@helpers/partyActiveCompany"
 import {
   PARTY_BILLING_PROVIDER_ENDPOINTS,
   getPartyTariffCheckoutRequest,
@@ -22,8 +23,6 @@ const PAYMENT_PROVIDERS = {
   },
 }
 
-const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
-
 const PartyBillingModal = ({ open, onClose }) => {
   const [tariffs, setTariffs] = useState([])
   const [userData, setUserData] = useState(null)
@@ -39,9 +38,7 @@ const PartyBillingModal = ({ open, onClose }) => {
 
   useEffect(() => {
     if (!open || typeof window === "undefined") return
-    setActiveCompanyId(
-      window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ""
-    )
+    setActiveCompanyId(readStoredPartyActiveCompanyId())
   }, [open])
 
   const buildCompanyRequestOptions = useCallback(

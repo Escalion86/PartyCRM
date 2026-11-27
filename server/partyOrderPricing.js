@@ -40,12 +40,17 @@ export const partyOrderPricingRoute = (handler) => async (req, params) => {
 }
 
 const configuredPosition = (context) => Boolean(context?.staff?.positionId || Number(context?.position?.revision || 0) > 0)
-const accessibleOrder = (context, order) => configuredPosition(context) ? filterPartyOrderForAccess(context, order) : order
+const accessibleOrder = (context, order) => configuredPosition(context) || (context && order.bookingVersion === 2)
+  ? filterPartyOrderForAccess(context, order)
+  : order
 
 export const listPartyOrderPricing = async ({ tenantId, cursor = '', context = null }) => {
   if (cursor && !isValidObjectId(cursor)) fail(400, 'partycrm_invalid_cursor', 'Некорректный указатель страницы')
   const Orders = await getPartyOrderModel()
-  const orders = await Orders.find({ ...(configuredPosition(context) ? buildPartyOrderAccessFilter(context) : { tenantId }), status: { $in: openStatuses }, ...(cursor ? { _id: { $lt: cursor } } : {}) }).sort({ _id: -1 }).limit(51).lean()
+  const scoped = configuredPosition(context)
+    ? buildPartyOrderAccessFilter(context)
+    : context ? { tenantId, $or: [{ bookingVersion: { $ne: 2 } }, { bookingVersion: 2, ...buildPartyOrderAccessFilter(context) }] } : { tenantId }
+  const orders = await Orders.find({ ...scoped, status: { $in: openStatuses }, ...(cursor ? { _id: { $lt: cursor } } : {}) }).sort({ _id: -1 }).limit(51).lean()
   return { orders: orders.slice(0, 50).map((order) => serializePartyOrderPricing(accessibleOrder(context, order))), nextCursor: orders.length > 50 ? String(orders[49]._id) : null }
 }
 
@@ -54,7 +59,7 @@ const loadOrder = async ({ tenantId, orderId, context = null }) => {
   const Orders = await getPartyOrderModel()
   const order = await Orders.findOne({ _id: orderId, tenantId }).lean()
   if (!order) fail(404, 'partycrm_order_not_found', 'Заказ не найден')
-  if (configuredPosition(context) && !canPartyAccess(context, { resource: 'finance.clientAmount', action: 'edit', order })) fail(404, 'partycrm_order_not_found', 'Заказ не найден')
+  if ((configuredPosition(context) || order.bookingVersion === 2) && !canPartyAccess(context, { resource: 'finance.clientAmount', action: 'edit', order })) fail(404, 'partycrm_order_not_found', 'Заказ не найден')
   if (!openStatuses.includes(order.status)) fail(409, 'partycrm_order_pricing_closed', 'Стоимость можно менять только у открытого заказа')
   return { Orders, order }
 }
@@ -67,6 +72,7 @@ export const updatePartyOrderPricing = async ({ context, orderId, body }) => {
   const { Orders, order } = await loadOrder({ tenantId: context.tenantId, orderId, context })
   if (Number(order.commercialRevision || 0) !== body.expectedRevision) conflict()
   if (Number(order.contractAmount || 0) === body.contractAmount) return serializePartyOrderPricing(accessibleOrder(context, order))
+  if (order.bookingVersion === 2) fail(409, 'partycrm_multi_place_editor_required', 'Измените стоимость в мастере бронирования площадок')
   const paymentTotal = order.clientPayment && typeof order.clientPayment === 'object' && !Array.isArray(order.clientPayment)
     ? { 'clientPayment.totalAmount': body.contractAmount }
     : { clientPayment: { totalAmount: body.contractAmount } }

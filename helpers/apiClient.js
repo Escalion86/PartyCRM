@@ -1,3 +1,5 @@
+import { partyFetch } from './partyImpersonationClient.js'
+
 const contentType = 'application/json'
 
 const extractApiErrorMessage = (json) => {
@@ -13,7 +15,7 @@ const extractApiErrorMessage = (json) => {
 
 export const apiJson = async (url, options = {}) => {
   const isFormData = options.body instanceof FormData
-  const response = await fetch(url, {
+  const response = await partyFetch(url, {
     ...options,
     headers: {
       Accept: contentType,

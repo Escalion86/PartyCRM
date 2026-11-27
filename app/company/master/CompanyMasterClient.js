@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 
 import { getInitialCompanyTitle } from './companyMasterDefaults'
 
@@ -24,12 +25,12 @@ export default function CompanyMasterClient() {
     setError('')
     try {
       const [createResponse, profileResponse] = await Promise.all([
-        fetch('/api/party/companies', {
+        partyFetch('/api/party/companies', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title: normalizedTitle }),
         }),
-        fetch('/api/party/auth/me', {
+        partyFetch('/api/party/auth/me', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ lastWorkspace: 'company' }),

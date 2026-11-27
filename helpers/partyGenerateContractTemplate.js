@@ -1,4 +1,5 @@
 import formatAddress from './formatAddress.js'
+import { formatPartyOrderPlaces } from './partyOrderPlaceDetails.js'
 import formatDate from './formatDate.js'
 import formatDateTime from './formatDateTime.js'
 import getPersonFullName from './getPersonFullName.js'
@@ -370,11 +371,12 @@ const buildAutoDocumentNumber = (order, docMeta) => {
   return EMPTY_VALUE
 }
 
-const getOrderAddress = (order) => {
+const getOrderAddress = (order, locationAddress) => {
   if (!order) return EMPTY_VALUE
+  if (order.bookingVersion === 2 && order.places?.length) return formatPartyOrderPlaces(order.places)
+  if (order.customAddress) return order.customAddress
   if (order.placeType === 'company_location') {
-    if (order.customAddress) return order.customAddress
-    return 'По адресу Исполнителя'
+    return locationAddress || 'По адресу Исполнителя'
   }
   if (order.clientAddress) {
     return formatAddress(order.clientAddress, EMPTY_VALUE)
@@ -384,6 +386,7 @@ const getOrderAddress = (order) => {
 
 const getOrderLocationName = (order, locationTitle) => {
   if (!order) return EMPTY_VALUE
+  if (order.bookingVersion === 2 && order.places?.length) return order.places.map((place) => place.locationTitle).filter(Boolean).join(', ')
   if (order.placeType === 'company_location') {
     return locationTitle || order.customAddress || 'Площадка компании'
   }
@@ -396,6 +399,7 @@ const buildPartyContractVariables = ({
   serviceTitles,
   companyRequisites = {},
   locationTitle = '',
+  locationAddress = '',
   docMeta = {},
 }) => {
   const contractDateRaw = docMeta?.contractDate
@@ -408,20 +412,29 @@ const buildPartyContractVariables = ({
         })()
       : formatDate(new Date())
 
-  const eventDateDateOnly = order?.eventDate
-    ? formatDate(order.eventDate)
-    : EMPTY_VALUE
-  const eventDateDateTime = order?.eventDate
-    ? formatDateTime(order.eventDate)
-    : EMPTY_VALUE
-  const eventTimeOnly = order?.eventDate
-    ? (() => {
-        const d = new Date(order.eventDate)
-        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-      })()
-    : EMPTY_VALUE
+  const eventDate = order?.eventDate ? new Date(order.eventDate) : null
+  const hasEventDate = eventDate && !Number.isNaN(eventDate.getTime())
+  let eventDateDateOnly = EMPTY_VALUE
+  let eventDateDateTime = EMPTY_VALUE
+  let eventTimeOnly = EMPTY_VALUE
+  if (hasEventDate) {
+    if (docMeta.timeZone) {
+      try {
+        eventDateDateOnly = new Intl.DateTimeFormat('ru-RU', { timeZone: docMeta.timeZone, dateStyle: 'long' }).format(eventDate)
+        eventTimeOnly = new Intl.DateTimeFormat('ru-RU', { timeZone: docMeta.timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(eventDate)
+        eventDateDateTime = `${eventDateDateOnly}, ${eventTimeOnly}`
+      } catch {
+        // Existing templates may lack a valid company time zone.
+      }
+    }
+    if (eventDateDateTime === EMPTY_VALUE) {
+      eventDateDateOnly = formatDate(eventDate)
+      eventDateDateTime = formatDateTime(eventDate)
+      eventTimeOnly = `${String(eventDate.getHours()).padStart(2, '0')}:${String(eventDate.getMinutes()).padStart(2, '0')}`
+    }
+  }
 
-  const orderAddress = getOrderAddress(order)
+  const orderAddress = getOrderAddress(order, locationAddress)
   const locationName = getOrderLocationName(order, locationTitle)
   const servicesText =
     Array.isArray(serviceTitles) && serviceTitles.length > 0
@@ -627,6 +640,7 @@ const partyGenerateContractTemplate = ({
   serviceTitles = [],
   companyRequisites = {},
   locationTitle = '',
+  locationAddress = '',
   template = '',
   docMeta = {},
 }) => {
@@ -636,6 +650,7 @@ const partyGenerateContractTemplate = ({
     serviceTitles,
     companyRequisites,
     locationTitle,
+    locationAddress,
     docMeta,
   })
   return replaceTemplateVariables(template, variables)
@@ -647,6 +662,7 @@ const getPartyContractTemplateVariablesMap = ({
   serviceTitles = [],
   companyRequisites = {},
   locationTitle = '',
+  locationAddress = '',
   docMeta = {},
 }) =>
   buildPartyContractVariables({
@@ -655,6 +671,7 @@ const getPartyContractTemplateVariablesMap = ({
     serviceTitles,
     companyRequisites,
     locationTitle,
+    locationAddress,
     docMeta,
   })
 

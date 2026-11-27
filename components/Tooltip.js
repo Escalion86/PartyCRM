@@ -11,6 +11,7 @@ const Tooltip = ({
   disableTouchListener,
   PopperProps,
   disableInteractive = true,
+  describeChild,
 }) => {
   if (!title) return children
   return (
@@ -22,6 +23,7 @@ const Tooltip = ({
       disableFocusListener={disableFocusListener}
       disableHoverListener={disableHoverListener}
       disableTouchListener={disableTouchListener}
+      describeChild={describeChild}
       PopperProps={PopperProps}
       placement="top"
       arrow

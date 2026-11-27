@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import useCompanySettings from '../useCompanySettings'
+import CompanyContractTemplates, { readCompanyDocxFile } from './CompanyContractTemplates'
 
 const PROVIDER_REQUISITE_FIELDS = [
   {
@@ -56,19 +57,6 @@ const PROVIDER_REQUISITE_FIELDS = [
     placeholder: 'Красноярск',
   },
 ]
-
-const readFileAsBase64 = (file) =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result ?? '')
-      const [, payload = ''] = result.split(',')
-      resolve(payload || '')
-    }
-    reader.onerror = () => reject(new Error('Ошибка чтения файла'))
-    reader.onabort = () => reject(new Error('Чтение файла отменено'))
-    reader.readAsDataURL(file)
-  })
 
 const getRequisiteValue = (requisites, key) =>
   requisites[key] || (key === 'providerStatus' ? 'individual_entrepreneur' : '')
@@ -213,7 +201,7 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
     setReadingTemplate(true)
     setFileError('')
     try {
-      const base64 = await readFileAsBase64(file)
+      const base64 = await readCompanyDocxFile(file)
       if (documentSaves.current !== queue) return
       await saveDocuments(() => ({
         [`${type}DocxTemplateBase64`]: base64,
@@ -252,11 +240,12 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
       ) : null}
       {fileError ? <div role="alert" className="rounded-md border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{fileError}</div> : null}
 
+      {activeCompanyId && <CompanyContractTemplates key={activeCompanyId} companyId={activeCompanyId} />}
+
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
         <div className="text-base font-semibold">Реквизиты компании</div>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Сохраняются на уровне компании в `companySettings.documents.requisites`
-          и используются при генерации договоров и актов.
+          Подставляются в договоры и акты этой компании.
         </p>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <label className="grid gap-1.5">
@@ -297,44 +286,17 @@ export default function CompanySettingsDocumentsContent({ activeCompanyId }) {
       </div>
 
       <div className="rounded-2xl border border-sky-100 bg-white p-5">
-        <div className="text-base font-semibold">DOCX-шаблоны компании</div>
-        <p className="mt-2 text-sm leading-6 text-slate-500">
-          Шаблоны сохраняются на уровне компании в `companySettings.documents`.
-          Если шаблон не загружен, система сформирует документ по встроенному
-          PartyCRM-шаблону.
-        </p>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-sky-100 bg-white p-5">
-          <div className="text-sm font-semibold">DOCX-шаблон договора</div>
-          <div className="mt-1 text-xs text-slate-500">
-            Текущий:{' '}
-            {documents.contractDocxTemplateFileName || 'не загружен'}
-          </div>
-          <DocxTemplateFileButton
-            documentName="договора"
-            disabled={readingTemplate}
-            onFileSelected={(file) => saveDocxTemplate('contract', file)}
-          />
-          <div className="mt-4 text-xs leading-5 text-slate-500">
-            Без пользовательского файла используется встроенный шаблон договора.
-          </div>
+        <div className="text-sm font-semibold">DOCX-шаблон акта</div>
+        <div className="mt-1 text-xs text-slate-500">
+          Текущий: {documents.actDocxTemplateFileName || 'не загружен'}
         </div>
-
-        <div className="rounded-2xl border border-sky-100 bg-white p-5">
-          <div className="text-sm font-semibold">DOCX-шаблон акта</div>
-          <div className="mt-1 text-xs text-slate-500">
-            Текущий: {documents.actDocxTemplateFileName || 'не загружен'}
-          </div>
-          <DocxTemplateFileButton
-            documentName="акта"
-            disabled={readingTemplate}
-            onFileSelected={(file) => saveDocxTemplate('act', file)}
-          />
-          <div className="mt-4 text-xs leading-5 text-slate-500">
-            Без пользовательского файла используется встроенный шаблон акта.
-          </div>
+        <DocxTemplateFileButton
+          documentName="акта"
+          disabled={readingTemplate}
+          onFileSelected={(file) => saveDocxTemplate('act', file)}
+        />
+        <div className="mt-4 text-xs leading-5 text-slate-500">
+          Без пользовательского файла используется встроенный шаблон акта.
         </div>
       </div>
 

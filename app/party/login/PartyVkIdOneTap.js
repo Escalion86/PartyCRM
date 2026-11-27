@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 
 const VK_SDK_URL = 'https://unpkg.com/@vkid/sdk@2.6.1/dist-sdk/umd/index.js'
 const VK_SDK_SCRIPT_ID = 'partycrm-vkid-sdk'
@@ -84,7 +85,7 @@ export default function PartyVkIdOneTap({
   useEffect(() => {
     let active = true
 
-    fetch('/api/party/auth/vk-status', { cache: 'no-store' })
+    partyFetch('/api/party/auth/vk-status', { cache: 'no-store' })
       .then((response) => response.json())
       .then((payload) => {
         if (!active) return
@@ -151,7 +152,7 @@ export default function PartyVkIdOneTap({
                 accessToken = tokens?.access_token || tokens?.accessToken || ''
               }
 
-              const response = await fetch('/api/party/auth/vk', {
+              const response = await partyFetch('/api/party/auth/vk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

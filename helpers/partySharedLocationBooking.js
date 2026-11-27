@@ -1,6 +1,8 @@
 // These fields are snapshots issued by the server, not editable order inputs.
 // This predicate only exempts a location overlap; staff and inventory still conflict.
 export const sharePartyLocationBooking = (order, other) =>
+  order?.bookingVersion !== 2 &&
+  other?.bookingVersion !== 2 &&
   order?.sharedLocationBooking === true &&
   other?.sharedLocationBooking === true &&
   Boolean(order.partyEventGroupId) &&

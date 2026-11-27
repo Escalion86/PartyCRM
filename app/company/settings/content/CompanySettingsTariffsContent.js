@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import Modal from '@components/Modal'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import { apiJson } from '@helpers/apiClient'
 import { formatMoney } from '@helpers/formatMoney'
@@ -12,31 +13,12 @@ import {
   getPartyBillingProviderOptions,
   getPartyPaymentStatusLabel,
   getPartyTariffAccessRows,
-  getPartyTariffSelectOptions,
   getPartyTariffActionState,
 } from '@helpers/partyBillingViewModel'
-import { getPartyActivationWelcomeScenario } from '@helpers/partyWelcomeScenario'
-
-const TARIFF_WELCOME_STEPS = [
-  {
-    id: 'location',
-    title: 'Добавить точку',
-    description: 'Подготовьте площадку или офис для будущих заказов.',
-    href: '/company/locations',
-  },
-  {
-    id: 'service',
-    title: 'Добавить услугу',
-    description: 'Заполните услуги, которые менеджеры смогут выбрать в заказе.',
-    href: '/company/services',
-  },
-  {
-    id: 'order',
-    title: 'Создать первый заказ',
-    description: 'Проверьте рабочий сценарий с клиентом, датой и командой.',
-    href: '/company/work',
-  },
-]
+import {
+  getPartyCompanyTariffAccess,
+  serializePartyTariffAccess,
+} from '@helpers/partyTariffAccess'
 
 const formatDate = (value) => {
   if (!value) return ''
@@ -54,6 +36,25 @@ const PROVIDER_LABELS = {
   tochka: 'Точка',
 }
 const DEFAULT_TOP_UP_AMOUNT = '3000'
+const sectionClass = 'min-w-0 rounded-2xl border border-sky-100 bg-white p-4 sm:p-5'
+const buttonClass =
+  'min-h-11 cursor-pointer rounded-lg px-4 py-2 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50'
+const primaryButton = `${buttonClass} bg-sky-700 text-white hover:bg-sky-800`
+const secondaryButton = `${buttonClass} border border-sky-200 text-sky-800 hover:bg-sky-50`
+const errorClass = 'rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-800'
+
+function TariffAccessList({ access }) {
+  return (
+    <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+      {getPartyTariffAccessRows(access).map(({ label, value }) => (
+        <div key={label} className="flex justify-between gap-2">
+          <dt className="text-slate-600">{label}</dt>
+          <dd className="text-right font-medium text-slate-900">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
 
 export default function CompanySettingsTariffsContent({ activeCompanyId }) {
   const [tariffs, setTariffs] = useState([])
@@ -63,18 +64,31 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
   const [billingDiagnostics, setBillingDiagnostics] = useState(null)
   const [selectedProvider, setSelectedProvider] = useState('')
   const [topUpAmount, setTopUpAmount] = useState(DEFAULT_TOP_UP_AMOUNT)
-  const [topUpBaseline, setTopUpBaseline] = useState(DEFAULT_TOP_UP_AMOUNT)
   const [loading, setLoading] = useState(true)
   const [payingTariffId, setPayingTariffId] = useState('')
   const [topUpLoading, setTopUpLoading] = useState(false)
   const [error, setError] = useState('')
-  usePartyUnsavedChanges(topUpAmount !== topUpBaseline, {
-    label: 'сумма пополнения баланса', scope: activeCompanyId, pending: topUpLoading || Boolean(payingTariffId),
+  const [dialog, setDialog] = useState('')
+  const [actionError, setActionError] = useState('')
+  const submitting = useRef(false)
+  const actionPending = topUpLoading || Boolean(payingTariffId)
+  const topUpDirty = dialog === 'balance' && topUpAmount !== DEFAULT_TOP_UP_AMOUNT
+  usePartyUnsavedChanges(topUpDirty, {
+    label: 'сумма пополнения баланса',
+    scope: activeCompanyId,
+    pending: actionPending,
   })
-  useEffect(() => {
+
+  const openDialog = (nextDialog) => {
+    setActionError('')
+    setDialog(nextDialog)
+  }
+
+  const closeDialog = () => {
+    if (submitting.current) return
+    setDialog('')
     setTopUpAmount(DEFAULT_TOP_UP_AMOUNT)
-    setTopUpBaseline(DEFAULT_TOP_UP_AMOUNT)
-  }, [activeCompanyId])
+  }
 
   const buildRequestOptions = useCallback(
     (options = {}) => ({
@@ -125,9 +139,12 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
       setBillingConfig(configRes.data ?? null)
       setBillingDiagnostics(diagnosticsRes.data ?? null)
       setSelectedProvider((prev) => {
-        const providers = configRes.data?.providers ?? {}
-        if (prev && providers[prev]) return prev
-        return configRes.data?.defaultProvider || ''
+        const options = getPartyBillingProviderOptions(configRes.data)
+        if (options.some(({ value }) => value === prev)) return prev
+        const preferredProvider = options.find(
+          ({ value }) => value === configRes.data?.defaultProvider
+        )
+        return preferredProvider?.value ?? options[0]?.value ?? ''
       })
     } catch (err) {
       setError(err?.message || 'Не удалось загрузить тарифы')
@@ -140,110 +157,75 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
     loadData()
   }, [loadData])
 
-  const providerOptions = useMemo(
-    () => getPartyBillingProviderOptions(billingConfig),
-    [billingConfig]
-  )
+  const providerOptions = getPartyBillingProviderOptions(billingConfig)
+  const availableTariffs = dialog === 'tariff' ? tariffs.filter((tariff) => !tariff.hidden) : []
+  const activeTariff = userData?.access?.tariff ??
+    tariffs.find((tariff) => String(tariff._id) === String(userData?.tariffId))
 
-  const activeTariff = useMemo(() => {
-    if (!userData?.tariffId) return null
-    return tariffs.find((item) => String(item?._id) === String(userData.tariffId))
-  }, [tariffs, userData?.tariffId])
+  const handleTariffAction = async (tariff) => {
+    if (submitting.current) return
+    const request = getPartyTariffCheckoutRequest({ tariff })
+    if (!request) {
+      setActionError('Не удалось выбрать тариф')
+      return
+    }
+    submitting.current = true
+    setPayingTariffId(String(tariff._id))
+    setActionError('')
+    try {
+      await apiJson(request.endpoint, buildRequestOptions({
+        method: 'POST',
+        body: JSON.stringify(request.body),
+      }))
+      await loadData()
+      setDialog('')
+    } catch (err) {
+      setActionError(err?.message || 'Не удалось изменить тариф')
+    } finally {
+      submitting.current = false
+      setPayingTariffId('')
+    }
+  }
 
-  const tariffSelectOptions = useMemo(
-    () => getPartyTariffSelectOptions(tariffs),
-    [tariffs]
-  )
-  const tariffAccessRows = useMemo(
-    () => getPartyTariffAccessRows(userData?.access),
-    [userData?.access]
-  )
-  const activationWelcome = useMemo(
-    () =>
-      getPartyActivationWelcomeScenario({
-        billing: {
-          ...userData,
-          tariffTitle: activeTariff?.title,
-        },
-        onboardingSteps: TARIFF_WELCOME_STEPS,
-      }),
-    [activeTariff?.title, userData]
-  )
-
-  const handleTariffAction = useCallback(
-    async (tariff) => {
-      const request = getPartyTariffCheckoutRequest({
-        tariff,
-      })
-      if (!request) {
-        setError('Не удалось выбрать тариф')
-        return
-      }
-      setPayingTariffId(String(tariff._id))
-      setError('')
-      try {
-        const res = await apiJson(request.endpoint, {
-          ...buildRequestOptions({
-            method: 'POST',
-            body: JSON.stringify(request.body),
-          }),
-        })
-        if (!request.requiresPayment) {
-          await loadData()
-          return
-        }
-        if (res.data?.confirmationUrl) {
-          window.open(res.data.confirmationUrl, '_blank')
-          await loadData()
-          return
-        }
-        setError('Не удалось создать платёж')
-      } catch (err) {
-        setError(err?.message || 'Не удалось изменить тариф')
-      } finally {
-        setPayingTariffId('')
-      }
-    },
-    [buildRequestOptions, loadData]
-  )
-
-  const handleTopUpBalance = useCallback(async () => {
+  const handleTopUpBalance = async (event) => {
+    event.preventDefault()
+    if (submitting.current) return
     const request = getPartyBalanceTopUpRequest({
       provider: selectedProvider,
       amount: topUpAmount,
     })
     if (!request) {
-      setError('Выберите способ оплаты и укажите сумму пополнения')
+      setActionError('Выберите способ оплаты и укажите сумму пополнения')
       return
     }
 
+    submitting.current = true
     setTopUpLoading(true)
-    setError('')
+    setActionError('')
     try {
-      const res = await apiJson(request.endpoint, {
-        ...buildRequestOptions({
-          method: 'POST',
-          body: JSON.stringify(request.body),
-        }),
-      })
+      const res = await apiJson(request.endpoint, buildRequestOptions({
+        method: 'POST',
+        body: JSON.stringify(request.body),
+      }))
       if (res.data?.confirmationUrl) {
-        // Only the submitted amount is consumed; an edit made during the request stays dirty.
-        setTopUpBaseline(topUpAmount)
         window.open(res.data.confirmationUrl, '_blank')
+        setTopUpAmount(DEFAULT_TOP_UP_AMOUNT)
         await loadData()
+        setDialog('')
         return
       }
-      setError('Не удалось создать платёж на пополнение баланса')
+      setActionError('Не удалось создать платёж на пополнение баланса')
     } catch (err) {
-      setError(err?.message || 'Не удалось пополнить баланс')
+      setActionError(err?.message || 'Не удалось пополнить баланс')
     } finally {
+      submitting.current = false
       setTopUpLoading(false)
     }
-  }, [buildRequestOptions, loadData, selectedProvider, topUpAmount])
+  }
 
-  if (loading) {
+  if (loading && !userData) {
     return (
-      <div className="rounded-2xl border border-sky-100 bg-white p-5 text-sm text-slate-500">
+      <div role="status" className={`${sectionClass} text-sm text-slate-600`}>
         Загружаем тарифы и платежи...
       </div>
     )
@@ -251,301 +233,70 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
 
   return (
     <div className="grid gap-4">
-      {error && (
-        <div className="rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {error && <p role="alert" className={errorClass}>{error}</p>}
 
-      <section className="rounded-2xl border border-sky-100 bg-white p-5">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <div className="text-base font-semibold">Текущий тариф</div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Баланс пополняется через платежные провайдеры PartyCRM. Тариф
-              компании оплачивается списанием с этого баланса.
-            </p>
-            <div className="mt-4 grid gap-2 text-sm text-slate-600">
-              <div>
-                Тариф:{' '}
-                <span className="font-semibold text-slate-900">
-                  {activeTariff?.title || 'Не выбран'}
-                </span>
-              </div>
-              <label className="grid max-w-xl gap-2 pt-2">
-                <span className="text-sm font-semibold text-slate-700">
-                  Тариф компании
-                </span>
-                <select
-                  value={userData?.tariffId || ''}
-                  disabled={Boolean(payingTariffId)}
-                  onChange={(event) => {
-                    const tariff = tariffs.find(
-                      (item) => String(item._id) === event.target.value
-                    )
-                    if (tariff) handleTariffAction(tariff)
-                  }}
-                  className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none transition-colors focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <option value="">Не выбран</option>
-                  {tariffSelectOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs text-slate-400">
-                  Бесплатный тариф подключается сразу, платный списывает
-                  стоимость с баланса компании.
-                </span>
-              </label>
-              {userData?.tariffActiveUntil && (
-                <div>Активен до {formatDate(userData.tariffActiveUntil)}</div>
-              )}
-              {userData?.access?.trialActive && userData?.trialEndsAt && (
-                <div className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-700">
-                  Пробный период до {formatDate(userData.trialEndsAt)}
-                </div>
-              )}
-              <div>
-                Баланс:{' '}
-                <span className="font-semibold text-slate-900">
-                  {formatMoney(userData?.balance ?? 0)}
-                </span>
-              </div>
-              <div className="mt-2 grid gap-2 rounded-xl bg-slate-50 p-3">
-                <div className="text-sm font-semibold text-slate-900">
-                  Доступ по тарифу
-                </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {tariffAccessRows.map((row) => (
-                    <div
-                      key={row.label}
-                      className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs"
-                    >
-                      <span className="text-slate-500">{row.label}</span>
-                      <span className="font-semibold text-slate-800">
-                        {row.value}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+      <section className={sectionClass}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h2 className="font-semibold text-slate-900">Текущий тариф</h2>
+          <span className="rounded-full bg-sky-50 px-3 py-1 text-sm font-semibold text-sky-900">
+            {activeTariff?.title || 'Не выбран'}
+          </span>
           <button
             type="button"
-            className="rounded-lg border border-sky-200 px-4 py-2 text-sm font-semibold text-sky-700 transition-colors hover:bg-sky-50"
-            onClick={loadData}
+            className={secondaryButton}
+            onClick={() => openDialog('tariff')}
+            disabled={!userData || loading}
           >
-            Обновить
+            Сменить тариф
           </button>
         </div>
-        {activationWelcome && (
-          <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-            <div className="text-sm font-semibold text-emerald-900">
-              {activationWelcome.title}
-            </div>
-            <p className="mt-1 text-sm leading-6 text-emerald-700">
-              {activationWelcome.description}
-            </p>
-            {activationWelcome.nextSteps.length > 0 && (
-              <div className="mt-4 grid gap-2 md:grid-cols-3">
-                {activationWelcome.nextSteps.map((step) => (
-                  <a
-                    key={step.id}
-                    href={step.href}
-                    className="rounded-xl border border-emerald-100 bg-white px-3 py-3 text-sm transition-colors hover:border-emerald-300 hover:bg-emerald-50"
-                  >
-                    <span className="block font-semibold text-slate-900">
-                      {step.title}
-                    </span>
-                    <span className="mt-1 block text-xs leading-5 text-slate-500">
-                      {step.description}
-                    </span>
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </section>
-
-      <section className="rounded-2xl border border-sky-100 bg-white p-5">
-        <div className="text-base font-semibold">Пополнение баланса</div>
-        <p className="mt-2 text-sm leading-6 text-slate-500">
-          YooKassa и Точка здесь используются только для оплаты сервиса
-          PartyCRM. Это не настройки приема оплат от клиентов вашей компании.
-        </p>
-        {billingDiagnostics && (
-          <div className="mt-4 rounded-xl bg-slate-50 p-4">
-            <div className="text-sm font-semibold text-slate-900">
-              Диагностика платежей
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              {Object.entries(billingDiagnostics.providers ?? {}).map(
-                ([providerKey, provider]) => (
-                  <div
-                    key={providerKey}
-                    className="rounded-xl border border-slate-100 bg-white p-3 text-sm"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-slate-900">
-                        {PROVIDER_LABELS[providerKey] || providerKey}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-semibold ${
-                          provider.readyForTestPayment
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-amber-50 text-amber-700'
-                        }`}
-                      >
-                        {provider.readyForTestPayment
-                          ? 'Готов к тесту'
-                          : 'Нужна настройка'}
-                      </span>
-                    </div>
-                    {(provider.missing ?? []).length > 0 && (
-                      <p className="mt-2 text-xs leading-5 text-amber-700">
-                        Не хватает: {provider.missing.join(', ')}
-                      </p>
-                    )}
-                    {(provider.blockers ?? []).length > 0 && (
-                      <p className="mt-2 text-xs leading-5 text-red-700">
-                        Блокеры: {provider.blockers.join(', ')}
-                      </p>
-                    )}
-                    {provider.webhookUrl && (
-                      <p className="mt-2 break-all text-xs leading-5 text-slate-500">
-                        Webhook: {provider.webhookUrl}
-                      </p>
-                    )}
-                  </div>
-                )
-              )}
-            </div>
-          </div>
-        )}
-        {providerOptions.length > 0 ? (
-          <div className="mt-3 grid gap-3">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {providerOptions.map((provider) => (
-                <button
-                  key={provider.value}
-                  type="button"
-                  className={`rounded-xl border px-4 py-3 text-left text-sm transition ${
-                    selectedProvider === provider.value
-                      ? 'border-sky-500 bg-sky-50 text-sky-900'
-                      : 'border-slate-200 hover:border-sky-300'
-                  }`}
-                  onClick={() => setSelectedProvider(provider.value)}
-                >
-                  <span className="block font-semibold">{provider.label}</span>
-                  <span className="mt-1 block text-xs text-slate-500">
-                    {provider.description}
-                  </span>
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-              <label className="grid gap-1.5 sm:w-56">
-                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Сумма пополнения
-                </span>
-                <input
-                  type="number"
-                  min="100"
-                  step="100"
-                  value={topUpAmount}
-                  onChange={(event) => setTopUpAmount(event.target.value)}
-                  className="h-11 rounded-lg border border-sky-100 px-3 text-sm"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={handleTopUpBalance}
-                disabled={topUpLoading || !selectedProvider}
-                className="h-11 rounded-lg bg-sky-600 px-4 text-sm font-semibold text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {topUpLoading ? 'Создаём платёж...' : 'Пополнить баланс'}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
-            На сервере не настроены YooKassa или Точка. Бесплатный тариф можно
-            выбрать без пополнения баланса.
+        {userData?.tariffActiveUntil && (
+          <p className="mt-3 text-sm text-slate-600">
+            Активен до {formatDate(userData.tariffActiveUntil)}
           </p>
         )}
+        {userData?.access?.trialActive && userData?.trialEndsAt && (
+          <p className="mt-3 text-sm font-medium text-emerald-800">
+            Пробный период до {formatDate(userData.trialEndsAt)}
+          </p>
+        )}
+        {userData?.access && (
+          <div className="mt-4 border-t border-slate-200 pt-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">Доступ по тарифу</h3>
+            <TariffAccessList access={userData.access} />
+          </div>
+        )}
       </section>
 
-      <section className="rounded-2xl border border-sky-100 bg-white p-5">
-        <div className="text-base font-semibold">Доступные тарифы</div>
-        <div className="mt-4 grid gap-3">
-          {tariffs.map((tariff) => {
-            const action = getPartyTariffActionState({
-              tariff,
-              activeTariffId: userData?.tariffId,
-              selectedProvider,
-              loading: Boolean(payingTariffId),
-            })
-            return (
-              <article
-                key={tariff._id}
-                className={`rounded-xl border p-4 ${
-                  action.isActive
-                    ? 'border-sky-500 bg-sky-50'
-                    : 'border-slate-200 bg-white'
-                }`}
-              >
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                  <div>
-                    <div className="font-semibold text-slate-900">
-                      {tariff.title}
-                    </div>
-                    {tariff.subtitle && (
-                      <div className="mt-1 text-sm text-slate-500">
-                        {tariff.subtitle}
-                      </div>
-                    )}
-                    <div className="mt-2 text-2xl font-bold text-slate-900">
-                      {action.isFree
-                        ? 'Бесплатно'
-                        : `${formatMoney(tariff.price)}/мес`}
-                    </div>
-                  </div>
-                  {action.isActive ? (
-                    <div className="rounded-lg bg-sky-100 px-3 py-2 text-sm font-semibold text-sky-700">
-                      Текущий тариф
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={action.disabled}
-                      onClick={() => handleTariffAction(tariff)}
-                    >
-                      {payingTariffId === String(tariff._id)
-                        ? 'Обработка...'
-                        : action.buttonLabel}
-                    </button>
-                  )}
-                </div>
-                {Array.isArray(tariff.features) && tariff.features.length > 0 && (
-                  <ul className="mt-4 grid gap-1 text-sm text-slate-600 md:grid-cols-2">
-                    {tariff.features.map((feature) => (
-                      <li key={feature}>- {feature}</li>
-                    ))}
-                  </ul>
-                )}
-              </article>
-            )
-          })}
+      <section className={`${sectionClass} flex flex-wrap items-center justify-between gap-3`}>
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="font-semibold text-slate-900">Баланс</h2>
+          <p className="text-xl font-semibold tabular-nums text-slate-900">
+            {userData ? formatMoney(userData.balance ?? 0) : '—'}
+          </p>
         </div>
+        <button
+          type="button"
+          className={primaryButton}
+          onClick={() => openDialog('balance')}
+          disabled={!userData || loading}
+        >
+          Пополнить
+        </button>
       </section>
 
-      <section className="rounded-2xl border border-sky-100 bg-white p-5">
-        <div className="text-base font-semibold">История платежей</div>
+      <section className={sectionClass}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold text-slate-900">История платежей</h2>
+          <button
+            type="button"
+            className={secondaryButton}
+            onClick={loadData}
+            disabled={loading}
+          >
+            {loading ? 'Обновляем…' : 'Обновить'}
+          </button>
+        </div>
         {payments.length > 0 ? (
           <div className="mt-4 grid gap-2">
             {payments.map((payment) => (
@@ -583,6 +334,191 @@ export default function CompanySettingsTariffsContent({ activeCompanyId }) {
           <p className="mt-3 text-sm text-slate-500">Платежей пока нет.</p>
         )}
       </section>
+
+      <Modal
+        open={dialog === 'tariff'}
+        title="Сменить тариф"
+        tone="party"
+        size="lg"
+        onClose={closeDialog}
+        disableBackdropClick={actionPending}
+      >
+        <div className="grid gap-3">
+          {dialog === 'tariff' && actionError && (
+            <p role="alert" className={errorClass}>{actionError}</p>
+          )}
+          {availableTariffs.map((tariff) => {
+            const action = getPartyTariffActionState({
+              tariff,
+              activeTariffId: userData?.tariffId,
+              loading: actionPending,
+            })
+            const access = serializePartyTariffAccess(
+              getPartyCompanyTariffAccess({ tariffId: tariff._id }, [tariff])
+            )
+            return (
+              <article
+                key={tariff._id}
+                className={`min-w-0 rounded-xl border p-4 ${
+                  action.isActive ? 'border-sky-300 bg-sky-50' : 'border-slate-200'
+                }`}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="break-words font-semibold text-slate-900">{tariff.title}</h3>
+                    {tariff.subtitle && (
+                      <p className="mt-1 text-sm text-slate-600">{tariff.subtitle}</p>
+                    )}
+                    <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+                      {action.isFree ? 'Бесплатно' : `${formatMoney(tariff.price)}/мес`}
+                    </p>
+                  </div>
+                  {action.isActive ? (
+                    <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-900">
+                      Текущий тариф
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className={primaryButton}
+                      disabled={action.disabled}
+                      onClick={() => handleTariffAction(tariff)}
+                    >
+                      {payingTariffId === String(tariff._id) ? 'Подключаем…' : action.buttonLabel}
+                    </button>
+                  )}
+                </div>
+                <div className="mt-3 border-t border-slate-200 pt-3">
+                  <TariffAccessList access={access} />
+                  {Array.isArray(tariff.features) && tariff.features.length > 0 && (
+                    <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                      {tariff.features.map((feature) => <li key={feature}>{feature}</li>)}
+                    </ul>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+          {!availableTariffs.length && (
+            <p className="text-sm text-slate-600">Тарифов для подключения пока нет.</p>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={dialog === 'balance'}
+        title="Пополнение баланса"
+        tone="party"
+        size="sm"
+        onClose={closeDialog}
+        disableBackdropClick={actionPending}
+        hasUnsavedChanges={topUpDirty && !actionPending}
+        unsavedChangesMessage="Закрыть окно и сбросить введённую сумму?"
+      >
+        <div className="grid gap-4">
+          {dialog === 'balance' && actionError && (
+            <p role="alert" className={errorClass}>{actionError}</p>
+          )}
+          {providerOptions.length > 0 ? (
+            <form className="grid gap-4" onSubmit={handleTopUpBalance}>
+              <fieldset className="grid min-w-0 gap-2" disabled={topUpLoading}>
+                <legend className="mb-2 text-sm font-medium text-slate-900">Способ оплаты</legend>
+                {providerOptions.map((provider) => (
+                  <label
+                    key={provider.value}
+                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-3 text-sm has-checked:border-sky-400 has-checked:bg-sky-50"
+                  >
+                    <input
+                      type="radio"
+                      name="payment-provider"
+                      value={provider.value}
+                      checked={selectedProvider === provider.value}
+                      onChange={() => setSelectedProvider(provider.value)}
+                      className="size-4 shrink-0 cursor-pointer accent-sky-700"
+                    />
+                    <span>
+                      <span className="block font-semibold text-slate-900">{provider.label}</span>
+                      <span className="block text-xs text-slate-600">{provider.description}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+              <label className="grid gap-1 text-sm font-medium text-slate-900">
+                Сумма пополнения
+                <input
+                  type="number"
+                  min="100"
+                  step="1"
+                  required
+                  inputMode="numeric"
+                  value={topUpAmount}
+                  disabled={topUpLoading}
+                  onChange={(event) => setTopUpAmount(event.target.value)}
+                  className="min-h-11 min-w-0 rounded-lg border border-slate-300 px-3 text-base focus-visible:outline-2 focus-visible:outline-sky-700 disabled:opacity-50"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={topUpLoading || !selectedProvider}
+                className={primaryButton}
+              >
+                {topUpLoading ? 'Создаём платёж…' : 'Пополнить баланс'}
+              </button>
+            </form>
+          ) : (
+            <p className="text-sm text-slate-600">Способы оплаты пока не подключены.</p>
+          )}
+          {billingDiagnostics && (
+            <details className="border-t border-slate-200 pt-3">
+              <summary className="cursor-pointer text-sm font-medium text-slate-700">
+                Диагностика платежей
+              </summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {Object.entries(billingDiagnostics.providers ?? {}).map(
+                  ([providerKey, provider]) => (
+                    <div
+                      key={providerKey}
+                      className="rounded-xl border border-slate-100 bg-white p-3 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-semibold text-slate-900">
+                          {PROVIDER_LABELS[providerKey] || providerKey}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-1 text-xs font-semibold ${
+                            provider.readyForTestPayment
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          {provider.readyForTestPayment
+                            ? 'Готов к тесту'
+                            : 'Нужна настройка'}
+                        </span>
+                      </div>
+                      {(provider.missing ?? []).length > 0 && (
+                        <p className="mt-2 text-xs leading-5 text-amber-700">
+                          Не хватает: {provider.missing.join(', ')}
+                        </p>
+                      )}
+                      {(provider.blockers ?? []).length > 0 && (
+                        <p className="mt-2 text-xs leading-5 text-red-700">
+                          Блокеры: {provider.blockers.join(', ')}
+                        </p>
+                      )}
+                      {provider.webhookUrl && (
+                        <p className="mt-2 break-all text-xs leading-5 text-slate-500">
+                          Webhook: {provider.webhookUrl}
+                        </p>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+            </details>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import {
   getPushRegistration,
   isPushSupported,
@@ -116,7 +117,7 @@ export default function CompanySettingsNotificationsContent({
         ?.getSubscription()
         .catch(() => null)
       if (subscription) {
-        const response = await fetch('/api/party/push/unsubscribe', {
+        const response = await partyFetch('/api/party/push/unsubscribe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...partyPushHeaders },
           body: JSON.stringify({ subscription: subscription.toJSON() }),
@@ -152,7 +153,7 @@ export default function CompanySettingsNotificationsContent({
         headers: partyPushHeaders,
       })
       if (!result?.ok) throw new Error('Не удалось создать push-подписку')
-      const response = await fetch('/api/party/push/test', {
+      const response = await partyFetch('/api/party/push/test', {
         method: 'POST',
         headers: partyPushHeaders,
       })

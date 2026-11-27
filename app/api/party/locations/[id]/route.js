@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getPartyLocationModel } from '@server/partyModels'
 import { normalizePartyVenueSettings } from '@helpers/partyVenueBooking'
 import { normalizePartyRentalSettings } from '@helpers/partyWorkingSchedule'
+import { normalizePartyLocationRentalConfiguration } from '@helpers/partyMultiPlaceBooking'
 import {
   supportsPartyVenueTransactions,
   updatePartyVenueConfiguration,
@@ -94,6 +95,9 @@ export async function PATCH(req, { params }) {
       ...pickLocationPatch(body),
       ...settings,
       ...normalizePartyRentalSettings(body),
+      ...(Object.hasOwn(body, 'rentalConfiguration')
+        ? { rentalConfiguration: normalizePartyLocationRentalConfiguration(body.rentalConfiguration) }
+        : {}),
       ...(settings.usageMode === 'shared' ? { venueBookingManaged: true } : {}),
     }
   } catch (cause) {

@@ -80,6 +80,7 @@ const scalarMatch = (actual, expected) => {
     return equal(actual, expected)
   return Object.entries(expected).every(([op, target]) => {
     if (op === '$in') return target.some((value) => equal(actual, value))
+    if (op === '$nin') return target.every((value) => !equal(actual, value))
     if (op === '$ne') return !equal(actual, target)
     if (op === '$type') return target === 'date' && actual instanceof Date
     if (op === '$lt') return actual != null && actual < target
@@ -92,6 +93,11 @@ const matches = (row, filter) =>
   Object.entries(filter).every(([key, expected]) => {
     if (key === '$and') return expected.every((entry) => matches(row, entry))
     if (key === '$or') return expected.some((entry) => matches(row, entry))
+    if (key === '$nor') return expected.every((entry) => !matches(row, entry))
+    if (expected?.$elemMatch) {
+      const entries = key.split('.').reduce((value, part) => value?.[part], row)
+      return Array.isArray(entries) && entries.some((entry) => matches(entry, expected.$elemMatch))
+    }
     return valuesAt(row, key.split('.')).some((actual) =>
       scalarMatch(actual, expected)
     )
@@ -375,6 +381,7 @@ test('intake manager gets only upcoming events, scoped before limit and masked w
       order(3, { locationId, tenantId: otherId }),
       order(4, { locationId, status: 'closed' }),
       order(5, { locationId, status: 'canceled' }),
+      order(6, { locationId, bookingVersion: 2, places: [{ id: 'visible', locationId }, { id: 'private', locationId: otherId }] }),
     ],
   })
   const response = await h.get()
@@ -406,6 +413,7 @@ test('undated external leads are visible to an intake manager with stage access 
     order(5, { eventDate: null, status: 'closed' }),
     order(6, { eventDate: null, tenantId: otherId }),
     order(7, { eventDate: null, locationId: otherId }),
+    order(8, { eventDate: null, status: 'draft', locationId, bookingVersion: 2, places: [{ id: 'visible', locationId }] }),
   ]
   const h = setup({ context, orders })
   const data = await h.load()
@@ -415,7 +423,7 @@ test('undated external leads are visible to an intake manager with stage access 
   )
   assert.deepEqual(
     section(data, 'orders_new').items.map((card) => card.id),
-    [id(3), id(2), id(1)]
+    [id(8), id(3), id(2), id(1)]
   )
   assert.equal(
     section(data, 'orders_new').items.every(

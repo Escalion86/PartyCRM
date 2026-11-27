@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import { PARTY_ACTIVE_COMPANY_EVENT, publishPartyActiveCompanyId, readPartyActiveCompanyId } from '@helpers/partyActiveCompany'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import Modal from '@components/Modal'
@@ -501,7 +502,7 @@ export default function PartyLocationWorkspace({ companies }) {
     setBusy(true)
     setError('')
     try {
-      const response = await fetch(
+      const response = await partyFetch(
         `/api/party/location-finance/export?${query}`,
         { headers: { 'x-partycrm-company-id': companyId } }
       )

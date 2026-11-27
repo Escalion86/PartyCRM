@@ -1,6 +1,7 @@
 import crypto from 'node:crypto'
 import { google } from 'googleapis'
 import { NextResponse } from 'next/server'
+import { getPartySessionUser } from '@server/partyAuth'
 import { getPartyCompanyModel, getPartyStaffModel } from '@server/partyModels'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
 import { createPartyGoogleCalendarClient } from '@server/partyGoogleCalendarClient'
@@ -39,7 +40,17 @@ export const createCore = () => createPartyGoogleCalendarApiCore({
   },
 })
 
-export const authorizeCallback = async ({ companyId, userId }) => Boolean(await (await getPartyStaffModel()).exists({ tenantId: companyId, authUserId: userId, role: { $in: ['owner', 'admin'] }, status: { $ne: 'archived' } }))
+export const authorizeCallback = async ({ companyId, userId }) => {
+  const sessionUser = await getPartySessionUser()
+  if (!sessionUser || sessionUser._id !== userId) return false
+
+  return Boolean(await (await getPartyStaffModel()).exists({
+    tenantId: companyId,
+    authUserId: userId,
+    role: { $in: ['owner', 'admin'] },
+    status: { $ne: 'archived' },
+  }))
+}
 export const jsonResult = (result) => NextResponse.json(result.error ? { success: false, error: result.error } : { success: true, data: result.data }, { status: result.status })
 export const nonceCookieOptions = { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/api/party/google-calendar/callback', maxAge: 600 }
 export const verifyStatePayload = verifyPartyGoogleCalendarOAuthState

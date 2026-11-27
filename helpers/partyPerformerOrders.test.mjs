@@ -3,6 +3,26 @@ import assert from 'node:assert/strict'
 
 import { sanitizePartyOrderForPerformer } from './partyPerformerOrders.js'
 
+test('a performer assigned to the second venue gets that venue and its program', () => {
+  const result = sanitizePartyOrderForPerformer({
+    order: {
+      _id: 'order', tenantId: 'company', bookingVersion: 2, locationId: 'room-a',
+      eventDate: '2026-11-27T06:00:00.000Z', dateEnd: '2026-11-27T10:00:00.000Z',
+      assignedStaff: [{ staffId: 'staff', placeId: 'second' }], serviceTitle: 'Первая игра, Фокусы',
+      places: [{ id: 'first', locationId: 'room-a', locationTitle: 'Первый зал' }, {
+        id: 'second', locationId: 'room-b', locationTitle: 'Второй зал', locationAddress: 'Мира, 10',
+        eventDate: '2026-11-27T07:00:00.000Z', dateEnd: '2026-11-27T08:00:00.000Z',
+      }],
+      orderItems: [{ placeId: 'first', title: 'Первая игра' }, { placeId: 'second', title: 'Фокусы' }],
+    },
+    membership: { staffId: 'staff', tenantId: 'company' }, locationsById: new Map(), clientsById: new Map(),
+  })
+  assert.equal(result.location.title, 'Второй зал')
+  assert.equal(result.eventDate, '2026-11-27T07:00:00.000Z')
+  assert.equal(result.dateEnd, '2026-11-27T08:00:00.000Z')
+  assert.deepEqual(result.serviceTitles, ['Фокусы'])
+})
+
 test('sanitizePartyOrderForPerformer hides company finance fields', () => {
   const result = sanitizePartyOrderForPerformer({
     order: {

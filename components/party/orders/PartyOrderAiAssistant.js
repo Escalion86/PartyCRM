@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import { applyPartyAiPatch, PARTY_AI_FIELDS } from '@helpers/partyOrderAi.mjs'
 
 const buttonClass =
@@ -76,7 +77,7 @@ export default function PartyOrderAiAssistant({
         blob.name ||
           (blob.type.includes('mp4') ? 'recording.m4a' : 'recording.webm')
       )
-      const response = await fetch('/api/party/orders/ai-assist', {
+      const response = await partyFetch('/api/party/orders/ai-assist', {
         method: 'POST',
         headers,
         body: form,

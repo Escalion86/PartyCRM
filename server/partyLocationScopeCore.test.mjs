@@ -21,7 +21,10 @@ test('scope is mandatory and tenant/location restrictions cannot be overwritten'
   const context = { ...membership, tenantId }
   assert.deepEqual(normalizeLocationScope([locationId, locationId]), [locationId])
   const extra = { tenantId: 'foreign', locationId: 'foreign' }
-  assert.deepEqual(buildLocationOrderFilter(context, extra), { $and: [{ tenantId, locationId: { $in: [locationId] } }, extra] })
+  assert.deepEqual(buildLocationOrderFilter(context, extra), { $and: [{ tenantId, $or: [
+    { bookingVersion: { $ne: 2 }, locationId: { $in: [] } },
+    { bookingVersion: 2, 'places.locationId': { $in: [] }, places: { $not: { $elemMatch: { locationId: { $nin: [locationId] } } } } },
+  ] }, { tenantId: extra.tenantId }] })
   assert.throws(() => buildLocationOrderFilter({ ...context, role: 'performer' }), { status: 403 })
 })
 

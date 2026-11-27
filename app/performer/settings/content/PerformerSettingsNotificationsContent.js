@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { apiJson } from '@helpers/apiClient'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import {
   getPushRegistration,
   isPushSupported,
@@ -44,7 +46,7 @@ export default function PerformerSettingsNotificationsContent() {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch(NOTIFICATIONS_API, { cache: 'no-store' })
+      const response = await partyFetch(NOTIFICATIONS_API, { cache: 'no-store' })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || payload?.success === false) {
         throw new Error(payload?.error || 'Не удалось загрузить настройки')
@@ -60,7 +62,7 @@ export default function PerformerSettingsNotificationsContent() {
   const saveNotifications = async (patch) => {
     setSaving(true)
     const nextNotifications = { ...notifications, ...patch }
-    const response = await fetch(NOTIFICATIONS_API, {
+    const response = await partyFetch(NOTIFICATIONS_API, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ notifications: nextNotifications }),
@@ -121,9 +123,8 @@ export default function PerformerSettingsNotificationsContent() {
         ?.getSubscription()
         .catch(() => null)
       if (subscription) {
-        await fetch(`${PARTY_PUSH_API}/unsubscribe`, {
+        await apiJson(`${PARTY_PUSH_API}/unsubscribe`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ subscription: subscription.toJSON() }),
         })
         await subscription.unsubscribe().catch(() => null)
@@ -149,7 +150,7 @@ export default function PerformerSettingsNotificationsContent() {
         ensureLocalSubscription: true,
         apiBasePath: PARTY_PUSH_API,
       })
-      const response = await fetch('/api/party/performer/push/test', {
+      const response = await partyFetch('/api/party/performer/push/test', {
         method: 'POST',
       })
       const payload = await response.json().catch(() => ({}))

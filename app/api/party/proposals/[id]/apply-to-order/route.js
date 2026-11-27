@@ -29,6 +29,7 @@ export async function POST(req, { params }) {
     const Orders = await getPartyOrderModel()
     const current = await Orders.findOne({ _id: proposal.orderId, tenantId: context.tenantId }).lean()
     if (!current) return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+    if (current.bookingVersion === 2) return partyError(409, 'partycrm_multi_place_editor_required', 'Распределите услуги и обновите стоимость в мастере бронирования площадок', 'conflict')
     if (String(current.agreedProposal?.proposalId || '') === String(proposal._id)) return NextResponse.json({ success: true, data: { order: current, repeated: true, inventory: null } })
     if (['closed', 'canceled'].includes(current.status)) return partyError(409, 'partycrm_order_readonly', 'Закрытый или отменённый заказ нельзя менять', 'conflict')
     if (Number(current.commercialRevision || 0) !== expectedRevision) return partyError(409, 'partycrm_order_revision_conflict', 'Коммерческие условия заказа уже изменились. Обновите заказ.', 'conflict')

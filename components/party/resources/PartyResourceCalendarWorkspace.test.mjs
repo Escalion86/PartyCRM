@@ -101,7 +101,7 @@ const fixture = ({
   }
   const active = compile(
     read('../../../helpers/partyActiveCompany.js'),
-    {},
+    { './partyImpersonationClient.js': { readPartyImpersonationMarker: () => '' } },
     { window, CustomEvent }
   )
   const h = createHookHost(

@@ -1,4 +1,5 @@
 import formatAddress from './formatAddress.js'
+import { formatPartyOrderPlaces } from './partyOrderPlaceDetails.js'
 import formatDate from './formatDate.js'
 import formatDateTime from './formatDateTime.js'
 import getPersonFullName from './getPersonFullName.js'
@@ -152,6 +153,7 @@ const buildAutoDocumentNumber = (order, docMeta) => {
 
 const getOrderAddress = (order) => {
   if (!order) return EMPTY_VALUE
+  if (order.bookingVersion === 2 && order.places?.length) return formatPartyOrderPlaces(order.places)
   if (order.placeType === 'company_location') {
     if (order.customAddress) return order.customAddress
     return 'По адресу Исполнителя'

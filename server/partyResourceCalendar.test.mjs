@@ -37,11 +37,13 @@ const scalar = (actual, expected) => {
 const matches = (row, filter) => Object.entries(filter).every(([field, condition]) => {
   if (field === '$and') return condition.every((part) => matches(row, part))
   if (field === '$or') return condition.some((part) => matches(row, part))
+  if (field === '$nor') return condition.every((part) => !matches(row, part))
   if (field === '$expr') return expression(row, condition)
   const actuals = values(row, field)
   if (condition instanceof RegExp) return actuals.some((actual) => condition.test(String(actual || '')))
   if (condition && typeof condition === 'object' && !(condition instanceof Date) && !condition.toHexString) return Object.entries(condition).every(([operation, expected]) => {
     if (operation === '$in') return actuals.some((actual) => expected.some((value) => scalar(actual, value)))
+    if (operation === '$nin') return actuals.every((actual) => expected.every((value) => !scalar(actual, value)))
     if (operation === '$ne') return actuals.every((actual) => !scalar(actual, expected))
     if (operation === '$type') return actuals.some((actual) => expected === 'date' && actual instanceof Date)
     if (operation === '$lt') return actuals.some((actual) => actual != null && actual < expected)
@@ -96,6 +98,29 @@ test('location lane applies current preparation and cleanup, includes boundary b
   assert.equal(data.partial, false)
   assert.equal(data.timeZone, 'Asia/Krasnoyarsk')
   assert.match(data.notice, /Отсутствие записи не подтверждает/)
+})
+
+test('multiple rooms render only their own rental windows and share the order link', async () => {
+  const otherLocation = numberId(15)
+  const secondStart = new Date('2026-10-29T10:30:00Z')
+  const secondEnd = new Date('2026-10-29T11:30:00Z')
+  const rows = [order(1, { bookingVersion: 2, rental: { startsAt: new Date('2026-10-29T09:00Z'), endsAt: new Date('2026-10-29T13:00Z') }, places: [
+    { id: 'room-a', locationId, rental: { startsAt: new Date('2026-10-29T10:00Z'), endsAt: new Date('2026-10-29T12:00Z') } },
+    { id: 'room-b', locationId: otherLocation, rental: { startsAt: secondStart, endsAt: secondEnd }, eventDate: secondStart, dateEnd: secondEnd },
+  ], assignedStaff: [{ staffId, placeId: 'room-b' }] })]
+  const resources = [{ _id: locationId, tenantId, title: 'Зал А' }, { _id: otherLocation, tenantId, title: 'Зал Б' }]
+  const data = await setup({ orders: rows, resources }).load('location')
+  assert.deepEqual(data.items.map(({ id: entryId, resourceId, start, end }) => [entryId, resourceId, start, end]), [
+    [`order:${numberId(1)}:room-a`, locationId, '2026-10-29T10:00:00.000Z', '2026-10-29T12:00:00.000Z'],
+    [`order:${numberId(1)}:room-b`, otherLocation, '2026-10-29T10:30:00.000Z', '2026-10-29T11:30:00.000Z'],
+  ])
+  assert.equal(data.items[0].href, data.items[1].href)
+  const secondRoom = await setup({ orders: rows, resources }).load('location', `&resourceId=${otherLocation}`)
+  assert.deepEqual(secondRoom.items.map(({ resourceId }) => resourceId), [otherLocation])
+  assert.deepEqual((await setup({ actor: scoped(), orders: rows, resources }).load('location')).items, [])
+
+  const staff = await setup({ orders: rows, resources: [{ _id: staffId, tenantId, firstName: 'Анна' }] }).load('staff')
+  assert.deepEqual(staff.items.map(({ start, end }) => [start, end]), [['2026-10-29T10:30:00.000Z', '2026-10-29T11:30:00.000Z']])
 })
 
 test('resource scope and order stage/location/tenant permissions are applied before the entry limit', async () => {

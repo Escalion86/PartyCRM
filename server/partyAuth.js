@@ -1,10 +1,24 @@
 import crypto from 'crypto'
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
+import {
+  PARTY_IMPERSONATION_COOKIE,
+  PARTY_IMPERSONATION_UI_COOKIE,
+} from '@helpers/partyImpersonationConstants'
+import {
+  createPartyImpersonationToken,
+  readPartyImpersonationToken,
+} from './partyImpersonationToken.mjs'
 import { getPartyUserModel } from './partyModels'
 
 export const PARTY_SESSION_COOKIE = 'partycrm_session'
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production',
+  path: '/',
+}
 
 export const normalizePartyPhone = (phone) => {
   if (!phone) return ''
@@ -68,21 +82,8 @@ const verifyPartySessionToken = (token) => {
   }
 }
 
-export const getPartySessionUser = async () => {
-  const cookieStore = await cookies()
-  const token = cookieStore.get(PARTY_SESSION_COOKIE)?.value
-  const payload = verifyPartySessionToken(token)
-  if (!payload?.uid) return null
-
-  const PartyUsers = await getPartyUserModel()
-  const user = await PartyUsers.findOne({
-    _id: payload.uid,
-    status: { $ne: 'archived' },
-  }).lean()
-
-  if (!user) return null
-
-  return {
+const normalizePartySessionUser = (user) =>
+  user && {
     ...user,
     _id: String(user._id),
     interfaceRoles: normalizePartyInterfaceRoles(user.interfaceRoles),
@@ -91,28 +92,119 @@ export const getPartySessionUser = async () => {
       : '',
     performerOnboardingCompletedAt: user.performerOnboardingCompletedAt || null,
   }
+
+const findPartySessionUser = async (filter, projection) => {
+  const PartyUsers = await getPartyUserModel()
+  return normalizePartySessionUser(
+    await PartyUsers.findOne(filter, projection).lean()
+  )
 }
 
-export const setPartySessionCookie = (response, user) => {
-  response.cookies.set(PARTY_SESSION_COOKIE, createPartySessionToken(user), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
+export const canStartPartyImpersonation = (user) =>
+  user?.role === 'dev' && user.status === 'active'
+
+export const getPartyOriginalSession = async () => {
+  const cookieStore = await cookies()
+  const sessionToken = cookieStore.get(PARTY_SESSION_COOKIE)?.value
+  const impersonationActive = cookieStore.has(PARTY_IMPERSONATION_COOKIE)
+  const payload = verifyPartySessionToken(sessionToken)
+  const user = payload
+    ? await findPartySessionUser({
+        _id: payload.uid,
+        status: { $ne: 'archived' },
+      })
+    : null
+  const impersonationToken = cookieStore.get(PARTY_IMPERSONATION_COOKIE)?.value
+  const impersonation =
+    impersonationToken && canStartPartyImpersonation(user)
+      ? readPartyImpersonationToken(impersonationToken, {
+          actorId: user._id,
+          sessionToken,
+          secret: getSecret(),
+        })
+      : null
+
+  return { user, sessionToken, impersonationActive, impersonation }
+}
+
+export const isPartyImpersonationActive = async () =>
+  (await cookies()).has(PARTY_IMPERSONATION_COOKIE)
+
+export const getPartyImpersonationTarget = (userId) =>
+  findPartySessionUser({ _id: userId, status: 'active' }, { password: 0 })
+
+const resolvePartyImpersonation = (impersonation) =>
+  impersonation ? getPartyImpersonationTarget(impersonation.targetId) : null
+
+export const getPartySessionUser = async () => {
+  const { user, impersonationActive, impersonation } =
+    await getPartyOriginalSession()
+  return impersonationActive ? resolvePartyImpersonation(impersonation) : user
+}
+
+export const getPartyImpersonationStatus = async () => {
+  if (!(await isPartyImpersonationActive())) return { active: false }
+
+  const { impersonation } = await getPartyOriginalSession()
+  const user = await resolvePartyImpersonation(impersonation)
+  if (!user) return { active: true, unavailable: true }
+
+  return {
+    active: true,
+    userName: [user.firstName, user.secondName].filter(Boolean).join(' ').trim(),
+  }
+}
+
+export const setPartyImpersonationCookie = (
+  response,
+  { actorId, targetId, sessionToken }
+) => {
+  const token = createPartyImpersonationToken({
+    actorId,
+    targetId,
+    sessionToken,
+    secret: getSecret(),
+  })
+
+  response.cookies.set(PARTY_IMPERSONATION_COOKIE, token, {
+    ...COOKIE_OPTIONS,
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  })
+  response.cookies.set(PARTY_IMPERSONATION_UI_COOKIE, crypto.randomUUID(), {
+    ...COOKIE_OPTIONS,
+    httpOnly: false,
     maxAge: SESSION_MAX_AGE_SECONDS,
   })
   return response
 }
 
-export const clearPartySessionCookie = (response) => {
-  response.cookies.set(PARTY_SESSION_COOKIE, '', {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    path: '/',
+export const clearPartyImpersonationCookie = (response) => {
+  response.cookies.set(PARTY_IMPERSONATION_COOKIE, '', {
+    ...COOKIE_OPTIONS,
+    maxAge: 0,
+  })
+  response.cookies.set(PARTY_IMPERSONATION_UI_COOKIE, '', {
+    ...COOKIE_OPTIONS,
+    httpOnly: false,
     maxAge: 0,
   })
   return response
+}
+
+export const setPartySessionCookie = (response, user) => {
+  response.cookies.set(PARTY_SESSION_COOKIE, createPartySessionToken(user), {
+    ...COOKIE_OPTIONS,
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  })
+  return clearPartyImpersonationCookie(response)
+}
+
+export const clearPartySessionCookie = (response) => {
+  response.cookies.set(PARTY_SESSION_COOKIE, '', {
+    ...COOKIE_OPTIONS,
+    maxAge: 0,
+  })
+  return clearPartyImpersonationCookie(response)
 }
 
 export const validatePartyPassword = async (password, hash) => {

@@ -45,6 +45,7 @@ const partyPerformerReportSchema = new Schema(
 
 const assignedStaffSchema = new Schema(
   {
+    placeId: { type: String, maxlength: 64, default: undefined },
     staffId: {
       type: Schema.Types.ObjectId,
       ref: 'Staff',
@@ -240,6 +241,10 @@ const partyOrderEventBriefSchema = new Schema(
 const partyOrderItemSchema = new Schema(
   {
     serviceId: { type: Schema.Types.ObjectId, ref: 'Service', default: null },
+    lineId: { type: String, maxlength: 64, default: undefined },
+    placeId: { type: String, maxlength: 64, default: undefined },
+    eventDate: { type: Date, default: undefined },
+    dateEnd: { type: Date, default: undefined },
     title: { type: String, trim: true, required: true, maxlength: 240 },
     description: { type: String, trim: true, default: '', maxlength: 1000 },
     quantity: { type: Number, default: 1, min: 0.01, max: 100000 },
@@ -251,7 +256,26 @@ const partyOrderItemSchema = new Schema(
     discount: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },
   },
-  { _id: false }
+  // An empty values object records that all optional service parameters were left blank.
+  { _id: false, minimize: false }
+)
+
+const partyOrderPlaceSchema = new Schema(
+  {
+    id: { type: String, required: true, maxlength: 64 },
+    locationId: { type: Schema.Types.ObjectId, ref: 'Location', required: true },
+    locationTitle: { type: String, default: '', maxlength: 180 },
+    locationAddress: { type: String, default: '', maxlength: 500 },
+    timeZone: { type: String, default: '', maxlength: 80 },
+    guestCount: { type: Number, default: null, min: 1, max: 100000 },
+    eventDate: { type: Date, default: null },
+    dateEnd: { type: Date, default: null },
+    durationMinutes: { type: Number, default: 0, min: 0, max: 10080 },
+    rental: { type: new Schema({ startsAt: Date, endsAt: Date }, { _id: false }), default: null },
+    pricingSnapshot: { type: Schema.Types.Mixed, default: null },
+    locationConfiguration: { type: Schema.Types.Mixed, default: null },
+  },
+  { _id: false, minimize: false }
 )
 
 const partyOrderAgreedProposalSchema = new Schema(
@@ -302,6 +326,7 @@ const partyOrdersSchema = {
   orderTypeId: { type: Schema.Types.ObjectId, default: null, index: true },
   orderTypeSnapshot: { type: String, default: '', maxlength: 180 },
   bookingVersion: { type: Number, default: 0 },
+  places: { type: [partyOrderPlaceSchema], default: undefined },
   hasPaymentExpectations: { type: Boolean, default: false },
   rental: { type: new Schema({ startsAt: Date, endsAt: Date }, { _id: false }), default: null },
   discount: { type: new Schema({ type: { type: String, enum: ['amount', 'percent'], default: 'amount' }, value: { type: Number, default: 0, min: 0 } }, { _id: false }), default: () => ({ type: 'amount', value: 0 }) },
@@ -443,6 +468,11 @@ const partyOrdersSchema = {
   },
   googleCalendarEventId: { type: String, default: '' },
   googleCalendarCalendarId: { type: String, default: '' },
+  googleCalendarEventUrl: { type: String, default: '' },
+  googleCalendarImportKey: { type: String },
+  calendarImportedAt: { type: Date, default: null },
+  calendarImportChecked: { type: Boolean, default: true },
+  googleCalendarSyncDisabled: { type: Boolean, default: false },
   calendarSyncError: {
     type: String,
     enum: ['', 'calendar_sync_unavailable', 'calendar_sync_failed'],

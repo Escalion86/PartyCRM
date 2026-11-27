@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Image from '@tiptap/extension-image'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 
 export default function PartyReportRichEditor({
   value = '',
@@ -66,7 +67,7 @@ export default function PartyReportRichEditor({
         if (entry !== null && entry !== undefined)
           body.append(key, String(entry))
       }
-      const response = await fetch(uploadUrl, {
+      const response = await partyFetch(uploadUrl, {
         method: 'POST',
         headers: { 'x-partycrm-company-id': companyId },
         body,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getPartyUserModel } from '@server/partyModels'
 import {
   getPartySessionUser,
+  isPartyImpersonationActive,
   normalizePartyInterfaceRoles,
 } from '@server/partyAuth'
 import { normalizePartyWorkspace } from '@server/partyEntry'
@@ -35,6 +36,7 @@ export async function GET() {
     success: true,
     data: {
       user: serializePartyUser(user),
+      impersonating: await isPartyImpersonationActive(),
     },
   })
 }

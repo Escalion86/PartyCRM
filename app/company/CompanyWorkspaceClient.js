@@ -13,6 +13,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { apiJson } from '@helpers/apiClient'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import { sharePartyLocationBooking } from '@helpers/partySharedLocationBooking'
 import DropDown from '@components/DropDown'
 import OrdersList from '@components/party/lists/OrdersList'
@@ -60,9 +61,10 @@ import { getPartyOrderPreparationReadiness } from '@helpers/partyOrderPreparatio
 import { readPartyLegacyOrderLink, loadPartyLegacyLinkedOrder } from '@helpers/partyLegacyOrderLink'
 import { normalizePartyLegacyOrderDraft as normalizeOrderDraft } from '@helpers/partyLegacyOrderDraft'
 import { isPartyRestrictedManagementContext } from '@helpers/partyRolePermissions'
-import { publishPartyActiveCompanyId } from '@helpers/partyActiveCompany'
-
-const ACTIVE_COMPANY_STORAGE_KEY = 'partycrm.activeCompanyId'
+import {
+  publishPartyActiveCompanyId,
+  readStoredPartyActiveCompanyId,
+} from '@helpers/partyActiveCompany'
 
 const startOfDay = (date) =>
   new Date(date.getFullYear(), date.getMonth(), date.getDate())
@@ -492,10 +494,7 @@ export default function CompanyWorkspaceClient({ section = 'overview', canSwitch
           return
         }
 
-        const storedCompanyId =
-          typeof window !== 'undefined'
-            ? window.localStorage.getItem(ACTIVE_COMPANY_STORAGE_KEY) || ''
-            : ''
+        const storedCompanyId = readStoredPartyActiveCompanyId()
         const canUseLegacyWorkspace = (membership) => membership.isAdmin && membership.status === 'active' && !isPartyRestrictedManagementContext(membership)
         const url = new URL(window.location.href)
         const callId = section === 'calls' ? url.searchParams.get('callId') || '' : ''
@@ -1250,7 +1249,7 @@ export default function CompanyWorkspaceClient({ section = 'overview', canSwitch
     const search = new URLSearchParams()
     if (financeExportFrom) search.set('from', financeExportFrom)
     if (financeExportTo) search.set('to', financeExportTo)
-    const response = await fetch(
+    const response = await partyFetch(
       `/api/party/finance/export${search.toString() ? `?${search}` : ''}`,
       {
         headers: {
@@ -2415,6 +2414,12 @@ export default function CompanyWorkspaceClient({ section = 'overview', canSwitch
           }}
           onEdit={() => openOrderEditor(orderDraft)}
           onReviewReport={reviewPerformerReport}
+          onCalendarSaved={(fields) => {
+            const id = String(orderDraft._id)
+            const updated = (order) => String(order._id) === id ? { ...order, ...fields } : order
+            setOrders((previous) => previous.map(updated))
+            setOrderDraft(updated)
+          }}
           onUpdateOrder={(nextOrder) =>
             updateOrder(nextOrder).then((updatedOrder) => {
               if (updatedOrder) setOrderDraft(normalizeOrderDraft(updatedOrder))

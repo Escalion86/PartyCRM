@@ -155,6 +155,7 @@ function setup(location = {}, orders = []) {
     session.releases.push(release)
   }
   const models = {
+    Companies: { findOne: () => query(() => ({ settings: { timeZone: 'UTC', workingSchedule: { week: Array.from({ length: 7 }, () => ({ opens: '06:00', closes: '23:00' })) } } })) },
     Locations: {
       find: (filter) =>
         query(() => env.locations.filter((row) => matches(row, filter))),
@@ -826,9 +827,90 @@ test('an undated private draft never creates a venue reservation or activates ma
   assert.equal(writes, 1)
 })
 
+const place = (id, locationId) => ({ id, locationId, rental: range({ locationId }) })
+const multiOrder = (overrides = {}) => ({
+  _id: id(90),
+  tenantId,
+  locationId,
+  bookingVersion: 2,
+  status: 'active',
+  placeType: 'company_location',
+  eventDate: range().startsAt,
+  dateEnd: range().endsAt,
+  places: [place('first', locationId), place('second', otherVenue)],
+  ...overrides,
+})
+
+const writerFor = ({ models, service }) => createPartyOrderVenueWriter({
+  getModels: async () => models,
+  supportsTransactions: async () => true,
+  withVenueMutation: service.withPartyVenueMutation,
+  reserveVenue: service.reservePartyVenue,
+})
+
+test('a conflict at the second room rolls back the first room and the order write', async () => {
+  const h = setup()
+  await h.reserve(id(2), { locationId: otherVenue })
+  const order = multiOrder()
+  const write = () => writerFor(h)({ tenantId, nextOrder: order, work: ({ session }) => {
+    h.env.orders.push(order)
+    session.undo.push(() => h.env.orders.pop())
+    return order
+  } })
+  await assert.rejects(write(), { code: 'partycrm_venue_conflict' })
+  assert.deepEqual(h.env.orders, [])
+  assert.deepEqual(h.env.bookings.map(({ sourceType, locationId }) => [sourceType, locationId]), [['ticket_session', otherVenue]])
+
+  h.env.bookings.length = 0
+  await write()
+  assert.equal(h.env.bookings.length, 2)
+  assert.ok(h.env.bookings.every(({ sourceType, orderId }) => sourceType === 'order_place' && orderId === order._id))
+  await assert.rejects(h.reserve(id(3), { locationId: otherVenue }), { code: 'partycrm_venue_conflict' })
+  await assert.rejects(h.service.checkPartyVenueAvailability({ tenantId, ...range({ locationId: otherVenue }) }), { code: 'partycrm_venue_conflict' })
+  await h.service.checkPartyVenueAvailability({ tenantId, sourceId: order._id, ...range({ locationId: otherVenue }) })
+  await assert.rejects(h.service.withPartyVenueMutation({
+    tenantId, locationIds: [otherVenue], at: '2026-12-01T10:30:00Z',
+    work: ({ session }) => h.service.assertPartyVenueEntryAllowed({ tenantId, locationId: otherVenue, at: '2026-12-01T10:30:00Z', session }),
+  }), { code: 'partycrm_venue_entry_blocked' })
+})
+
+test('room swaps keep per-place identities and cancel, reactivate and delete update all reservations', async () => {
+  const h = setup()
+  const writer = writerFor(h)
+  const original = multiOrder()
+  const change = (previousOrder, nextOrder) => writer({ tenantId, previousOrder, nextOrder, work: () => nextOrder || previousOrder })
+  await change(null, original)
+  const sources = new Map(h.env.bookings.map(({ placeId, sourceId }) => [placeId, sourceId]))
+  const swapped = multiOrder({ places: [place('first', otherVenue), place('second', locationId)], locationId: otherVenue })
+  await change(original, swapped)
+  assert.deepEqual(h.env.bookings.map(({ placeId, sourceId, locationId }) => [placeId, sourceId, locationId]), [
+    ['first', sources.get('first'), otherVenue], ['second', sources.get('second'), locationId],
+  ])
+  const canceled = { ...swapped, status: 'canceled' }
+  await change(swapped, canceled)
+  assert.deepEqual(h.env.bookings, [])
+  await change(canceled, swapped)
+  assert.equal(h.env.bookings.length, 2)
+  await change(swapped, null)
+  assert.deepEqual(h.env.bookings, [])
+})
+
+test('converting a single-room order replaces its old reservation and prohibits shared groups', async () => {
+  const h = setup()
+  const writer = writerFor(h)
+  const legacy = { ...multiOrder({ bookingVersion: 0 }), places: [] }
+  await writer({ tenantId, nextOrder: legacy, work: () => legacy })
+  assert.equal(h.env.bookings[0].sourceType, 'order')
+  await assert.rejects(writer({ tenantId, previousOrder: { ...legacy, sharedLocationBooking: true }, nextOrder: multiOrder(), work() { assert.fail('Shared order cannot be converted') } }), { code: 'partycrm_venue_shared_multiplace' })
+  const updated = multiOrder()
+  await writer({ tenantId, previousOrder: legacy, nextOrder: updated, work: () => updated })
+  assert.deepEqual(h.env.bookings.map(({ sourceType }) => sourceType), ['order_place', 'order_place'])
+})
+
 test('typed timed bookings never use the legacy standalone write fallback', async () => {
   const writer = createPartyOrderVenueWriter({ getModels: async () => ({ Locations: {} }), supportsTransactions: async () => false })
   await assert.rejects(writer({ tenantId, nextOrder: { bookingVersion: 1, locationId, eventDate: range().startsAt, dateEnd: range().endsAt }, work() { assert.fail('Unsafe write must not run') } }), { code: 'partycrm_venue_transaction_required' })
+  await assert.rejects(writer({ tenantId, nextOrder: multiOrder(), work() { assert.fail('Unsafe multi-place write must not run') } }), { code: 'partycrm_venue_transaction_required' })
 })
 
 test('moving a reservation requires both venues locked and a failed move retains the old booking', async () => {

@@ -6,6 +6,7 @@ import { faEllipsis, faLocationDot, faUser } from '@fortawesome/free-solid-svg-i
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import { canPartyAccess } from '@helpers/partyRolePermissions'
+import { PartyOrderCalendarReviewBadge } from './PartyOrderCalendarDetails'
 import {
   getPartyOrderBoardTransitions,
   projectPartyOrderBoardColumns,
@@ -115,6 +116,9 @@ function OrderBoardCard({
           >
             {title}
           </button>
+          {order.calendarImportChecked === false ? (
+            <div><PartyOrderCalendarReviewBadge checked={order.calendarImportChecked} /></div>
+          ) : null}
           {((canSeeDate && !dateParts) || clientName || place) && (
             <div className="space-y-1 text-sm leading-5 text-gray-600 [overflow-wrap:anywhere]">
               {canSeeDate && !dateParts && <p>Дата не назначена</p>}
@@ -243,7 +247,7 @@ export default function PartyRoleOrdersBoard({
         role="region"
         aria-label="Колонки доски заказов"
         tabIndex={stages.length ? 0 : undefined}
-        className="flex min-w-0 max-w-full snap-x snap-proximity items-start gap-3 overflow-x-auto overscroll-x-contain px-1 pb-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+        className="relative flex min-w-0 max-w-full snap-x snap-proximity items-start gap-3 overflow-x-auto overscroll-x-contain px-1 pb-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
       >
         {stages.map((stage) => {
           const column = columns[stage.id] || { orders: [], busy: true }

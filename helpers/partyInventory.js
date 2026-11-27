@@ -179,6 +179,45 @@ export const snapshotInventoryServiceItems = (serviceItems, requirements) => {
   })
 }
 
+const reconcileMultiPlaceInventory = (order, previous, eventDate, dateEnd) => {
+  const places = new Map((order.places || []).map((place) => [place.id, place]))
+  const oldLines = previous?.serviceItems || []
+  const commercialLines = (order.orderItems || []).filter((line) => line.lineId && line.serviceId)
+  const oldById = new Map(oldLines.map((line) => [line.serviceLineId, line]))
+  const comingFromLegacy = previous?.orderSnapshot?.bookingVersion !== 2
+  const serviceItems = commercialLines.flatMap((line) => {
+    const place = places.get(line.placeId)
+    const from = line.eventDate ?? place?.rental?.startsAt
+    const to = line.dateEnd ?? place?.rental?.endsAt
+    if (!from || !to || +new Date(to) <= +new Date(from)) return []
+    const serviceId = inventoryId(line.serviceId)
+    let prior = oldById.get(line.lineId)
+    if (!prior && comingFromLegacy) {
+      const old = oldLines.filter((item) => inventoryId(item.serviceId) === serviceId)
+      const sameService = commercialLines.filter((item) => inventoryId(item.serviceId) === serviceId)
+      if (old.length === 1 && sameService.length === 1) prior = old[0]
+      else if (old.some((item) => item.quantityMode === 'manual') || (old.length && previous?.selectionMode === 'manual'))
+        throw inventoryValidationError('Сопоставьте ручные резервы реквизита с услугами по местам', 409)
+    }
+    const manual = prior && (prior.quantityMode === 'manual' || (!prior.quantityMode && previous?.selectionMode === 'manual'))
+    const keepsTime = manual && prior.startAt && prior.endAt &&
+      +new Date(prior.startAt) <= +new Date(from) && +new Date(prior.endAt) >= +new Date(to)
+    return [{
+      ...prior,
+      serviceId,
+      serviceLineId: line.lineId,
+      quantity: manual ? prior.quantity : getInventoryServiceQuantity(line),
+      quantityMode: manual ? 'manual' : 'automatic',
+      startAt: new Date(keepsTime ? prior.startAt : from).toISOString(),
+      endAt: new Date(keepsTime ? prior.endAt : to).toISOString(),
+    }]
+  })
+  return {
+    serviceItems,
+    orderSnapshot: { eventDate, dateEnd, servicesIds: [...new Set(serviceItems.map((item) => item.serviceId))], bookingVersion: 2 },
+  }
+}
+
 export const reconcileInventoryServiceItems = (order, previous = null) => {
   const eventDate = order.eventDate
     ? new Date(order.eventDate).toISOString()
@@ -190,6 +229,7 @@ export const reconcileInventoryServiceItems = (order, previous = null) => {
           +new Date(eventDate) + (order.durationMinutes || 60) * 60000
         ).toISOString()
       : ''
+  if (order.bookingVersion === 2) return reconcileMultiPlaceInventory(order, previous, eventDate, dateEnd)
   const hasOrderItems = Array.isArray(order.orderItems) && order.orderItems.length > 0
   const serviceQuantities = new Map()
   if (hasOrderItems) {

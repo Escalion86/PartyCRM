@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { PhoneNumberField } from '@components/PhoneInput'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import {
   formatPhoneLocalDigits,
   getPhoneLocalDigits,
@@ -307,7 +308,7 @@ export default function PartyLoginClient({
     if (initialMode !== 'register' || !inviteToken) return undefined
 
     let active = true
-    fetch(`/api/party/invites/${encodeURIComponent(inviteToken)}`, {
+    partyFetch(`/api/party/invites/${encodeURIComponent(inviteToken)}`, {
       cache: 'no-store',
     })
       .then(async (response) => {
@@ -355,7 +356,7 @@ export default function PartyLoginClient({
     setVerifyLoading(true)
     setVerifyStep('calling')
     try {
-      const response = await fetch('/api/party/auth/phone/verify/start', {
+      const response = await partyFetch('/api/party/auth/phone/verify/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: normalizedPhone, flow: 'register' }),
@@ -384,7 +385,7 @@ export default function PartyLoginClient({
     stopPolling()
     pollRef.current = setInterval(async () => {
       try {
-        const response = await fetch('/api/party/auth/phone/verify/check', {
+        const response = await partyFetch('/api/party/auth/phone/verify/check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: normalizedPhone, callId }),
@@ -413,7 +414,7 @@ export default function PartyLoginClient({
     setVerifyError('')
     const normalizedPhone = normalizePhone(phone)
     try {
-      const response = await fetch('/api/party/auth/phone/verify/sms/send', {
+        const response = await partyFetch('/api/party/auth/phone/verify/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: normalizedPhone, flow: 'register' }),
@@ -461,7 +462,7 @@ export default function PartyLoginClient({
 
     setLoading(true)
     try {
-      const response = await fetch('/api/party/auth/register', {
+      const response = await partyFetch('/api/party/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -504,7 +505,7 @@ export default function PartyLoginClient({
 
     setLoading(true)
     try {
-      const response = await fetch('/api/party/auth/login', {
+      const response = await partyFetch('/api/party/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

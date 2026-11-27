@@ -144,7 +144,15 @@ test('financial aggregation queries only tenant and position scopes and does not
   const calls = Object.fromEntries(api.calls)
   assert.deepEqual(calls.orders, {
     tenantId,
-    $and: [{ locationId: { $in: [locationId] } }],
+    $and: [
+      { locationId: { $in: [locationId] } },
+      {
+        $nor: [{
+          bookingVersion: 2,
+          places: { $elemMatch: { locationId: { $nin: [locationId] } } },
+        }],
+      },
+    ],
   })
   assert.deepEqual(calls.sales, buildPartyTicketAccessFilter(context))
   assert.deepEqual(calls.transactions.orderId, { $in: ['order'] })

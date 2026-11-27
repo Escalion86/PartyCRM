@@ -18,11 +18,13 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import DropDown from '@components/DropDown'
 import Modal from '@components/Modal'
 import ContactsIconsButtons from '@components/ContactsIconsButtons'
+import { PartyOrderCalendarReviewBadge } from '@components/party/orders/PartyOrderCalendarDetails'
 import PartyCard, {
   PartyCardActions,
   PartyCardHeader,
 } from '@components/party/PartyCard'
 import getPersonFullName from '@helpers/getPersonFullName'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
 import {
   getOrderNonPayoutExpenseTotal,
@@ -875,6 +877,7 @@ const OrderCard = ({
               {formatDateTime(order.eventDate)}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-1.5 empty:hidden">
+              <PartyOrderCalendarReviewBadge checked={order.calendarImportChecked} />
               {hasConflict && (
                 <span className="shrink-0 rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700">
                   Конфликт
@@ -1020,7 +1023,7 @@ export default function OrdersList({
   const { data: messengerSummary } = useQuery({
     queryKey: summaryKey,
     queryFn: async () => {
-      const response = await fetch('/api/party/integrations/messenger-summary', {
+      const response = await partyFetch('/api/party/integrations/messenger-summary', {
         headers: activeCompanyId ? { 'x-partycrm-company-id': activeCompanyId } : {},
       })
       const result = await response.json().catch(() => ({}))

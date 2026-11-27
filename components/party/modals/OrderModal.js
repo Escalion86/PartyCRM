@@ -4,6 +4,8 @@ import { PartyOrderContactRolesEditor } from '@components/party/orders/PartyOrde
 
 import { useState, useCallback, useMemo, useEffect, useId } from 'react'
 import PartyOrderWizard from '@components/party/orders/PartyOrderWizard'
+import PartyOrderPlacesRead from '@components/party/orders/PartyOrderPlacesRead'
+import { PARTY_ORDER_WIZARD_STEP as STEP } from '@helpers/partyOrderWizardSteps'
 import PartyOrderExtensions from '@components/party/orders/PartyOrderExtensions'
 import usePartyUnsavedChanges, { requestPartyLeave } from '@components/party/navigation/usePartyUnsavedChanges'
 import { useSetAtom } from 'jotai'
@@ -147,9 +149,10 @@ export default function OrderModal({
   onOrderApplied,
   isEdit,
 }) {
+  const multiPlaceOrder = orderDraft.bookingVersion === 2
   const [clientModal, setClientModal] = useState('')
   const [bookingOpen, setBookingOpen] = useState(false)
-  const [bookingStep, setBookingStep] = useState(0)
+  const [bookingStep, setBookingStep] = useState(STEP.client)
   const [localFormVariant, setLocalFormVariant] = useState(null)
   const layoutSelectId = useId()
   const [canonicalTypes, setCanonicalTypes] = useState([])
@@ -881,7 +884,7 @@ export default function OrderModal({
             .filter(Boolean)
             .join(' · '),
           Место:
-            orderDraft.placeType === 'company_location'
+            multiPlaceOrder ? (orderDraft.places || []).map((place) => place.locationTitle).filter(Boolean).join(', ') : orderDraft.placeType === 'company_location'
               ? locations.find(
                   (item) => String(item._id) === String(orderDraft.locationId)
                 )?.title || 'Точка не выбрана'
@@ -917,16 +920,16 @@ export default function OrderModal({
         <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
             <div data-order-group="Услуги" className="grid gap-2">
-              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => { setBookingStep(0); setBookingOpen(true) }}>Редактировать по шагам</button> : null}
+              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => { setBookingStep(STEP.client); setBookingOpen(true) }}>Редактировать по шагам</button> : null}
               <PartyOrderTypePicker
                 value={orderDraft.title || ''}
                 onChange={(val) => handleChange('title', val || '')}
                 orderTypes={normalizeCompanyDictionary([...(companySettings?.orderTypes || []), ...canonicalTypes])}
                 onCreateOrderType={handleOrderTypeCreate}
-                allowCreate={Boolean(activeCompanyId) && orderDraft.bookingVersion !== 1}
-                disabled={orderDraft.bookingVersion === 1}
+                allowCreate={Boolean(activeCompanyId) && ![1, 2].includes(orderDraft.bookingVersion)}
+                disabled={[1, 2].includes(orderDraft.bookingVersion)}
               />
-              <ServiceMultiSelect
+              {!multiPlaceOrder && <ServiceMultiSelect
                 value={orderDraft.servicesIds || []}
                 onChange={(val) => handleChange('servicesIds', val)}
                 services={services?.filter((service) => !service.configuration)}
@@ -934,8 +937,8 @@ export default function OrderModal({
                 onCreate={() => setServiceModal(true)}
                 required
                 tone="party"
-              />
-              {(services || []).some((service) => service.configuration) ? (
+              />}
+              {!multiPlaceOrder && (services || []).some((service) => service.configuration) ? (
                 <div className="space-y-2 text-sm text-slate-700">
                   {(services || []).filter((service) => service.configuration && (orderDraft.servicesIds || []).includes(service._id)).map((service) => (
                     <p key={service._id} className="[overflow-wrap:anywhere]">{service.title}</p>
@@ -943,7 +946,7 @@ export default function OrderModal({
                   {orderDraft._id && (
                     <button type="button" disabled={saving || hasUnsavedChanges}
                       className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => { setBookingStep(orderDraft.orderTypeId ? 2 : 0); setBookingOpen(true) }}>
+                      onClick={() => { setBookingStep(orderDraft.orderTypeId ? STEP.services : STEP.type); setBookingOpen(true) }}>
                       Настроить гибкие услуги
                     </button>
                   )}
@@ -951,7 +954,7 @@ export default function OrderModal({
               ) : null}
             </div>
             <div data-order-group="Дата и ответственный" className="grid gap-2">
-              <div className="flex flex-col gap-2 md:flex-row">
+              {!multiPlaceOrder && <div className="flex flex-col gap-2 md:flex-row">
                 <DateTimePicker
                   label="Дата и время"
                   value={orderDraft.eventDate}
@@ -968,7 +971,7 @@ export default function OrderModal({
                   step={30}
                   tone="party"
                 />
-              </div>
+              </div>}
 
               <Select
                 label="Ответственный администратор"
@@ -986,6 +989,7 @@ export default function OrderModal({
               />
             </div>
             <div data-order-group="Место" className="grid gap-2">
+              {multiPlaceOrder ? <PartyOrderPlacesRead order={orderDraft} timeZone={companySettings?.timeZone} /> : <>
               <Select
                 label="Место"
                 value={orderDraft.placeType}
@@ -1072,6 +1076,7 @@ export default function OrderModal({
                   onCompanySettingsChange={onCompanySettingsChange}
                 />
               )}
+              </>}
             </div>
             <div data-order-group="Комментарии" className="grid gap-2">
               <Textarea
@@ -1253,6 +1258,7 @@ export default function OrderModal({
             <Input
               label="Сумма клиента"
               type="number"
+              disabled={multiPlaceOrder}
               value={
                 orderDraft.clientPayment?.totalAmount ??
                 orderDraft.contractAmount ??
@@ -1305,6 +1311,8 @@ export default function OrderModal({
                 services={services}
                 companySettings={companySettings}
                 activeCompanyId={activeCompanyId}
+                disabled={saving}
+                unsaved={hasUnsavedChanges}
                 onOrderUpdated={(updatedOrder) => {
                   setOrderDraft((current) => ({
                     ...current,

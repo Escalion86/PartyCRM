@@ -8,6 +8,7 @@ import {
   getPartyOrderPayoutSummary,
   normalizeOrderTransactions,
 } from '../helpers/partyOrderTransactions.js'
+import { formatPartyOrderPlaces } from '../helpers/partyOrderPlaceDetails.js'
 
 const STATUS_PREFIXES = {
   draft: '[ЗАЯВКА] ',
@@ -208,7 +209,8 @@ export const buildPartyOrderCalendarPayload = ({
   const syncSettings = settings.syncSettings || {}
   const serviceTitles = getServiceTitles(order, services)
   const finance = calculatePartyOrderFinanceSummary({ order, transactions })
-  const address = getLocationText(order, location)
+  const places = order.bookingVersion === 2 ? formatPartyOrderPlaces(order.places) : ''
+  const address = places ? places.split('\n').join(' | ') : getLocationText(order, location)
   const blocks = []
 
   if (syncSettings.showDescription) {
@@ -218,7 +220,8 @@ export const buildPartyOrderCalendarPayload = ({
     addBlock(blocks, 'Клиент', [plainText(order.client?.name), plainText(order.client?.phone), plainText(order.client?.email)])
   }
   if (syncSettings.showLocation) {
-    addBlock(blocks, 'Место', [plainText(location?.title), address])
+    if (places) addBlock(blocks, 'Площадки', places.split('\n'))
+    else addBlock(blocks, 'Место', [plainText(location?.title), address])
   }
   if (syncSettings.showServices) addBlock(blocks, 'Услуги', serviceTitles.join(', '))
   if (syncSettings.showStaff) {

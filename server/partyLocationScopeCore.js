@@ -20,8 +20,16 @@ export const buildLocationOrderFilter = (context, extra = {}) => {
   if (context?.role !== 'location_owner')
     locationFailure('Нет доступа к кабинету площадок', 403)
   const ids = normalizeLocationScope(context.staff?.locationIds)
+  const { locationId, ...rest } = extra
+  const selected = locationId ? ids.filter((id) => id.toLowerCase() === String(locationId).toLowerCase()) : ids
   return {
-    $and: [{ tenantId: context.tenantId, locationId: { $in: ids } }, extra],
+    $and: [{
+      tenantId: context.tenantId,
+      $or: [
+        { bookingVersion: { $ne: 2 }, locationId: { $in: selected } },
+        { bookingVersion: 2, 'places.locationId': { $in: selected }, places: { $not: { $elemMatch: { locationId: { $nin: ids } } } } },
+      ],
+    }, rest],
   }
 }
 export const parseLocationOrderQuery = (searchParams) => {

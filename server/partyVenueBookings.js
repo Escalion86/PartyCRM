@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   getPartyVenueLockDays,
   getPartyVenuePeakCapacity,
@@ -50,6 +51,34 @@ const legacyWindow = (order, location) =>
     },
     location
   )
+
+const asPlaceId = (value) => {
+  if (typeof value !== 'string' || !/^[a-z\d_-]{1,80}$/i.test(value))
+    throw partyVenueFailure('Некорректная позиция площадки')
+  return value
+}
+
+const orderPlaceSourceId = (orderId, placeId) =>
+  createHash('sha256').update(`${partyVenueId(orderId)}:${placeId}`).digest('hex').slice(0, 24)
+
+const orderVenueRanges = (order) => {
+  if (!order) return []
+  const places = order.bookingVersion === 2 ? order.places || [] : [order]
+  return places.flatMap((place) => {
+    if (!place.locationId || place.placeType === 'client_address') return []
+    const window = legacyWindow(place, {})
+    return window ? [{
+      locationId: partyVenueId(place.locationId),
+      startsAt: window.startsAt,
+      endsAt: window.endsAt,
+      ...(order.bookingVersion === 2 ? { placeId: asPlaceId(place.id) } : {}),
+    }] : []
+  })
+}
+
+const sameRange = (left, right) => right &&
+  left.locationId === right.locationId &&
+  +left.startsAt === +right.startsAt && +left.endsAt === +right.endsAt
 
 export const supportsPartyVenueTransactions = async (Locations) => {
   const Model =
@@ -196,6 +225,8 @@ export const createPartyVenueBookingService = ({
     tenantId,
     sourceType,
     sourceId,
+    orderId,
+    placeId,
     locationId,
     startsAt,
     endsAt,
@@ -207,11 +238,13 @@ export const createPartyVenueBookingService = ({
   }) => {
     const tenant = partyVenueId(tenantId)
     const source = sourceId == null && checkOnly ? null : partyVenueId(sourceId)
-    if (!['order', 'ticket_session'].includes(sourceType))
+    if (!['order', 'order_place', 'ticket_session'].includes(sourceType))
       throw partyVenueFailure('Неизвестный тип бронирования')
+    const orderPlace = sourceType === 'order_place'
+    const parentOrderId = orderPlace ? partyVenueId(orderId) : sourceType === 'order' ? source : null
     if (
       !(
-        sourceType === 'order'
+        sourceType !== 'ticket_session'
           ? ['draft', 'active', 'closed', 'canceled']
           : ['scheduled', 'completed', 'canceled']
       ).includes(status)
@@ -266,7 +299,7 @@ export const createPartyVenueBookingService = ({
       return null
     }
     if (
-      sourceType === 'order' && bookingOrder?.bookingVersion === 1 &&
+      (orderPlace || (sourceType === 'order' && bookingOrder?.bookingVersion === 1)) &&
       (!previous || String(previous.locationId) !== String(locationId) ||
         +new Date(previous.startsAt) !== +window.startsAt || +new Date(previous.endsAt) !== +window.endsAt)
     ) {
@@ -302,8 +335,9 @@ export const createPartyVenueBookingService = ({
       models.Orders.find({
         tenantId: tenant,
         locationId: location._id,
+        bookingVersion: { $ne: 2 },
         status: { $ne: 'canceled' },
-        ...(sourceType === 'order' && source ? { _id: { $ne: source } } : {}),
+        ...(parentOrderId ? { _id: { $ne: parentOrderId } } : {}),
         ...getPartyVenueOrderIntervalFilter({ startBefore, endAfter }),
       }).select(
         '_id locationId eventDate dateEnd rental durationMinutes status partyEventGroupId sharedLocationBooking'
@@ -328,27 +362,26 @@ export const createPartyVenueBookingService = ({
       )
         throw conflict()
     }
-    const tickets = await read(
+    const bookings = await read(
       models.Bookings.find({
         tenantId: tenant,
         locationId: location._id,
-        sourceType: 'ticket_session',
-        ...(sourceType === 'ticket_session'
-          ? { sourceId: { $ne: source } }
-          : {}),
+        sourceType: { $in: ['order_place', 'ticket_session'] },
         startsAt: { $lt: startBefore },
         endsAt: { $gt: endAfter },
       }),
       session
     )
-    const overlaps = tickets
+    const overlaps = bookings
+      .filter((booking) => !(booking.sourceType === sourceType && String(booking.sourceId) === source))
+      .filter((booking) => !(sourceType === 'order' && booking.sourceType === 'order_place' && String(booking.orderId) === source))
       .map((booking) => ({
         ...booking,
         ...getPartyVenueWindow(booking, location),
       }))
       .filter((booking) => partyVenueWindowsOverlap(window, booking))
-    const exclusive = sourceType === 'order' || location.usageMode !== 'shared'
-    if (overlaps.length && exclusive) throw conflict()
+    const exclusive = sourceType !== 'ticket_session' || location.usageMode !== 'shared'
+    if (overlaps.some((booking) => exclusive || booking.sourceType === 'order_place')) throw conflict()
     if (overlaps.length && !limit)
       throw conflict('Укажите вместимость площадки для совместного режима')
     if (
@@ -370,6 +403,7 @@ export const createPartyVenueBookingService = ({
       )
     const booking = {
       ...filter,
+      ...(orderPlace ? { orderId: parentOrderId, placeId: asPlaceId(placeId) } : {}),
       locationId: location._id,
       ...window,
       capacity: allocated,
@@ -404,6 +438,7 @@ export const createPartyVenueBookingService = ({
           models.Orders.find({
             tenantId: tenant,
             locationId: id,
+            bookingVersion: { $ne: 2 },
             status: { $ne: 'canceled' },
             ...getPartyVenueOrderIntervalFilter({ endAfter: after }),
           }).select(
@@ -411,11 +446,11 @@ export const createPartyVenueBookingService = ({
           ),
           session
         )
-        const tickets = await read(
+        const bookings = await read(
           models.Bookings.find({
             tenantId: tenant,
             locationId: id,
-            sourceType: 'ticket_session',
+            sourceType: { $in: ['order_place', 'ticket_session'] },
             endsAt: { $gt: after },
           }),
           session
@@ -426,7 +461,7 @@ export const createPartyVenueBookingService = ({
             sourceType: 'order',
             ...legacyWindow(order, location),
           })),
-          ...tickets.map((booking) => ({
+          ...bookings.map((booking) => ({
             ...booking,
             ...getPartyVenueWindow(booking, location),
           })),
@@ -483,6 +518,7 @@ export const createPartyVenueBookingService = ({
       models.Orders.findOne({
         tenantId: tenant,
         locationId: id,
+        bookingVersion: { $ne: 2 },
         status: { $ne: 'canceled' },
         ...getPartyVenueOrderIntervalFilter({
           startBefore: new Date(+startBefore + 1),
@@ -491,20 +527,19 @@ export const createPartyVenueBookingService = ({
       }).select('_id'),
       session
     )
-    let ticket = null
-    if (!order && location.usageMode !== 'shared')
-      ticket = await read(
+    const booking = order ? null : await read(
         models.Bookings.findOne({
           tenantId: tenant,
           locationId: id,
-          sourceType: 'ticket_session',
-          ...(ownSession ? { sourceId: { $ne: ownSession } } : {}),
+          ...(location.usageMode === 'shared'
+            ? { sourceType: 'order_place' }
+            : { $or: [{ sourceType: 'order_place' }, { sourceType: 'ticket_session', ...(ownSession ? { sourceId: { $ne: ownSession } } : {}) }] }),
           startsAt: { $lte: startBefore },
           endsAt: { $gt: endAfter },
         }).select('_id'),
         session
       )
-    if (order || ticket)
+    if (order || booking)
       throw partyVenueFailure(
         'Вход сейчас недоступен: площадка занята эксклюзивным мероприятием',
         409,
@@ -556,20 +591,11 @@ export const createPartyOrderVenueWriter =
     work,
   }) => {
     const tenant = partyVenueId(tenantId)
-    const ranges = [previousOrder, nextOrder]
-      .filter(
-        (order) => order?.locationId && order.placeType !== 'client_address'
-      )
-      .map((order) => {
-        const window = legacyWindow(order, {})
-        if (!window) return null
-        return {
-          locationId: partyVenueId(order.locationId),
-          startsAt: window?.startsAt ?? null,
-          endsAt: window?.endsAt ?? null,
-        }
-      })
-      .filter(Boolean)
+    const multiPlace = previousOrder?.bookingVersion === 2 || nextOrder?.bookingVersion === 2
+    if (multiPlace && (previousOrder?.sharedLocationBooking || nextOrder?.sharedLocationBooking))
+      throw partyVenueFailure('Отключите общую бронь связанных заказов перед добавлением нескольких площадок', 409, 'partycrm_venue_shared_multiplace')
+    const previousRanges = orderVenueRanges(previousOrder)
+    const ranges = [...previousRanges, ...orderVenueRanges(nextOrder)]
     if (externalSession && !externalSession.inTransaction?.())
       throw partyVenueFailure(
         'Изменение заказа должно выполняться в транзакции',
@@ -580,7 +606,7 @@ export const createPartyOrderVenueWriter =
       return work({ session: externalSession, legacy: !externalSession })
     const models = externalSession ? null : await getModels()
     if (!externalSession && !(await supportsTransactions(models.Locations))) {
-      if (Number(nextOrder?.bookingVersion || previousOrder?.bookingVersion) === 1)
+      if (multiPlace || Number(nextOrder?.bookingVersion || previousOrder?.bookingVersion) === 1)
         throw partyVenueFailure(
           'Для безопасного бронирования площадки настройте MongoDB replica set',
           503,
@@ -622,6 +648,29 @@ export const createPartyOrderVenueWriter =
       session: externalSession,
       work: async ({ session }) => {
         const result = await work({ session, legacy: false })
+        if (result?._id && multiPlace) {
+          const finalRanges = nextOrder && result.status !== 'canceled' ? orderVenueRanges(result) : []
+          const finalByPlace = new Map(finalRanges.map((range) => [range.placeId, range]))
+          const writeRange = (range, status) => reserveVenue({
+            tenantId: tenant,
+            sourceType: range.placeId ? 'order_place' : 'order',
+            sourceId: range.placeId ? orderPlaceSourceId(result._id, range.placeId) : result._id,
+            ...(range.placeId ? { orderId: result._id, placeId: range.placeId } : {}),
+            locationId: status === 'canceled' ? null : range.locationId,
+            startsAt: range.startsAt,
+            endsAt: range.endsAt,
+            status,
+            bookingOrder: result,
+            session,
+          })
+          // Remove old ranges that changed before checking new ones, so swapping
+          // two rooms does not collide with the same order's old reservations.
+          for (const previous of previousRanges)
+            if (!sameRange(previous, finalByPlace.get(previous.placeId)))
+              await writeRange(previous, 'canceled')
+          for (const range of finalRanges) await writeRange(range, result.status)
+          return result
+        }
         const window = result?._id ? legacyWindow(result, {}) : null
         if (result?._id)
           await reserveVenue({

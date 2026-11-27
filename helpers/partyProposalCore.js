@@ -1,3 +1,5 @@
+import { formatPartyOrderPlaces } from './partyOrderPlaceDetails.js'
+
 const cleanText = (value, maxLength = 1000) =>
   String(value ?? '').trim().slice(0, maxLength)
 
@@ -43,6 +45,22 @@ export const calculatePartyProposalItem = (item = {}) => {
 }
 
 export const buildPartyProposalItemsFromOrder = (order = {}, services = []) => {
+  if (order.bookingVersion === 2 && Array.isArray(order.places)) {
+    const places = new Map(order.places.map((place) => [place.id, place]))
+    const items = (order.orderItems || []).map((item) => calculatePartyProposalItem({
+      ...item,
+      description: [places.get(item.placeId)?.locationTitle, item.description].filter(Boolean).join('\n'),
+    }))
+    for (const place of order.places) {
+      const { rentalKopecks = 0, rentalExtrasKopecks = 0 } = place.pricingSnapshot || {}
+      for (const [title, kopecks] of [['Аренда', rentalKopecks], ['Доплаты за площадку', rentalExtrasKopecks]]) {
+        if (kopecks > 0) items.push(calculatePartyProposalItem({
+          title: `${title} — ${place.locationTitle}`, description: formatPartyOrderPlaces([place]), unitPrice: kopecks / 100,
+        }))
+      }
+    }
+    return items
+  }
   if (Array.isArray(order.orderItems) && order.orderItems.length > 0) {
     return order.orderItems.map(calculatePartyProposalItem)
   }
@@ -162,6 +180,7 @@ export const buildPartyProposalRecipientSnapshot = (client = {}) => ({
 })
 
 export const formatPartyProposalAddress = (order = {}, locationTitle = '') => {
+  if (order.bookingVersion === 2 && order.places?.length) return cleanText(formatPartyOrderPlaces(order.places), 500)
   if (order.placeType === 'company_location') {
     return cleanText(order.customAddress || locationTitle, 500)
   }

@@ -20,10 +20,13 @@ const comparable = (value) => value instanceof Date || typeof value === 'string'
 const matches = (row, filter) => Object.entries(filter).every(([key, expected]) => {
   if (key === '$and') return expected.every((part) => matches(row, part))
   if (key === '$or') return expected.some((part) => matches(row, part))
+  if (key === '$nor') return expected.every((part) => !matches(row, part))
   const actual = key.split('.').reduce((value, part) => value?.[part], row)
   if (expected === null) return actual == null
   if (expected && typeof expected === 'object' && !(expected instanceof Date)) return Object.entries(expected).every(([operator, value]) => ({
-    $in: () => value.map(String).includes(String(actual)), $ne: () => value === null ? actual != null : String(actual) !== String(value),
+    $in: () => value.map(String).includes(String(actual)), $nin: () => !value.map(String).includes(String(actual)),
+    $elemMatch: () => Array.isArray(actual) && actual.some((entry) => matches(entry, value)),
+    $ne: () => value === null ? actual != null : String(actual) !== String(value),
     $lt: () => actual != null && comparable(actual) < comparable(value), $gt: () => actual != null && comparable(actual) > comparable(value), $gte: () => actual != null && comparable(actual) >= comparable(value),
     $regex: () => new RegExp(value, expected.$options || '').test(String(actual ?? '')), $options: () => true,
   })[operator]?.() === true)
@@ -52,7 +55,9 @@ function setup({ orders = [], tasks = [], context = actor() } = {}) {
 
 test('list opt-in pages past 120 in descending immutable IDs and scopes before limiting', async () => {
   const own = Array.from({ length: 155 }, (_, index) => order(index + 1))
-  const run = setup({ orders: [...own, order(900, { tenantId: id(900) }), order(901, { locationId: id(901) }), order(902, { workflowStageId: 'secret-stage' }), order(903, { status: 'canceled' })] })
+  own[154] = order(155, { bookingVersion: 2, places: [{ id: 'visible', locationId }] })
+  const partiallyVisible = order(904, { bookingVersion: 2, places: [{ id: 'visible', locationId }, { id: 'private', locationId: id(901) }] })
+  const run = setup({ orders: [...own, partiallyVisible, order(900, { tenantId: id(900) }), order(901, { locationId: id(901) }), order(902, { workflowStageId: 'secret-stage' }), order(903, { status: 'canceled' })] })
   const found = []
   let cursor = ''
   do {

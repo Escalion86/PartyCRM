@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
+import { compileFunction } from 'node:vm'
 
 import {
   PARTY_GOOGLE_CALENDAR_OAUTH_SCOPES,
@@ -99,6 +101,63 @@ test('callback rejects replay nonce mismatch before token exchange', async () =>
   assert.equal(result.status, 302)
   assert.equal(result.errorCode, 'oauth_replay')
   assert.equal(exchanged, false)
+})
+
+test('callback requires the account that started Google authorization to still be active in the browser', async () => {
+  const callbacks = [
+    {
+      path: 'google-calendar/_shared.js',
+      name: 'authorizeCallback',
+      model: 'getPartyStaffModel',
+      filter: {
+        tenantId: 'company-1',
+        authUserId: 'user-1',
+        role: { $in: ['owner', 'admin'] },
+        status: { $ne: 'archived' },
+      },
+    },
+    {
+      path: 'performer/google-calendar/_shared.js',
+      name: 'authorizePerformerCallback',
+      model: 'getPartyUserModel',
+      filter: { _id: 'user-1', status: 'active', interfaceRoles: 'performer' },
+    },
+  ]
+  const state = { companyId: 'company-1', userId: 'user-1' }
+
+  for (const { path, name, model, filter } of callbacks) {
+    let user = null
+    let queriedFilter
+    let allowed = true
+    const deps = {
+      oauthState: {},
+      getPartySessionUser: async () => user,
+      [model]: async () => ({
+        exists: async (query) => {
+          queriedFilter = query
+          return allowed ? { _id: 'membership-1' } : null
+        },
+      }),
+    }
+    const source = await readFile(new URL(`../app/api/party/${path}`, import.meta.url), 'utf8')
+    const code = source
+      .replace(/^import\s[\s\S]*?from\s+['"][^'"]+['"];?\r?\n/gm, '')
+      .replaceAll('export const ', 'const ')
+    const authorize = compileFunction(`${code}\nreturn ${name}`, Object.keys(deps))(
+      ...Object.values(deps)
+    )
+
+    assert.equal(await authorize(state), false)
+    user = { _id: 'user-2' }
+    assert.equal(await authorize(state), false)
+    assert.equal(queriedFilter, undefined)
+
+    user = { _id: 'user-1' }
+    assert.equal(await authorize(state), true)
+    assert.deepEqual(queriedFilter, filter)
+    allowed = false
+    assert.equal(await authorize(state), false)
+  }
 })
 
 test('callback converts OAuth, authorization and token save failures to safe errors', async () => {

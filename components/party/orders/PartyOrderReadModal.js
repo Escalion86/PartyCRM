@@ -6,6 +6,8 @@ import { apiJson } from '@helpers/apiClient'
 import { canPartyAccess } from '@helpers/partyRolePermissions'
 import { PartyEventBriefView } from './PartyEventBrief'
 import PartyOrderServiceDetails from './PartyOrderServiceDetails'
+import PartyOrderPlacesRead from './PartyOrderPlacesRead'
+import PartyOrderCalendarDetails from './PartyOrderCalendarDetails'
 import { getOrderPaymentState } from '@helpers/partyOrderTransactions'
 
 const button =
@@ -27,6 +29,7 @@ export default function PartyOrderReadModal({
   orderId,
   onClose,
   onEdit,
+  onCalendarSaved,
 }) {
   const [state, setState] = useState({
     key: '',
@@ -141,6 +144,21 @@ export default function PartyOrderReadModal({
         </div>
       ) : order ? (
         <div className="space-y-6">
+          <PartyOrderCalendarDetails
+            key={orderId}
+            companyId={companyId}
+            order={order}
+            canReview={can('orders.title', 'edit')}
+            canChangeSync={can('orders.eventDate', 'edit')}
+            onSaved={(fields) => {
+              setState((previous) =>
+                previous.key === key
+                  ? { ...previous, order: { ...previous.order, ...fields } }
+                  : previous
+              )
+              onCalendarSaved?.()
+            }}
+          />
           <dl className="grid gap-4 sm:grid-cols-2">
             {Object.hasOwn(order, 'eventDate') ? (
               <div>
@@ -151,7 +169,7 @@ export default function PartyOrderReadModal({
                 </dd>
               </div>
             ) : null}
-            {order.rental ? (
+            {order.rental && order.bookingVersion !== 2 ? (
               <div>
                 <dt className="text-sm text-slate-600">Аренда помещения</dt>
                 <dd className="mt-1 font-semibold">
@@ -179,7 +197,7 @@ export default function PartyOrderReadModal({
                 </dd>
               </div>
             ) : null}
-            {location || order.customAddress ? (
+            {order.bookingVersion !== 2 && (location || order.customAddress) ? (
               <div>
                 <dt className="text-sm text-slate-600">Место</dt>
                 <dd className="mt-1 font-semibold [overflow-wrap:anywhere]">
@@ -188,7 +206,9 @@ export default function PartyOrderReadModal({
               </div>
             ) : null}
           </dl>
-          {order.orderItems?.length ? (
+          {order.bookingVersion === 2 && order.places?.length ? (
+            <PartyOrderPlacesRead order={order} timeZone={zone} />
+          ) : order.orderItems?.length ? (
             <section>
               <h2 className="mb-2 font-semibold">Услуги</h2>
               <ul className="divide-y divide-slate-100">

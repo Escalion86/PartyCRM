@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useMemo } from 'react'
+import { useId, useMemo, useState } from 'react'
 import Modal from '@components/Modal'
 import Input from '@components/Input'
 import TownPicker from '@components/TownPicker'
@@ -13,6 +13,7 @@ import {
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
 import FieldHelp from '@components/FieldHelp'
 import PartyWorkingScheduleEditor from '@components/party/locations/PartyWorkingScheduleEditor'
+import PartyServiceConfigurationEditor from '@components/party/services/PartyServiceConfigurationEditor'
 
 export default function LocationModal({
   open,
@@ -28,6 +29,7 @@ export default function LocationModal({
   onCompanySettingsChange,
 }) {
   const hasUnsavedChanges = useUnsavedChanges(locationDraft, open)
+  const [rentalDialogOpen, setRentalDialogOpen] = useState(false)
   const venueFieldsId = useId()
   const handleChange = (field) => (value) => {
     if (field.includes('.')) {
@@ -93,6 +95,7 @@ export default function LocationModal({
       open={open}
       onClose={onClose}
       hasUnsavedChanges={hasUnsavedChanges}
+      inactive={rentalDialogOpen}
       title={title}
       tone="party"
       size="full"
@@ -159,6 +162,16 @@ export default function LocationModal({
             Занятость площадки
           </legend>
           <label className="block text-sm text-slate-700">Стоимость аренды за час, ₽<input className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2" type="number" min={0} step="0.01" value={locationDraft.hourlyRentalRate ?? 0} onChange={(event) => handleChange('hourlyRentalRate')(event.target.value)} /></label>
+          <details className="rounded-lg border border-slate-200 px-3">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Гибкий расчёт аренды</summary>
+            <div className="pb-3">
+              <p className="text-sm text-slate-600">Ставка применяется за каждый оплачиваемый час. Разовые доплаты начисляются один раз за место.</p>
+              <PartyServiceConfigurationEditor title="Параметры почасовой ставки" priceOnly disabled={saving}
+                value={locationDraft.rentalConfiguration?.hourlyRate} onChange={handleChange('rentalConfiguration.hourlyRate')} onDialogOpenChange={setRentalDialogOpen} />
+              <PartyServiceConfigurationEditor title="Параметры разовых доплат" priceOnly disabled={saving}
+                value={locationDraft.rentalConfiguration?.extras} onChange={handleChange('rentalConfiguration.extras')} onDialogOpenChange={setRentalDialogOpen} />
+            </div>
+          </details>
           <details><summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold">Рабочий график помещения</summary><PartyWorkingScheduleEditor value={locationDraft.workingSchedule || null} onChange={handleChange('workingSchedule')} disabled={saving} /></details>
           <label className="block text-sm text-slate-700">
             Режим использования

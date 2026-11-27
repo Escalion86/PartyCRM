@@ -125,6 +125,7 @@ const setup = ({
         '@helpers/partyRolePermissions': rolePermissions,
         '@helpers/partyMobileNavigation': mobileNavigation,
         '@helpers/partyNavigationGroups': navigationGroups,
+        '@helpers/partyImpersonationClient': { partyFetch: (...args) => fetch(...args) },
         '@helpers/partyTicketing': ticketing,
         '@helpers/partyCompanyBranding': companyBranding,
         '@helpers/partyCompanyModules': companyModules,

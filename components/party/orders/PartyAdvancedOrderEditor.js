@@ -13,6 +13,7 @@ const button = 'min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py
 const serverFields = new Set([
   '_id', 'tenantId', 'bookingVersion', 'commercialRevision', 'fulfillment',
   'orderTypeSnapshot', 'pricingSnapshot', 'transactions', 'workflowStageId',
+  'places', 'placesEditable',
   'createRequestKey', 'createRequestActorId', 'createRequestFingerprint',
 ])
 

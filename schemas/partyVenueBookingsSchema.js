@@ -4,10 +4,12 @@ export const partyVenueBookingsSchema = {
   tenantId: { type: Schema.Types.ObjectId, required: true },
   sourceType: {
     type: String,
-    enum: ['order', 'ticket_session'],
+    enum: ['order', 'order_place', 'ticket_session'],
     required: true,
   },
   sourceId: { type: Schema.Types.ObjectId, required: true },
+  orderId: { type: Schema.Types.ObjectId, required() { return this.sourceType === 'order_place' } },
+  placeId: { type: String, maxlength: 80, required() { return this.sourceType === 'order_place' } },
   locationId: { type: Schema.Types.ObjectId, ref: 'Location', required: true },
   startsAt: { type: Date, required: true },
   endsAt: { type: Date, required: true },

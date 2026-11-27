@@ -154,6 +154,22 @@ test('delete hook removes main and additional events from snapshot calendar', as
   ])
 })
 
+test('order deletion leaves original imported or paused company events in Google', async () => {
+  let personalCleanup = 0
+  for (const settings of [{ calendarImportedAt: new Date() }, { googleCalendarSyncDisabled: true }]) {
+    const result = await deletePartyOrderCalendarEventsAfterCrud({
+      tenantId: 'company-1',
+      orderSnapshot: { tenantId: 'company-1', googleCalendarCalendarId: 'company-calendar', googleCalendarEventId: 'original-event', ...settings },
+      dependencies: {
+        loadCompany: () => assert.fail('The company calendar must not be accessed'),
+        deletePerformerCalendarEvents: async () => { personalCleanup += 1 },
+      },
+    })
+    assert.deepEqual(result, { ok: true, deletedCount: 0 })
+  }
+  assert.equal(personalCleanup, 2)
+})
+
 test('delete hook persists rotated credentials when cleanup client flushes', async () => {
   const updates = []
   let clientOptions

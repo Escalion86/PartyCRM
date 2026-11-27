@@ -44,6 +44,7 @@ import {
   PartyOrderContactRolesView,
 } from './PartyOrderContactRoles'
 import { PartyEventBriefEditor, PartyEventBriefView } from './PartyEventBrief'
+import { PartyOrderCalendarReviewBadge } from './PartyOrderCalendarDetails'
 import PartyRoleOrderClientEditor from './PartyRoleOrderClientEditor'
 import PartyRoleNewClient from './PartyRoleNewClient'
 import PartyRoleOrderPayments from './PartyRoleOrderPayments'
@@ -64,6 +65,7 @@ import {
 } from '@helpers/partyOrderViewPreference'
 import { canPartyResourceCalendarAccess } from '@helpers/partyResourceCalendar'
 import { canOpenPartyOrderWizard } from '@helpers/partyOrderWizardStart'
+import { PARTY_ORDER_WIZARD_STEP as STEP } from '@helpers/partyOrderWizardSteps'
 
 const PartyRoleOrdersCalendar = dynamic(
   () => import('./PartyRoleOrdersCalendar')
@@ -162,7 +164,7 @@ function RoleOrderEditor({
   const existing = Boolean(order._id)
   const [draft, setDraft] = useState(() => createPartyRoleOrderDraft(order))
   const [bookingOpen, setBookingOpen] = useState(false)
-  const [bookingStep, setBookingStep] = useState(0)
+  const [bookingStep, setBookingStep] = useState(STEP.client)
   const [tab, setTab] = useState(initialTab)
   const [visited, setVisited] = useState([initialTab])
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -213,7 +215,7 @@ function RoleOrderEditor({
     existing && ['owner', 'admin'].includes(context?.role) &&
     !isPartyRestrictedManagementContext(context) && can('documents')
   const editable = (field) =>
-    !(order.bookingVersion === 1 && ['title', 'servicesIds', 'eventDate', 'dateEnd', 'durationMinutes', 'placeType', 'locationId', 'customAddress', 'contractAmount'].includes(field)) &&
+    !([1, 2].includes(order.bookingVersion) && ['title', 'servicesIds', 'eventDate', 'dateEnd', 'durationMinutes', 'placeType', 'locationId', 'customAddress', 'contractAmount'].includes(field)) &&
     !unresolvedCreate &&
     !reportDirty.client &&
     !reportDirty.payments &&
@@ -448,23 +450,24 @@ function RoleOrderEditor({
     draft.clientId && String(draft.clientId) !== String(order.clientId || '')
       ? client
       : { ...client, ...order.client }
-  const canonicalBooking = order.bookingVersion === 1
+  const canonicalBooking = [1, 2].includes(order.bookingVersion)
   const placeType = draft.placeType || order.placeType
   const showLocation = visible('locationId') && placeType !== 'client_address'
   const showAddress = visible('customAddress') && (
     !visible('placeType') || placeType === 'client_address' || Boolean(draft.customAddress || order.customAddress)
   )
   const placeSummary = [
-    showLocation && draft.locationId && (
-      options.locations.find((location) => String(location._id) === String(draft.locationId))?.title || 'Сохранённая площадка'
-    ),
+    showLocation && (order.places?.length
+      ? order.places.map((place) => place.locationTitle).filter(Boolean).join(', ')
+      : draft.locationId && (options.locations.find((location) => String(location._id) === String(draft.locationId))?.title || 'Сохранённая площадка')),
     showAddress && draft.customAddress,
   ].filter(Boolean).join(' · ')
   const serviceIds = (draft.servicesIds || []).map(String)
   const fixedCatalogServices = options.services.filter((service) => !service.configuration)
   const hasConfigurableServices = fixedCatalogServices.length < options.services.length
-  const serviceSelections = canonicalBooking && order.serviceSelections?.length
-    ? order.serviceSelections
+  const bookedServices = order.orderItems?.filter((item) => item.serviceId) || order.serviceSelections
+  const serviceSelections = canonicalBooking && bookedServices?.length
+    ? bookedServices
     : serviceIds.map((serviceId) => ({ serviceId }))
   const selectedServices = visible('servicesIds') ? serviceSelections.map((selection) => {
     const id = String(selection.serviceId)
@@ -472,7 +475,9 @@ function RoleOrderEditor({
       order.orderItems?.find((item) => String(item.serviceId) === id)?.title ||
       options.services.find((service) => String(service._id) === id)?.title ||
       'Сохранённая услуга'
-    return selection.quantity > 1 ? `${title} × ${selection.quantity}` : title
+    const place = order.places?.find((place) => place.id === selection.placeId)?.locationTitle
+    const line = selection.quantity > 1 ? `${title} × ${selection.quantity}` : title
+    return place ? `${line} — ${place}` : line
   }) : []
   const serviceSummary = selectedServices.join(' · ') || (visible('serviceTitle') ? draft.serviceTitle : '')
   const showStart = visible('eventDate')
@@ -656,7 +661,7 @@ function RoleOrderEditor({
               type="button"
               className={button}
               disabled={busy || dirty}
-              onClick={() => { setBookingStep(0); setBookingOpen(true) }}
+              onClick={() => { setBookingStep(STEP.client); setBookingOpen(true) }}
             >
               Редактировать по шагам
             </button>
@@ -989,7 +994,7 @@ function RoleOrderEditor({
                             </div>
                             {hasConfigurableServices && canOpenWizard && (
                               <button type="button" className={button} disabled={busy || dirty}
-                                onClick={() => { setBookingStep(order.orderTypeId ? 2 : 0); setBookingOpen(true) }}>
+                                onClick={() => { setBookingStep(order.orderTypeId ? STEP.services : STEP.type); setBookingOpen(true) }}>
                                 Настроить гибкие услуги
                               </button>
                             )}
@@ -1195,6 +1200,15 @@ function RoleOrderEditor({
                           <option value="assistant">Помощник</option>
                         </select>
                       </OrderField>
+                      {order.places?.length > 0 ? (
+                        <OrderField label="Место назначения">
+                          <select className={control + ' cursor-pointer'} disabled={busy || !editable('assignedStaff')}
+                            value={assignment.placeId || ''} onChange={(event) => patchAssignment(index, { placeId: event.target.value || null })}>
+                            <option value="">Весь заказ</option>
+                            {order.places.map((place) => <option key={place.id} value={place.id}>{place.locationTitle || 'Сохранённая площадка'}</option>)}
+                          </select>
+                        </OrderField>
+                      ) : null}
                       {can('finance.payouts') ? (
                         <OrderField label="Оплата исполнителю, ₽">
                           <input
@@ -1468,7 +1482,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
   })
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [notice, setNotice] = useState(null)
   const [selected, setSelected] = useState(null)
   const [selectedOptions, setSelectedOptions] = useState(null)
   const [editorMode, setEditorMode] = useState('details')
@@ -1570,7 +1584,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
                 selectedId.current = ''
                 setSelected(null)
                 setSelectedOptions(null)
-                setNotice('Заказ больше не доступен вашей должности.')
+                setNotice({ text: 'Заказ больше не доступен вашей должности.' })
               } else
                 setError(cause.message || 'Не удалось обновить открытый заказ')
             }
@@ -1715,7 +1729,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       setEditorMode('details')
       setEditorRevision((value) => value + 1)
       setOverviewVisible(false)
-      setNotice('')
+      setNotice(null)
     }
     window.addEventListener('partycrm:create-order', requestCreate)
     const url = new URL(window.location.href)
@@ -1748,6 +1762,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       setEditorMode('details')
       setEditorRevision((value) => value + 1)
       setOverviewVisible(false)
+      setNotice(null)
       return
     }
     setOpeningId(String(order._id))
@@ -1782,7 +1797,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       )
       setEditorRevision((value) => value + 1)
       setOverviewVisible(false)
-      setNotice('')
+      setNotice(null)
     } catch (cause) {
       if (current === openingGeneration.current)
         setError(cause.message || 'Не удалось открыть заказ')
@@ -1790,6 +1805,13 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       if (current === openingGeneration.current) setOpeningId('')
     }
   }, [busy, openingId, boardPending, companyId, data.options, dirtyChanged, leave])
+  const openBoardOrder = (order) => {
+    if (order.calendarImportChecked === false || order.calendarImportedAt) {
+      setReadOrderId(String(order._id))
+    } else {
+      open(order)
+    }
+  }
   useEffect(() => {
     if (!initialOrderId || !context || busy || openingId || requestedOrder.current === initialOrderId) return
     requestedOrder.current = initialOrderId
@@ -1823,13 +1845,11 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       selectedId.current = ''
       setSelected(null)
       setEditorMode('details')
-      setNotice(
-        'Заказ передан. На текущем этапе он доступен другим сотрудникам.'
-      )
+      setNotice({ text: 'Заказ передан. На текущем этапе он доступен другим сотрудникам.' })
     } else {
       selectedId.current = String(order._id)
       setSelected(order)
-      setNotice('Заказ сохранён.')
+      setNotice({ text: 'Заказ сохранён.' })
     }
     setCalendarRevision((value) => value + 1)
     load({ refreshSelection: !accessChanged })
@@ -1853,6 +1873,12 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
     setEditorMode('details')
     setInitialEditorTab('main')
     saved(order, accessChanged)
+  }
+  const saveQuickLead = (order, accessChanged) => {
+    close(true)
+    setNotice({ text: 'Заявка сохранена', orderId: accessChanged ? null : order?._id })
+    setCalendarRevision((value) => value + 1)
+    load()
   }
   const moveOrder = async (order, stageId) => {
     if (busy || boardPending || dirtyRef.current || !getPartyOrderBoardTransitions(context, data.workflow, order).some((stage) => stage.id === stageId)) return
@@ -1879,7 +1905,11 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
           setEditorRevision((value) => value + 1)
         }
       }
-      setNotice(accessChanged ? 'Заказ передан. На новом этапе он доступен другим сотрудникам.' : 'Рабочий этап заказа изменён.')
+      setNotice({
+        text: accessChanged
+          ? 'Заказ передан. На новом этапе он доступен другим сотрудникам.'
+          : 'Рабочий этап заказа изменён.',
+      })
       setCalendarRevision((value) => value + 1)
       load({ refreshSelection: true })
     } catch (cause) {
@@ -2108,12 +2138,20 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
         </p>
       ) : null}
       {notice ? (
-        <p
-          role="status"
-          className="rounded-lg bg-sky-50 p-3 text-sm text-sky-800"
-        >
-          {notice}
-        </p>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg bg-sky-50 p-3 text-sm text-sky-800">
+          <p role="status">{notice.text}</p>
+          {notice.orderId && (
+            <button
+              type="button"
+              className={button}
+              aria-label="Открыть сохранённую заявку"
+              disabled={busy || Boolean(openingId) || Boolean(boardPending)}
+              onClick={() => open({ _id: notice.orderId })}
+            >
+              Открыть
+            </button>
+          )}
+        </div>
       ) : null}
       {busy && !context ? (
         <p role="status" className="p-3 text-sm text-slate-500">
@@ -2240,7 +2278,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
             ) : null}
             {isBoard ? <>
               {dirty ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Сохраните или отмените изменения открытого заказа перед передачей карточек.</p> : null}
-              <PartyRoleOrdersBoard context={context} locations={data.options.locations} workflow={data.workflow} stages={boardStages} board={board} filtered={filtersActive} disabled={busy || dirty || Boolean(boardPending) || Boolean(openingId)} selectedId={selected?._id ? String(selected._id) : ''} onOpen={open} onTransition={moveOrder} />
+              <PartyRoleOrdersBoard context={context} locations={data.options.locations} workflow={data.workflow} stages={boardStages} board={board} filtered={filtersActive} disabled={busy || dirty || Boolean(boardPending) || Boolean(openingId)} selectedId={selected?._id ? String(selected._id) : ''} onOpen={openBoardOrder} onTransition={moveOrder} />
             </> : null}
             {effectiveView === 'list' ? (
               <div className="flex flex-wrap justify-between gap-2 text-xs text-slate-500">
@@ -2343,6 +2381,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
                     Object.hasOwn(order, 'contractAmount') ? (
                       <span>{money(order.contractAmount)}</span>
                     ) : null}
+                    <PartyOrderCalendarReviewBadge checked={order.calendarImportChecked} />
                   </div>
                 </button>
               ))}
@@ -2402,8 +2441,9 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
               companyId={companyId}
               order={selected}
               options={selectedOptions || data.options}
-              initialStep={selectedOptions?.initialWizardStep ?? 0}
+              initialStep={selectedOptions?.initialWizardStep ?? undefined}
               onSaved={saveWizardOrder}
+              onQuickLeadSaved={saveQuickLead}
               onClose={close}
               onShowDetails={selected._id ? showDetails : undefined}
               onSwitchToAdvanced={canUseAdvancedEditor ? (confirmed) => switchEditor(true, confirmed) : undefined}
@@ -2440,7 +2480,15 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
                 blocked={Boolean(openingId) || busy || Boolean(boardPending)}
               />
           ) : null}
-          {readOrderId ? <PartyOrderReadModal companyId={companyId} orderId={readOrderId} onClose={() => setReadOrderId('')} onEdit={(order) => { setReadOrderId(''); open(order) }} /> : null}
+          {readOrderId ? (
+            <PartyOrderReadModal
+              companyId={companyId}
+              orderId={readOrderId}
+              onClose={() => setReadOrderId('')}
+              onEdit={(order) => { setReadOrderId(''); open(order) }}
+              onCalendarSaved={() => setCalendarRevision((value) => value + 1)}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>

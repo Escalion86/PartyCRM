@@ -114,13 +114,20 @@ test('task summaries never expose titles of another assignee, location or compan
     ],
     actor
   )
-  const [result] = await instance.run()
+  const [result, partiallyVisible] = await instance.run([order, {
+    ...order,
+    _id: 'multi-place-order',
+    bookingVersion: 2,
+    places: [{ id: 'visible', locationId: order.locationId }, { id: 'private', locationId: 'other-venue' }],
+    taskSummary: { openCount: 99 },
+  }])
   assert.deepEqual(result.taskSummary, {
     openCount: 2,
     overdueCount: 1,
     nearestTask: { title: 'Разрешённая задача', dueAt: '2026-10-26T10:00:00Z' },
   })
   assert.doesNotMatch(JSON.stringify(result.taskSummary), /Секрет|Завершено/)
+  assert.equal(Object.hasOwn(partiallyVisible, 'taskSummary'), false)
   assert.deepEqual(instance.calls, [{ tenantId, orderId: { $in: [orderId] } }])
 })
 

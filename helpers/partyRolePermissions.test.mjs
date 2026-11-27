@@ -13,6 +13,30 @@ test('hidden contacts and financial values are absent from order responses, not 
   assert.equal(safe.title, 'Праздник')
 })
 
+test('calendar review and synchronization follow independent order permissions', () => {
+  const context = member()
+  const imported = order({
+    calendarImportChecked: false,
+    googleCalendarSyncDisabled: true,
+    googleCalendarEventId: 'original-event',
+    googleCalendarEventUrl: 'https://calendar.google.com/calendar/event?eid=abc',
+    googleCalendarImportKey: 'internal-key',
+  })
+  assert.equal(filterPartyOrderForAccess(context, imported).calendarImportChecked, false)
+  assert.equal(guardPartyOrderPatch(context, { calendarImportChecked: true }, imported).ok, true)
+  assert.equal(filterPartyOrderForAccess(context, imported).hasGoogleCalendarEvent, undefined)
+  assert.equal(guardPartyOrderPatch(context, { googleCalendarSyncDisabled: false }, imported).ok, false)
+
+  context.position.permissions['orders.eventDate'] = 'edit'
+  const safe = filterPartyOrderForAccess(context, imported)
+  assert.equal(safe.hasGoogleCalendarEvent, true)
+  assert.equal(safe.googleCalendarSyncDisabled, true)
+  assert.equal(guardPartyOrderPatch(context, { googleCalendarSyncDisabled: false }, imported).ok, true)
+  for (const field of ['googleCalendarEventId', 'googleCalendarEventUrl', 'googleCalendarImportKey']) {
+    assert.equal(Object.hasOwn(safe, field), false)
+  }
+})
+
 test('stage capability distinguishes writable and readonly orders without exposing a hidden system status', () => {
   const context = member()
   context.position.orderScope.statuses = []
@@ -89,8 +113,31 @@ test('payout editing can be granted without changing the team or its functions',
 })
 
 test('database scope includes tenant, stage, status and location restrictions before pagination', () => {
-  assert.deepEqual(buildPartyOrderAccessFilter(member()), { tenantId: 'company-a', $and: [{ status: { $in: ['active'] } }, { workflowStageId: { $in: ['preparation'] } }, { locationId: { $in: ['location-a'] } }] })
+  assert.deepEqual(buildPartyOrderAccessFilter(member()), { tenantId: 'company-a', $and: [{ status: { $in: ['active'] } }, { workflowStageId: { $in: ['preparation'] } }, { locationId: { $in: ['location-a'] } }, { $nor: [{ bookingVersion: 2, places: { $elemMatch: { locationId: { $nin: ['location-a'] } } } }] }] })
   assert.deepEqual(buildPartyOrderAccessFilter(member({ position: null })), { tenantId: 'company-a', _id: { $in: [] } })
+})
+
+test('multi-place orders require scope for every room and preserve nested field masks', () => {
+  const context = member()
+  const scheduled = order({
+    bookingVersion: 2,
+    locationId: 'location-a',
+    places: [
+      { id: 'first', locationId: 'location-a', locationAddress: 'Зал А', eventDate: 'start', dateEnd: 'end', pricingSnapshot: { subtotalKopecks: 500 }, locationConfiguration: { baseHourlyRate: 200, parameters: { extras: { values: {} } } } },
+      { id: 'second', locationId: 'location-b', locationAddress: 'Зал Б' },
+    ],
+  })
+  assert.equal(filterPartyOrderForAccess(context, scheduled), null)
+  context.position.orderScope.locationIds.push('location-b')
+  context.position.permissions['orders.locationId'] = 'edit'
+  const safe = filterPartyOrderForAccess(context, scheduled)
+  assert.equal(safe.placesEditable, false)
+  assert.equal(safe.places[0].locationAddress, 'Зал А')
+  assert.notEqual(safe.places[0].locationConfiguration, null)
+  assert.equal(safe.places[0].locationConfiguration.baseHourlyRate, undefined)
+  assert.equal(safe.places[0].pricingSnapshot, undefined)
+  assert.equal(safe.places[0].dateEnd, undefined)
+  assert.equal(guardPartyOrderPatch(context, { places: scheduled.places }, scheduled).ok, false)
 })
 
 test('legacy performers remain limited to assigned orders and new tasks can be created without order access', () => {

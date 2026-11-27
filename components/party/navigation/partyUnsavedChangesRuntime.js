@@ -9,6 +9,7 @@ import {
   PARTY_ACTIVE_COMPANY_EVENT,
   PARTY_ACTIVE_COMPANY_STORAGE_KEY,
   publishPartyActiveCompanyId,
+  readStoredPartyActiveCompanyId,
 } from '../../../helpers/partyActiveCompany.js'
 
 const WINDOW_RUNTIME = '__partycrm_unsaved_runtime_v1'
@@ -40,11 +41,7 @@ export const createPartyUnsavedChangesRuntime = (
   let stable = snapshot()
   let traversal = null
   let restoring = null
-  let activeCompany = ''
-  try {
-    activeCompany =
-      window.localStorage.getItem(PARTY_ACTIVE_COMPANY_STORAGE_KEY) || ''
-  } catch {}
+  let activeCompany = readStoredPartyActiveCompanyId(window)
   const target = (href) => partyNavigationTarget(href, window.location.href)
   const request = (intent = {}) =>
     store.request({

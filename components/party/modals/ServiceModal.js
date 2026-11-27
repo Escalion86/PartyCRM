@@ -40,6 +40,7 @@ export function ServiceCreateModal({
   const serviceGroups = controlledServiceGroups ?? sharedServiceGroups
   const setServiceGroups = setControlledServiceGroups ?? setSharedServiceGroups
   const [groupModalOpen, setGroupModalOpen] = useState(false)
+  const [parameterModalOpen, setParameterModalOpen] = useState(false)
   const [groupDraft, setGroupDraft] = useState({ title: '', order: 0 })
   const [groupSaving, setGroupSaving] = useState(false)
   const [submitError, setSubmitError] = useState('')
@@ -136,6 +137,7 @@ export function ServiceCreateModal({
       <Modal
         open={open}
         onClose={onClose}
+        inactive={parameterModalOpen}
         hasUnsavedChanges={hasUnsavedChanges}
         title={title}
         tone="party"
@@ -222,6 +224,7 @@ export function ServiceCreateModal({
             value={serviceDraft.configuration}
             onChange={handleChange('configuration')}
             disabled={saving}
+            onDialogOpenChange={setParameterModalOpen}
           />
           <PartyServiceBookingSettings companyId={activeCompanyId} value={serviceDraft} onChange={setServiceDraft} disabled={saving} />
         </div>

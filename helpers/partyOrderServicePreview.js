@@ -1,10 +1,9 @@
 import { calculatePartyServiceConfiguration } from './partyServiceConfiguration.js'
 
-export const emptyPartyOrderServiceParameters = () => ({
-  participants: '',
-  addonIds: [],
-  optionIds: {},
-})
+export const emptyPartyOrderServiceParameters = (configuration) =>
+  Array.isArray(configuration?.fields)
+    ? { values: {} }
+    : { participants: '', addonIds: [], optionIds: {} }
 
 export const previewPartyOrderService = (service, prior, selection) => {
   const saved = prior?.serviceConfiguration
@@ -26,7 +25,7 @@ export const previewPartyOrderService = (service, prior, selection) => {
     error: parameters ? { message: 'Параметры услуги изменились в справочнике. Добавьте услугу заново.' } : null,
   }
 
-  const input = parameters ?? emptyPartyOrderServiceParameters()
+  const input = parameters ?? emptyPartyOrderServiceParameters(configuration)
   const pricedService = saved ? {
     ...service,
     title: item.title,

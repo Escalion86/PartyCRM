@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getPartyLocationModel } from '@server/partyModels'
 import { normalizePartyVenueSettings } from '@helpers/partyVenueBooking'
 import { normalizePartyRentalSettings } from '@helpers/partyWorkingSchedule'
+import { normalizePartyLocationRentalConfiguration } from '@helpers/partyMultiPlaceBooking'
 import { supportsPartyVenueTransactions } from '@server/partyVenueBookings'
 import {
   getPartyRequestContext,
@@ -79,6 +80,7 @@ export async function POST(req) {
       ...normalizeLocationPayload(body),
       ...settings,
       ...normalizePartyRentalSettings(body),
+      rentalConfiguration: normalizePartyLocationRentalConfiguration(body.rentalConfiguration),
       ...(settings.usageMode === 'shared' ? { venueBookingManaged: true } : {}),
     }
   } catch (cause) {

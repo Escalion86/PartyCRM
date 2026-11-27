@@ -548,7 +548,7 @@ export default function CompanySettingsIntegrationsContent({
 
       <CompanyIntegrationCard
         title="Google Calendar"
-        description="Односторонняя синхронизация заказов компании и напоминаний с выбранным календарём."
+        description="Импорт событий в заказы и синхронизация заказов и напоминаний с выбранным календарём."
         indicatorState={googleCalendarIndicatorState}
         locked={googleCalendarLocked}
       >

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
 import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
 import { canPartyAccess } from '@helpers/partyRolePermissions'
@@ -21,6 +21,9 @@ const emptyDraft = {
   email: '',
 }
 
+// PhoneInput emits numeric values with the country prefix, including partial input.
+const toPhoneInput = (phone) => typeof phone === 'number' && phone ? `+${phone}` : phone
+
 export default function PartyRoleNewClient({
   context,
   companyId,
@@ -40,8 +43,13 @@ export default function PartyRoleNewClient({
       ? initialState.fullName
       : formatPartyClientFullName(initialState?.draft)
   )
+  const [prefilledPhone] = useState(() => Boolean(
+    normalizePhoneNumber(toPhoneInput(initialState?.draft?.phone))
+  ))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const nameInputId = useId()
+  const optionalNameId = `${nameInputId}-optional`
   const dirty = open && Boolean(fullName.trim() || draft.phone || draft.email)
   usePartyUnsavedChanges(dirty, {
     label: 'новый клиент',
@@ -62,8 +70,11 @@ export default function PartyRoleNewClient({
   if (!can('clients.create') || !can('orders.clientId')) return null
   const canEditName = can('orders.client.name')
   const canEditPhone = can('orders.client.phone')
-  // PhoneInput emits numeric values with the country prefix, including partial input.
-  const phoneInput = typeof draft.phone === 'number' && draft.phone ? `+${draft.phone}` : draft.phone
+  const canEditEmail = can('orders.client.email')
+  const optionalName = canEditPhone || canEditEmail
+  const multipleFields = [canEditName, canEditPhone, canEditEmail].filter(Boolean).length > 1
+  const phoneFirst = canEditPhone && prefilledPhone
+  const phoneInput = toPhoneInput(draft.phone)
   const submit = async () => {
     const nameParts = canEditName ? resolvePartyClientNameParts(fullName, draft) : {}
     const nameError = getPartyClientNameError(nameParts)
@@ -83,7 +94,7 @@ export default function PartyRoleNewClient({
       const body = {
         ...nameParts,
         ...(phone ? { phone: Number(phone) } : {}),
-        ...(draft.email && can('orders.client.email') ? { email: draft.email } : {}),
+        ...(draft.email && canEditEmail ? { email: draft.email } : {}),
       }
       const result = await apiJson('/api/party/order-options/clients', {
         method: 'POST',
@@ -116,16 +127,39 @@ export default function PartyRoleNewClient({
         + Новый клиент
       </button>
     )
+  const phoneField = canEditPhone && (
+    <PhoneInput
+      value={phoneInput}
+      onChange={(phone) => {
+        setDraft((previous) => ({ ...previous, phone }))
+        setError(null)
+      }}
+      disabled={busy || disabled}
+      tone="party"
+      className="w-full"
+    />
+  )
   return (
     <div
       className="space-y-3 rounded-lg border border-sky-200 bg-sky-50 p-3"
       role="group"
       aria-label="Новый клиент"
     >
+      {multipleFields && <p className="text-sm text-slate-600">Достаточно заполнить одно поле.</p>}
+      {phoneFirst && phoneField}
       {canEditName && (
-        <label className="block text-sm">
-          ФИО
+        <div>
+          <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+            <label htmlFor={nameInputId}>ФИО</label>
+            {optionalName && (
+              <span id={optionalNameId} className="text-xs text-slate-600">
+                Необязательно
+              </span>
+            )}
+          </div>
           <input
+            id={nameInputId}
+            aria-describedby={optionalName ? optionalNameId : undefined}
             className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base"
             placeholder={PARTY_CLIENT_NAME_PLACEHOLDER}
             value={fullName}
@@ -135,21 +169,10 @@ export default function PartyRoleNewClient({
               setError(null)
             }}
           />
-        </label>
+        </div>
       )}
-      {canEditPhone && (
-        <PhoneInput
-          value={phoneInput}
-          onChange={(phone) => {
-            setDraft((previous) => ({ ...previous, phone }))
-            setError(null)
-          }}
-          disabled={busy || disabled}
-          tone="party"
-          className="w-full"
-        />
-      )}
-      {can('orders.client.email') && (
+      {!phoneFirst && phoneField}
+      {canEditEmail && (
         <label className="block text-sm">
           Email
           <input

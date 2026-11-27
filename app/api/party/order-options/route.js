@@ -3,6 +3,8 @@ import { getPartyOrderTypes } from '@server/partyOrderTypes'
 import { validatePartyBriefForTransition } from '@server/partyBriefTemplates'
 import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 import { redactPartyServiceConfigurationPrices } from '@helpers/partyServiceConfiguration'
+import { redactPartyLocationRentalConfiguration } from '@helpers/partyMultiPlaceBooking'
+import { PARTY_ORDER_WIZARD_STEP } from '@helpers/partyOrderWizardSteps'
 import {
   canOpenPartyOrderWizard,
   getPartyOrderWizardInitialStep,
@@ -30,7 +32,7 @@ const getInitialWizardStep = async ({ context, order, can, services, locations }
   if (step !== null || !can('orders.eventBrief', 'edit')) return step
   try {
     const brief = await validatePartyBriefForTransition({ tenantId: context.tenantId, order })
-    return brief.ok ? null : 4
+    return brief.ok ? null : PARTY_ORDER_WIZARD_STEP.brief
   } catch {
     // Keep the order editable if the brief template could not be loaded.
     return null
@@ -165,7 +167,7 @@ export async function GET(req) {
             ? { _id: { $in: context.position.orderScope.locationIds } }
             : {}),
         })
-          .select('_id title address status bookingEnabled workingSchedule preparationMinutes cleanupMinutes' + (canReadClientAmount ? ' hourlyRentalRate' : ''))
+          .select('_id title address status bookingEnabled capacity workingSchedule preparationMinutes cleanupMinutes rentalConfiguration' + (canReadClientAmount ? ' hourlyRentalRate' : ''))
           .sort({ title: 1 })
           .limit(500)
           .lean()
@@ -222,7 +224,11 @@ export async function GET(req) {
               ? { ...service, configuration: redactPartyServiceConfigurationPrices(service.configuration) }
               : service
           ),
-      locations,
+      locations: canReadClientAmount
+        ? locations
+        : locations.map((location) => location.rentalConfiguration
+          ? { ...location, rentalConfiguration: redactPartyLocationRentalConfiguration(location.rentalConfiguration) }
+          : location),
       orderTypes,
       ...(selectedOrder ? { initialWizardStep } : {}),
       context: {

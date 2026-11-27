@@ -40,6 +40,10 @@ const partyCompaniesSchema = {
     type: Schema.Types.Mixed,
     default: {},
   },
+  defaultContractTemplateId: {
+    type: String,
+    default: null,
+  },
   tariffId: {
     type: Schema.Types.ObjectId,
     ref: 'Tariff',

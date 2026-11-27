@@ -60,6 +60,37 @@ const createHarness = ({ calendarOverrides, onCredentials } = {}) => {
   return { calls, client, listeners }
 }
 
+test('lists expanded events for the chosen calendar and forwards the page token', async () => {
+  const calls = []
+  const { client } = createHarness({
+    calendarOverrides: {
+      events: {
+        async list(args) {
+          calls.push(args)
+          return { data: { items: [{ id: 'one' }], nextPageToken: 'next' } }
+        },
+      },
+    },
+  })
+  const result = await client.listEvents('selected', {
+    timeMin: '2026-11-25T00:00:00Z',
+    timeMax: '2026-11-28T00:00:00Z',
+    pageToken: 'current',
+  })
+  assert.deepEqual(result, { items: [{ id: 'one' }], nextPageToken: 'next' })
+  assert.deepEqual(calls.map(({ fields, ...args }) => args), [{
+    calendarId: 'selected',
+    timeMin: '2026-11-25T00:00:00Z',
+    timeMax: '2026-11-28T00:00:00Z',
+    pageToken: 'current',
+    singleEvents: true,
+    showDeleted: false,
+    orderBy: 'startTime',
+    maxResults: 250,
+  }])
+  assert.doesNotMatch(calls[0].fields, /attendees/)
+})
+
 test('creates OAuth client with normalized Party redirect URI and credentials', () => {
   const { calls, client } = createHarness()
 

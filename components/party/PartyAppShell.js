@@ -53,6 +53,7 @@ import {
 } from '@helpers/partyRolePermissions'
 import { getPartyMobileNavItems } from '@helpers/partyMobileNavigation'
 import { getPartyNavigationGroups } from '@helpers/partyNavigationGroups'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import { isPartyTicketingEnabled } from '@helpers/partyTicketing'
 import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 import { canPartyTodayAccess } from '@helpers/partyToday'
@@ -368,6 +369,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const [memberships, setMemberships] = useState([])
   const [profileLoaded, setProfileLoaded] = useState(false)
   const [activeCompanyId, setActiveCompanyId] = useState('')
+  const [impersonating, setImpersonating] = useState(false)
   const pendingCompanyId = useRef('')
   const effectiveVariant = useMemo(() => {
     if (variant === 'company' && isCompanySettingsPath(pathname || '')) {
@@ -581,16 +583,17 @@ export default function PartyAppShell({ variant = 'company', children }) {
   useEffect(() => {
     const loadProfile = () => {
       Promise.all([
-        fetch('/api/party/auth/me', { cache: 'no-store' }).then((response) =>
+        partyFetch('/api/party/auth/me', { cache: 'no-store' }).then((response) =>
           response.ok ? response.json() : null
         ),
-        fetch('/api/party/memberships', { cache: 'no-store' }).then(
+        partyFetch('/api/party/memberships', { cache: 'no-store' }).then(
           (response) => (response.ok ? response.json() : null)
         ),
       ])
         .then(([profilePayload, membershipsPayload]) => {
           const roles = profilePayload?.data?.user?.interfaceRoles
           setPartyUser(profilePayload?.data?.user || null)
+          setImpersonating(profilePayload?.data?.impersonating === true)
           setMemberships(membershipsPayload?.data?.memberships || [])
           if (Array.isArray(roles) && roles.length > 0) {
             setInterfaceRoles(roles)
@@ -670,7 +673,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
     if (!profileLoaded) return
     if (!['company', 'performer'].includes(effectiveVariant)) return
 
-    fetch('/api/party/auth/me', {
+    partyFetch('/api/party/auth/me', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ lastWorkspace: effectiveVariant }),
@@ -717,7 +720,7 @@ export default function PartyAppShell({ variant = 'company', children }) {
   const logout = async () => {
     const target = '/party/login?callbackUrl=/party/entry'
     if (!requestPartyLeave({ kind: 'route', target })) return
-    await fetch('/api/party/auth/logout', { method: 'POST' }).catch(() => null)
+    await partyFetch('/api/party/auth/logout', { method: 'POST' }).catch(() => null)
     allowPartyNavigation(target)
     router.replace(target)
   }
@@ -851,17 +854,19 @@ export default function PartyAppShell({ variant = 'company', children }) {
                   ) : null}
                 </div>
               ) : null}
-              <button
-                type="button"
-                onClick={logout}
-                className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
-              >
-                <FontAwesomeIcon
-                  icon={faRightFromBracket}
-                  className="h-4 w-4 min-w-4"
-                />
-                <span>Выйти</span>
-              </button>
+              {!impersonating && (
+                <button
+                  type="button"
+                  onClick={logout}
+                  className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <FontAwesomeIcon
+                    icon={faRightFromBracket}
+                    className="h-4 w-4 min-w-4"
+                  />
+                  <span>Выйти</span>
+                </button>
+              )}
             </div>
           </nav>
         </aside>
@@ -1031,17 +1036,19 @@ export default function PartyAppShell({ variant = 'company', children }) {
                       ) : null}
                     </div>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={logout}
-                    className="flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-white/80"
-                  >
-                    <FontAwesomeIcon
-                      icon={faRightFromBracket}
-                      className="h-4 w-4 min-w-4"
-                    />
-                    <span>Выйти</span>
-                  </button>
+                  {!impersonating && (
+                    <button
+                      type="button"
+                      onClick={logout}
+                      className="flex min-h-10 cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold text-white/80"
+                    >
+                      <FontAwesomeIcon
+                        icon={faRightFromBracket}
+                        className="h-4 w-4 min-w-4"
+                      />
+                      <span>Выйти</span>
+                    </button>
+                  )}
                 </nav>
               </div>
             )}

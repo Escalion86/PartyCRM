@@ -16,10 +16,13 @@ const compare = (value) => value instanceof Date || typeof value === 'string' &&
 const matches = (row, filter) => Object.entries(filter).every(([key, value]) => {
   if (key === '$and') return value.every((part) => matches(row, part))
   if (key === '$or') return value.some((part) => matches(row, part))
+  if (key === '$nor') return value.every((part) => !matches(row, part))
   const actual = row[key]
   if (value === null) return actual == null
   if (value && typeof value === 'object' && !(value instanceof Date)) return Object.entries(value).every(([operator, expected]) => ({
-    $in: () => expected.map(String).includes(String(actual)), $ne: () => expected === null ? actual != null : String(actual) !== String(expected),
+    $in: () => expected.map(String).includes(String(actual)), $nin: () => !expected.map(String).includes(String(actual)),
+    $elemMatch: () => Array.isArray(actual) && actual.some((entry) => matches(entry, expected)),
+    $ne: () => expected === null ? actual != null : String(actual) !== String(expected),
     $lt: () => actual != null && compare(actual) < compare(expected), $gt: () => actual != null && compare(actual) > compare(expected),
     $gte: () => actual != null && compare(actual) >= compare(expected),
   })[operator]?.() === true)
@@ -56,11 +59,14 @@ const range = 'dateFrom=2026-10-01T00%3A00%3A00.000Z&dateTo=2026-11-01T00%3A00%3
 
 test('calendar paging reaches orders after 120 without duplicates and scopes the DB query before pagination', async () => {
   const own = Array.from({ length: 151 }, (_, index) => fixture(index + 1))
-  const run = setup({ rows: [...own, fixture(900, { tenantId: id(700) }), fixture(901, { locationId: id(701) }), fixture(902, { workflowStageId: 'new' })] })
+  own[119] = fixture(120, { bookingVersion: 2, places: [{ id: 'visible', locationId }] })
+  const partiallyVisible = fixture(0, { bookingVersion: 2, places: [{ id: 'visible', locationId }, { id: 'private', locationId: id(701) }] })
+  const run = setup({ rows: [...own, partiallyVisible, fixture(900, { tenantId: id(700) }), fixture(901, { locationId: id(701) }), fixture(902, { workflowStageId: 'new' })] })
   const first = await run.list(range)
   assert.equal(first.body.data.length, 120)
   assert.equal(first.body.meta.nextCursor, id(120))
   assert.equal(first.body.data[0].contractAmount, undefined)
+  assert.equal(first.body.data.at(-1)._id, own[119]._id)
   const second = await run.list(`${range}&calendarCursor=${first.body.meta.nextCursor}`)
   assert.equal(second.body.data.length, 31)
   assert.equal(second.body.meta.nextCursor, null)

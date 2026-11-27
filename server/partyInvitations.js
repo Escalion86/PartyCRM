@@ -140,6 +140,7 @@ export const projectPartyInvitation = async ({
   order,
   company,
 }) => {
+  const primary = order.bookingVersion === 2 ? order.places?.[0] : null
   let location = null
   if (order.placeType !== 'client_address' && order.locationId) {
     const Locations = await getPartyLocationModel()
@@ -155,8 +156,8 @@ export const projectPartyInvitation = async ({
     ...normalizePartyInvitationContent(invitation.snapshot),
     companyTitle: company.title || '',
     orderTypeTitle: order.orderTypeSnapshot || order.title || '',
-    eventDate: order.eventDate ? new Date(order.eventDate).toISOString() : null,
-    dateEnd: order.dateEnd ? new Date(order.dateEnd).toISOString() : null,
+    eventDate: primary ? (primary.eventDate ? new Date(primary.eventDate).toISOString() : null) : (order.eventDate ? new Date(order.eventDate).toISOString() : null),
+    dateEnd: primary ? (primary.dateEnd ? new Date(primary.dateEnd).toISOString() : null) : (order.dateEnd ? new Date(order.dateEnd).toISOString() : null),
     timeZone: company.settings?.timeZone || 'Asia/Krasnoyarsk',
     locationTitle:
       location?.title ||
@@ -228,10 +229,11 @@ export const savePartyOrderInvitation = async ({ context, orderId, body }) => {
   if (body.snapshot) snapshot = normalizePartyInvitationContent(body.snapshot)
   if (!['save', 'publish', 'unpublish', 'apply_template'].includes(body.action))
     partyBookingFailure('Выберите действие с приглашением')
+  const invitationPlace = order.bookingVersion === 2 ? order.places?.[0] : order
   if (
     body.action === 'publish' &&
-    (!order.eventDate ||
-      !order.dateEnd ||
+    (!invitationPlace?.eventDate ||
+      !invitationPlace?.dateEnd ||
       (!order.locationId &&
         !order.customAddress &&
         !order.clientAddress?.street))
@@ -298,7 +300,7 @@ export const getPublicPartyInvitation = async (token) => {
       status: { $ne: 'canceled' },
     })
       .select(
-        'tenantId orderTypeSnapshot title eventDate dateEnd locationId placeType customAddress clientAddress'
+        'tenantId orderTypeSnapshot title eventDate dateEnd locationId placeType customAddress clientAddress bookingVersion places.eventDate places.dateEnd'
       )
       .lean(),
     Companies.findOne({ _id: invitation.tenantId })

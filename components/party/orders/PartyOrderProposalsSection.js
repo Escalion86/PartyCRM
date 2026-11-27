@@ -7,6 +7,7 @@ import {
   buildPartyProposalItemsFromOrder,
   calculatePartyProposalItem,
   calculatePartyProposalTotals,
+  formatPartyProposalAddress,
 } from '@helpers/partyProposalCore'
 import {
   exportPartyProposalDocx,
@@ -52,6 +53,7 @@ const getClientName = (client = {}) =>
     .join(' ')
 
 const getOrderAddress = (order = {}) => {
+  if (order.bookingVersion === 2) return formatPartyProposalAddress(order)
   if (order.customAddress) return order.customAddress
   const address = order.clientAddress || {}
   return [
@@ -83,7 +85,7 @@ const buildInitialDraft = ({ order, client, services, documents }) => {
       address: getOrderAddress(order),
     },
     items: buildPartyProposalItemsFromOrder(order, services),
-    discount: Number(order.agreedProposal?.discount || 0),
+    discount: Number(order.bookingVersion === 2 ? (order.pricingSnapshot?.discountKopecks || 0) / 100 : order.agreedProposal?.discount || 0),
     taxText:
       documents?.proposalTaxText ||
       'НДС не облагается в связи с применением специального налогового режима.',

@@ -214,6 +214,8 @@ export const closeLocationOrder = async ({ context, orderId }) => {
       await lockLocationMembership(context, session)
       previousOrder = await lockedOrder(Orders, context, orderId, session)
       if (previousOrder.status === 'closed') return
+      if (previousOrder.bookingVersion === 2)
+        locationFailure('Закройте бронирование площадок в карточке заказа', 409)
       if (previousOrder.status === 'canceled')
         locationFailure('Отменённый заказ нельзя закрыть', 409)
       const transactions = await Transactions.find({

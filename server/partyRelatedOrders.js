@@ -30,6 +30,7 @@ const checkWrite = (result) => {
 const groupFilter = (order) => order.partyEventGroupId || null
 
 const activeLocationOrder = (order) =>
+  order.bookingVersion !== 2 &&
   order.status !== 'canceled' &&
   (order.status !== 'closed' ||
     +new Date(order.dateEnd || order.eventDate) > Date.now()) &&
@@ -92,7 +93,7 @@ const withRelatedVenues = async ({
   work,
 }) => {
   const ranges = members
-    .filter((order) => order.locationId && order.placeType !== 'client_address')
+    .filter((order) => order.bookingVersion !== 2 && order.locationId && order.placeType !== 'client_address')
     .map((order) => ({
       locationId: order.locationId,
       startsAt: order.eventDate,
@@ -118,6 +119,7 @@ const withRelatedVenues = async ({
           .lean()
         if (
           !order?.locationId ||
+          order.bookingVersion === 2 ||
           order.placeType === 'client_address' ||
           !order.eventDate ||
           order.status === 'canceled'
@@ -153,9 +155,9 @@ export const getPartySharedLocationOrderIds = async ({ tenantId, orderId }) => {
   if (!orderId) return []
   const Orders = await getPartyOrderModel()
   const current = await Orders.findOne({ _id: orderId, tenantId })
-    .select('_id partyEventGroupId')
+    .select('_id partyEventGroupId bookingVersion')
     .lean()
-  if (!current?.partyEventGroupId) return []
+  if (!current?.partyEventGroupId || current.bookingVersion === 2) return []
   const Groups = await getPartyEventGroupModel()
   const group = await Groups.findOne({
     _id: current.partyEventGroupId,
@@ -170,6 +172,7 @@ export const getPartySharedLocationOrderIds = async ({ tenantId, orderId }) => {
       tenantId,
       partyEventGroupId: group._id,
       placeType: 'company_location',
+      bookingVersion: { $ne: 2 },
     })
       .select('_id')
       .lean()
@@ -199,6 +202,8 @@ export const updatePartySharedLocationBooking = async ({
     const members = await Orders.find({ tenantId, partyEventGroupId: groupId })
       .session(session)
       .lean()
+    if (sharedLocationBooking && members.some((order) => order.bookingVersion === 2))
+      fail('Общая бронь недоступна для связанных заказов с несколькими площадками')
     return withRelatedVenues({
       Orders,
       tenantId,
@@ -361,6 +366,8 @@ export const linkPartyRelatedOrder = async ({
         .lean()
       if (!group) fail('Группа заказов не найдена')
       sharedLocationBooking = group.sharedLocationBooking === true
+      if (sharedLocationBooking && (current.bookingVersion === 2 || target.bookingVersion === 2))
+        fail('Отключите общую бронь группы перед добавлением заказа с несколькими площадками')
       otherMembers = await Orders.find({ tenantId, partyEventGroupId: groupId })
         .session(session)
         .lean()

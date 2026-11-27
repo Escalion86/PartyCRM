@@ -157,8 +157,8 @@ export const assertPartyVenueConfiguration = ({
       )
         continue
       if (
-        entry.sourceType === 'order' ||
-        other.sourceType === 'order' ||
+        entry.sourceType !== 'ticket_session' ||
+        other.sourceType !== 'ticket_session' ||
         location.usageMode !== 'shared'
       )
         throw partyVenueFailure(

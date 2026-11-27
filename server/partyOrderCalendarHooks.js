@@ -98,6 +98,16 @@ export const syncPartyOrderCalendarAfterCrud = async ({
     const order = await loadLean(Order.findOne({ _id: orderId, tenantId }))
     if (!company || !order) return { ok: false, status: 'hook_failed' }
 
+    const syncPerformerCalendars = () => (deps.syncPerformerCalendars || syncPartyOrderToPerformerCalendars)({
+      tenantId,
+      orderId,
+      dependencies: deps.performerDependencies || {},
+    })
+    if (order.googleCalendarSyncDisabled === true) {
+      await syncPerformerCalendars()
+      return { ok: false, status: 'skipped' }
+    }
+
     const serviceIds = ids(asArray(order.servicesIds))
     const staffIds = ids([
       ...asArray(order.assignedStaff).map((item) => item?.staffId),
@@ -138,11 +148,7 @@ export const syncPartyOrderCalendarAfterCrud = async ({
           deps.persistCompanySyncState || persistCompanyStateWith(Company),
       },
     })
-    await (deps.syncPerformerCalendars || syncPartyOrderToPerformerCalendars)({
-      tenantId,
-      orderId,
-      dependencies: deps.performerDependencies || {},
-    })
+    await syncPerformerCalendars()
     return companyResult
   } catch {
     return { ok: false, status: 'hook_failed' }
@@ -158,6 +164,20 @@ export const deletePartyOrderCalendarEventsAfterCrud = async ({
     if (!tenantId || !orderSnapshot || String(orderSnapshot.tenantId) !== String(tenantId)) {
       return { ok: false, status: 'hook_failed' }
     }
+    const cleanupPerformerCalendars = () =>
+      (
+        dependencies.deletePerformerCalendarEvents ||
+        deletePartyOrderPerformerCalendarEventsAfterCrud
+      )({
+        tenantId,
+        orderSnapshot,
+        dependencies: dependencies.performerDependencies || {},
+      })
+    if (orderSnapshot.googleCalendarSyncDisabled === true || orderSnapshot.calendarImportedAt) {
+      await cleanupPerformerCalendars()
+      return { ok: true, deletedCount: 0 }
+    }
+
     const company = dependencies.loadCompany
       ? await dependencies.loadCompany({ _id: tenantId, tenantId })
       : await defaultLoadCompany({ _id: tenantId, tenantId })
@@ -174,15 +194,6 @@ export const deletePartyOrderCalendarEventsAfterCrud = async ({
           }),
       }
     )
-    const cleanupPerformerCalendars = () =>
-      (
-        dependencies.deletePerformerCalendarEvents ||
-        deletePartyOrderPerformerCalendarEventsAfterCrud
-      )({
-        tenantId,
-        orderSnapshot,
-        dependencies: dependencies.performerDependencies || {},
-      })
     const calendarId = String(orderSnapshot.googleCalendarCalendarId || '')
     if (!client || !calendarId) {
       await cleanupPerformerCalendars()

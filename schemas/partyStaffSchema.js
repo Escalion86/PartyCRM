@@ -2,6 +2,7 @@ import { Schema } from 'mongoose'
 import { PARTY_TODAY_WIDGET_IDS } from '../helpers/partyToday.js'
 
 const partyStaffSchema = {
+  orderScheduleRevision: { type: Number, select: false },
   tenantId: {
     type: Schema.Types.ObjectId,
     ref: 'Company',

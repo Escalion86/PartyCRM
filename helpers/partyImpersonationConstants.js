@@ -1,0 +1,6 @@
+export const PARTY_IMPERSONATION_COOKIE = 'partycrm_impersonation'
+export const PARTY_IMPERSONATION_UI_COOKIE = 'partycrm_impersonation_ui'
+export const PARTY_IMPERSONATION_API_PATH = '/api/party/auth/impersonation'
+export const PARTY_IMPERSONATION_RETURN_PATH = '/party/site-settings/users'
+export const PARTY_SESSION_CONTEXT_HEADER = 'x-partycrm-session-context'
+export const PARTY_OWN_SESSION_CONTEXT = 'own'

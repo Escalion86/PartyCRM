@@ -1,5 +1,6 @@
 import { getPartyWorkflow } from './partyWorkflow.js'
 import { redactPartyServiceConfigurationPrices } from './partyServiceConfiguration.js'
+import { redactPartyLocationRentalSnapshot } from './partyMultiPlaceBooking.js'
 
 export const PARTY_ROLE_PERMISSION_GROUPS = Object.freeze([
   { key: 'orders', label: 'Заказы' },
@@ -133,10 +134,12 @@ export const isPartyOrderInScope = (context, order) => {
   const scope = context.position?.orderScope || {}
   if (scope.statuses?.length && !scope.statuses.includes(order.status)) return false
   if (scope.stageIds?.length && !scope.stageIds.map(id).includes(getPartyOrderStageId(order, context))) return false
-  const locationId = id(order.locationId)
-  if (!locationId && scope.includeUnlocated === false) return false
-  if (locationId && scope.locationIds?.length && !scope.locationIds.map(id).includes(locationId)) return false
-  if (context.role === 'location_owner' && !(context.staff?.locationIds || []).map(id).includes(locationId)) return false
+  const locationIds = order.bookingVersion === 2 && order.places?.length
+    ? order.places.map((place) => id(place.locationId))
+    : [id(order.locationId)]
+  if (scope.includeUnlocated === false && locationIds.some((locationId) => !locationId)) return false
+  if (scope.locationIds?.length && locationIds.some((locationId) => locationId && !scope.locationIds.map(id).includes(locationId))) return false
+  if (context.role === 'location_owner' && locationIds.some((locationId) => !(context.staff?.locationIds || []).map(id).includes(locationId))) return false
   const assignedOnly = scope.assignedOnly ?? (context.role === 'performer' && !context.position)
   if (assignedOnly && !(order.assignedStaff || []).some((staff) => id(staff.staffId) === id(context.staff?._id)) && id(order.responsibleStaffId) !== id(context.staff?._id)) return false
   return true
@@ -158,6 +161,11 @@ export const canPartyAccess = (context, { resource, action = 'read', field, orde
   return ['read', 'view', 'list'].includes(action) ? ['read', 'edit'].includes(level) : level === 'edit'
 }
 
+export const canEditPartyOrderPlaces = (context, order) =>
+  ['locationId', 'servicesIds', 'eventDate', 'dateEnd'].every((field) =>
+    canPartyAccess(context, { resource: 'orders.' + field, action: 'edit', order })
+  )
+
 export const buildPartyOrderAccessFilter = (context) => {
   const tenantId = context?.tenantId
   if (!canPartyAccess(context, { resource: 'orders' })) return { tenantId, _id: { $in: [] } }
@@ -174,7 +182,10 @@ export const buildPartyOrderAccessFilter = (context) => {
   const locationIds = context.role === 'location_owner'
     ? (context.staff?.locationIds || []).filter((value) => !scope.locationIds?.length || scope.locationIds.map(id).includes(id(value)))
     : scope.locationIds
-  if (locationIds?.length) clauses.push(scope.includeUnlocated === false || context.role === 'location_owner' ? { locationId: { $in: locationIds } } : { $or: [{ locationId: { $in: locationIds } }, { locationId: null }] })
+  if (locationIds?.length) {
+    clauses.push(scope.includeUnlocated === false || context.role === 'location_owner' ? { locationId: { $in: locationIds } } : { $or: [{ locationId: { $in: locationIds } }, { locationId: null }] })
+    clauses.push({ $nor: [{ bookingVersion: 2, places: { $elemMatch: { locationId: { $nin: locationIds } } } }] })
+  }
   else if (context.role === 'location_owner') clauses.push({ _id: { $in: [] } })
   else if (scope.includeUnlocated === false) clauses.push({ locationId: { $ne: null } })
   if (scope.assignedOnly ?? (context.role === 'performer' && !context.position)) clauses.push({ $or: [{ 'assignedStaff.staffId': context.staff._id }, { responsibleStaffId: context.staff._id }] })
@@ -182,8 +193,10 @@ export const buildPartyOrderAccessFilter = (context) => {
 }
 
 const orderFieldResource = (field) => {
-  if (['orderTypeId', 'orderTypeSnapshot'].includes(field.split('.')[0])) return 'orders.title'
+  if (['orderTypeId', 'orderTypeSnapshot', 'calendarImportedAt', 'calendarImportChecked'].includes(field.split('.')[0])) return 'orders.title'
+  if (field === 'googleCalendarSyncDisabled') return 'orders.eventDate'
   if (['bookingVersion', 'serviceSelections'].includes(field.split('.')[0])) return 'orders.servicesIds'
+  if (field === 'places') return 'orders.locationId'
   if (field === 'rental.endsAt') return 'orders.dateEnd'
   if (field === 'rental' || field === 'rental.startsAt') return 'orders.eventDate'
   if (['pricingSnapshot', 'discount'].includes(field.split('.')[0])) return 'finance.clientAmount'
@@ -204,10 +217,25 @@ const orderFieldResource = (field) => {
 const operationalFields = ['_id', 'tenantId', 'createdAt', 'updatedAt', '__v', 'commercialRevision', 'reportCoordinatorRevision', 'sharedLocationRevision']
 export const filterPartyOrderForAccess = (context, order) => {
   if (!canPartyAccess(context, { resource: 'orders', order })) return null
-  const internalFields = ['createRequestKey', 'createRequestActorId', 'createRequestFingerprint']
-  if (manager(context)) return Object.fromEntries(Object.entries(order).filter(([field]) => !internalFields.includes(field)))
+  const internalFields = ['createRequestKey', 'createRequestActorId', 'createRequestFingerprint', 'googleCalendarImportKey']
+  const hasGoogleCalendarEvent = Boolean(order.googleCalendarEventId)
+  if (manager(context)) return {
+    ...Object.fromEntries(Object.entries(order).filter(([field]) => !internalFields.includes(field))),
+    ...(hasGoogleCalendarEvent ? { hasGoogleCalendarEvent } : {}),
+    ...(order.bookingVersion === 2 ? { placesEditable: true } : {}),
+  }
   const output = {}
   const canSeeServices = canPartyAccess(context, { resource: 'orders.servicesIds', order })
+  const canSeeStart = canPartyAccess(context, { resource: 'orders.eventDate', order })
+  if (canSeeStart && hasGoogleCalendarEvent) output.hasGoogleCalendarEvent = true
+  const canSeeEnd = canPartyAccess(context, { resource: 'orders.dateEnd', order })
+  const canSeePlace = canPartyAccess(context, { resource: 'orders.locationId', order })
+  const canSeePrices = canPartyAccess(context, { resource: 'finance.clientAmount', order })
+  const multiPlace = order.bookingVersion === 2
+  if (multiPlace) {
+    output.bookingVersion = 2
+    output.placesEditable = canEditPartyOrderPlaces(context, order)
+  }
   if (canSeeServices && order.bookingVersion) {
     output.serviceSelections = (order.orderItems || []).filter((item) => item.serviceId).map((item) => {
       const snapshot = item.serviceConfiguration
@@ -217,6 +245,12 @@ export const filterPartyOrderForAccess = (context, order) => {
         title: item.title,
         durationMinutes: item.durationMinutes,
         includedRentalMinutes: item.includedRentalMinutes,
+        ...(multiPlace ? {
+          lineId: item.lineId,
+          ...(canSeePlace ? { placeId: item.placeId } : {}),
+          ...(canSeeStart ? { eventDate: item.eventDate } : {}),
+          ...(canSeeEnd ? { dateEnd: item.dateEnd } : {}),
+        } : {}),
         ...(snapshot ? {
           serviceConfiguration: {
             definition: redactPartyServiceConfigurationPrices(snapshot.definition),
@@ -230,12 +264,29 @@ export const filterPartyOrderForAccess = (context, order) => {
   }
   for (const [field, value] of Object.entries(order)) {
     if (internalFields.includes(field)) continue
+    if (['googleCalendarEventUrl', 'googleCalendarEventId', 'googleCalendarCalendarId'].includes(field)) continue
     if (field === 'fulfillment') {
       if (canPartyAccess(context, { resource: 'orders.fulfillment', order }))
         output.fulfillment = value ? { performedAt: value.performedAt, recordedAt: value.recordedAt, ...(canPartyAccess(context, { resource: 'finance.clientAmount', order }) ? { amountKopecks: value.amountKopecks } : {}) } : null
       continue
     }
     if (field === 'additionalEvents') continue // Canonical task API/summaries enforce each task's assignments.
+    if (field === 'places') {
+      if (multiPlace && canSeePlace) output.places = (value || []).map((place) => ({
+        id: place.id,
+        locationId: place.locationId,
+        locationTitle: place.locationTitle,
+        locationAddress: place.locationAddress,
+        timeZone: place.timeZone,
+        guestCount: place.guestCount,
+        ...(canSeeStart ? { eventDate: place.eventDate } : {}),
+        ...(canSeeEnd ? { dateEnd: place.dateEnd } : {}),
+        ...(canSeeStart && canSeeEnd ? { rental: place.rental, durationMinutes: place.durationMinutes } : {}),
+        ...(canSeePrices ? { pricingSnapshot: place.pricingSnapshot, locationConfiguration: place.locationConfiguration }
+          : { locationConfiguration: redactPartyLocationRentalSnapshot(place.locationConfiguration) }),
+      }))
+      continue
+    }
     if (field === 'rental') {
       if (value && canPartyAccess(context, { resource: 'orders.eventDate', order }) && canPartyAccess(context, { resource: 'orders.dateEnd', order })) output.rental = value
       continue
@@ -263,8 +314,14 @@ export const filterPartyOrderForAccess = (context, order) => {
       continue
     }
     if (!canPartyAccess(context, { resource: orderFieldResource(field), order })) continue
-    if (field === 'orderItems' && Array.isArray(value) && !canSeeServices) {
-      output.orderItems = value.map(({ serviceConfiguration: _configuration, ...item }) => item)
+    if (field === 'orderItems' && Array.isArray(value) && (multiPlace || !canSeeServices)) {
+      output.orderItems = value.map(({ serviceConfiguration, placeId, eventDate, dateEnd, ...item }) => ({
+        ...item,
+        ...(canSeeServices && serviceConfiguration ? { serviceConfiguration } : {}),
+        ...(canSeePlace && placeId ? { placeId } : {}),
+        ...(canSeeStart && eventDate ? { eventDate } : {}),
+        ...(canSeeEnd && dateEnd ? { dateEnd } : {}),
+      }))
       continue
     }
     if (field === 'eventBrief' && value) {
@@ -285,6 +342,7 @@ export const filterPartyOrderForAccess = (context, order) => {
     if (field === 'assignedStaff') {
       output.assignedStaff = (value || []).map((assignment) => {
         const safe = { staffId: assignment.staffId, role: assignment.role, confirmationStatus: assignment.confirmationStatus }
+        if (multiPlace && canSeePlace && assignment.placeId) safe.placeId = assignment.placeId
         if (canPartyAccess(context, { resource: 'finance.payouts', order })) Object.assign(safe, { payoutAmount: assignment.payoutAmount, payoutStatus: assignment.payoutStatus })
         return safe
       })
@@ -309,10 +367,11 @@ export const guardPartyOrderPatch = (context, patch, order) => {
   const forbiddenFields = leaves(patch).filter((field) => {
     if (['_id', 'tenantId', 'commercialRevision', 'expectedVersion', 'expectedRevision'].includes(field)) return false
     if (field === 'workflowStageId' && !canPartyAccess(context, { resource: 'orders', action: 'transition', order })) return true
+    if (field === 'places') return !canEditPartyOrderPlaces(context, order)
     if (field === 'assignedStaff') {
       const changesServerFields = (patch.assignedStaff || []).some((assignment) => {
         const previous = (order?.assignedStaff || []).find((item) => id(item.staffId) === id(assignment.staffId))
-        return Object.keys(assignment).some((key) => !['staffId', 'role', 'payoutAmount', 'payoutStatus'].includes(key) && JSON.stringify(assignment[key]) !== JSON.stringify(previous?.[key]))
+        return Object.keys(assignment).some((key) => !['staffId', 'role', 'placeId', 'payoutAmount', 'payoutStatus'].includes(key) && JSON.stringify(assignment[key]) !== JSON.stringify(previous?.[key]))
       })
       if (changesServerFields) return true
       const payoutsChanged = (patch.assignedStaff || []).some((assignment) => {
@@ -322,7 +381,8 @@ export const guardPartyOrderPatch = (context, patch, order) => {
       if (payoutsChanged && !canPartyAccess(context, { resource: 'finance.payouts', action: 'edit', order })) return true
       const teamChanged = (patch.assignedStaff || []).length !== (order?.assignedStaff || []).length || (patch.assignedStaff || []).some((assignment) => {
         const previous = (order?.assignedStaff || []).find((item) => id(item.staffId) === id(assignment.staffId))
-        return !previous || (Object.hasOwn(assignment, 'role') && assignment.role !== previous.role)
+        return !previous || (Object.hasOwn(assignment, 'role') && assignment.role !== previous.role) ||
+          (Object.hasOwn(assignment, 'placeId') && id(assignment.placeId) !== id(previous.placeId))
       })
       if (!teamChanged) return false
     }

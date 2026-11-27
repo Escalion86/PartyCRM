@@ -3,6 +3,7 @@ import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsaved
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import PartyGoogleCalendarImportDialog from './PartyGoogleCalendarImportDialog'
 import {
   getNextCalendarDraftState,
   getNextSyncCursor,
@@ -102,6 +103,34 @@ const Toggle = ({ checked, children, disabled = false, onChange }) => (
     <span>{children}</span>
   </label>
 )
+
+function ImportSection({ companyId, companyTimeZone, calendarName, disabled, calendarHelp }) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Section title="Импорт из Google Calendar">
+      <p className="text-sm leading-6 text-slate-600">
+        {calendarHelp || 'Выберите период и события, из которых нужно создать заказы.'}
+      </p>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={disabled || Boolean(calendarHelp)}
+        className={`${buttonClass} w-fit bg-sky-600 text-white hover:bg-sky-700`}
+      >
+        Импортировать события
+      </button>
+      {open ? (
+        <PartyGoogleCalendarImportDialog
+          companyId={companyId}
+          companyTimeZone={companyTimeZone}
+          calendarName={calendarName}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </Section>
+  )
+}
 
 export default function PartyGoogleCalendarSettings({
   activeCompanyId,
@@ -340,9 +369,8 @@ export default function PartyGoogleCalendarSettings({
       {!connected ? (
         <div className="grid gap-3">
           <p className="text-sm leading-6 text-slate-600">
-            Подключите Google-аккаунт компании, затем выберите календарь.
-            PartyCRM только создаёт и обновляет события и не импортирует данные
-            из Google.
+            Подключите Google-аккаунт компании, затем выберите календарь для
+            импорта событий и синхронизации заказов.
           </p>
           <div>
             <button
@@ -441,6 +469,16 @@ export default function PartyGoogleCalendarSettings({
               Часовой пояс событий: {companyTimeZone || 'Europe/Moscow'}
             </p>
           </Section>
+
+          <ImportSection
+            key={JSON.stringify([activeCompanyId, status.calendarId, locked])}
+            companyId={activeCompanyId}
+            companyTimeZone={companyTimeZone || 'Europe/Moscow'}
+            calendarName={status.calendarName}
+            disabled={actionsDisabled || !activeCompanyId}
+            calendarHelp={!status.calendarId ? 'Сначала выберите календарь Google.'
+              : calendarId !== status.calendarId ? 'Сохраните выбор календаря перед импортом.' : ''}
+          />
 
           <Section title="Заголовок и содержимое">
             <label className="grid gap-1.5">

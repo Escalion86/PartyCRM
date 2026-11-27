@@ -49,6 +49,25 @@ const serviceId = '507f1f77bcf86cd799439012'
 const tenantId = '507f1f77bcf86cd799439013'
 const another = '507f1f77bcf86cd799439014'
 const time = (hour) => `2026-09-03T${hour}:00:00.000Z`
+
+test('one service in two simultaneous rooms makes two reservations by position and detects the combined demand', () => {
+  const order = {
+    bookingVersion: 2, eventDate: time('12'), dateEnd: time('15'),
+    places: [{ id: 'first' }, { id: 'second' }],
+    orderItems: [
+      { placeId: 'first', lineId: 'first-line', serviceId, quantity: 1, eventDate: time('12'), dateEnd: time('14') },
+      { placeId: 'second', lineId: 'second-line', serviceId, quantity: 1, eventDate: time('13'), dateEnd: time('15') },
+    ],
+  }
+  const result = reconcileInventoryServiceItems(order)
+  const required = [{ serviceId, items: [{ resourceId, quantity: 1 }] }]
+  assert.deepEqual(result.serviceItems.map(({ serviceLineId, startAt, endAt }) => [serviceLineId, startAt, endAt]), [
+    ['first-line', time('12'), time('14')], ['second-line', time('13'), time('15')],
+  ])
+  const demand = buildInventoryDemand(result.serviceItems, required)
+  assert.equal(calculateInventoryAvailability({ items: [item(1)], demand }).warnings.length, 1)
+  assert.equal(calculateInventoryAvailability({ items: [item(2)], demand }).warnings.length, 0)
+})
 const row = (start, end, quantity, orderId = 'other') => ({
   resourceId,
   serviceId,

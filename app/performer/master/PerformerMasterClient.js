@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 
 const buttonClass =
   'cursor-pointer rounded-md px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60'
@@ -21,7 +22,7 @@ export default function PerformerMasterClient({ user }) {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch('/api/party/auth/me', {
+      const response = await partyFetch('/api/party/auth/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

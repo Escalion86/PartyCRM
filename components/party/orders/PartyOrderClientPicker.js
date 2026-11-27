@@ -48,9 +48,11 @@ function ClientLookup({
   const cancelledForm = useRef(null)
   const canReadName = canPartyAccess(context, { resource: 'orders.client.name' })
   const canReadPhone = canPartyAccess(context, { resource: 'orders.client.phone' })
+  const canEditPhone = canPartyAccess(context, { resource: 'orders.client.phone', action: 'edit' })
   const canReadEmail = canPartyAccess(context, { resource: 'orders.client.email' })
   const canSearch = canReadName || canReadPhone || canReadEmail
   const query = canSearch ? search.trim() : ''
+  const phoneFromQuery = canEditPhone ? normalizePhoneNumber(query) : null
   const searchHint = [canReadName && 'имя', canReadPhone && 'телефон', !canReadName && !canReadPhone && canReadEmail && 'email'].filter(Boolean).join(' или ')
 
   useEffect(() => {
@@ -108,8 +110,7 @@ function ClientLookup({
       setCreating(cancelledForm.current.form)
       return
     }
-    const phone = canPartyAccess(context, { resource: 'orders.client.phone', action: 'edit' }) ? normalizePhoneNumber(query) : null
-    setCreating(newClientForm(phone ? Number(phone) : null))
+    setCreating(newClientForm(phoneFromQuery ? Number(phoneFromQuery) : null))
   }
   const returnToLookup = (keepDraft, returnQuery = query) => {
     openedDirectly.current = false
@@ -194,7 +195,15 @@ function ClientLookup({
                 )
               })}
             </ul>
-          ) : <p className="text-sm text-slate-600" role="status">{query ? 'Клиенты не найдены. Измените запрос.' : 'Клиентов пока нет.'}</p>}
+          ) : (
+            <p className="text-sm text-slate-600" role="status">
+              {!query
+                ? 'Клиентов пока нет.'
+                : canCreate && canReadPhone && phoneFromQuery
+                  ? 'Клиент с таким номером не найден. При создании номер подставится автоматически.'
+                  : 'Клиенты не найдены. Измените запрос.'}
+            </p>
+          )}
           {selectedId && <button type="button" className={buttonStyle} onClick={() => select(null)}>Убрать клиента</button>}
         </div>
   )

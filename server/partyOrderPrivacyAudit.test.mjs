@@ -44,7 +44,12 @@ function setup({ context = actor(), orderPatch = {}, transactions = [] } = {}) {
     getPartyOrderTypes: async () => [],
     getPartyStaffModel: async () => ({ find: () => q([]), countDocuments: async () => 1 }),
     getPartyClientModel: async () => ({ countDocuments: async () => 1 }),
-    getPartyLocationModel: async () => ({ exists: async () => true }),
+    getPartyLocationModel: async () => ({
+      findOne: (filter) => {
+        assert.equal(filter.tenantId, tenantId)
+        return q({ _id: filter._id })
+      },
+    }),
     getPartyServiceModel: async () => ({ countDocuments: async () => 1 }),
     getPartyTransactionModel: async () => ({ find: (filter) => { assert.equal(filter.tenantId, tenantId); return { ...q(transactions), limit() { return this } } } }),
     getPartyCompanyTariffAccessState: async () => ({ access: {} }), filterPartyOrderPayloadByTariffAccess: (payload) => payload, canCreatePartyOrderByTariff: () => ({ ok: true }),

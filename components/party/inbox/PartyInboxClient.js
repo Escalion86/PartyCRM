@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState, useSyncExternalStore, useRef } from '
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { PARTY_INBOX_STATUSES, PARTY_INBOX_SALES_STAGES } from '@helpers/partyInboxCore'
-import { PARTY_ACTIVE_COMPANY_EVENT, publishPartyActiveCompanyId } from '@helpers/partyActiveCompany'
+import { PARTY_ACTIVE_COMPANY_EVENT, publishPartyActiveCompanyId, readStoredPartyActiveCompanyId } from '@helpers/partyActiveCompany'
 import { resolvePartyInboxCompanyLink } from '@helpers/partyInboxCompanyLink'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 import usePartyUnsavedChanges, { requestPartyLeave } from '@components/party/navigation/usePartyUnsavedChanges'
 
 const PartyOrderWizard = dynamic(() => import('@components/party/orders/PartyOrderWizard'))
@@ -21,10 +22,7 @@ const subscribeCompany = (listener) => {
   window.addEventListener(PARTY_ACTIVE_COMPANY_EVENT, listener)
   return () => { window.removeEventListener('storage', listener); window.removeEventListener('partycrm-company-change', listener); window.removeEventListener(PARTY_ACTIVE_COMPANY_EVENT, listener) }
 }
-const readCompany = () => {
-  try { return window.localStorage.getItem('partycrm.activeCompanyId') || '' }
-  catch { return '' }
-}
+const readCompany = readStoredPartyActiveCompanyId
 const readServerCompany = () => ''
 const dateLabel = (value) => value ? new Date(value).toLocaleString('ru-RU') : ''
 const personLabel = (person) => [person.firstName, person.secondName].filter(Boolean).join(' ') || person.phone || String(person._id)
@@ -61,7 +59,7 @@ const SlaBadge = ({ item, now, className = '' }) => {
 }
 
 async function request(companyId, path, options = {}) {
-  const response = await fetch(path, { ...options, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-partycrm-company-id': companyId } })
+  const response = await partyFetch(path, { ...options, cache: 'no-store', headers: { 'Content-Type': 'application/json', 'x-partycrm-company-id': companyId } })
   const body = await response.json()
   if (!response.ok || !body.success) throw new Error(body.error?.message || (typeof body.error === 'string' ? body.error : 'Не удалось выполнить запрос'))
   return body.data

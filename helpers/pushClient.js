@@ -1,5 +1,6 @@
 'use client'
 
+import { partyFetch } from './partyImpersonationClient.js'
 import {
   PARTY_SERVICE_WORKER_URL,
   getPartyServiceWorkerRegistrationOptions,
@@ -72,7 +73,7 @@ const fetchPushPublicKey = async ({
   apiBasePath = '/api/push',
   headers = {},
 } = {}) => {
-  const keyResponse = await fetch(`${apiBasePath}/public-key`, { headers })
+  const keyResponse = await partyFetch(`${apiBasePath}/public-key`, { headers })
   const keyPayload = await keyResponse.json().catch(() => ({}))
   if (!keyResponse.ok || !keyPayload?.data?.publicKey) {
     throw new Error(keyPayload?.error || 'Не удалось получить VAPID ключ')
@@ -84,7 +85,7 @@ const savePushSubscription = async (
   subscription,
   { apiBasePath = '/api/push', headers = {} } = {}
 ) => {
-  const saveResponse = await fetch(`${apiBasePath}/subscribe`, {
+  const saveResponse = await partyFetch(`${apiBasePath}/subscribe`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...headers },
     body: JSON.stringify({ subscription: subscription.toJSON() }),

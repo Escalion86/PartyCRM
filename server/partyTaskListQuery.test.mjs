@@ -30,6 +30,7 @@ const routeSource = stripped(await readFile(new URL('../app/api/party/tasks/rout
 
 function setup({ tasks = [], orders = [], context = owner } = {}) {
   const calls = []
+  const migratedOrders = []
   const tables = { Tasks: tasks, Orders: orders, Staff: [context.staff, { _id: otherId, tenantId, status: 'active', firstName: 'Другой' }], Roles: [{ _id: roleId, tenantId, active: true, title: 'Должность' }], Locations: [] }
   const model = (name) => ({
     find: (filter) => {
@@ -62,9 +63,9 @@ function setup({ tasks = [], orders = [], context = owner } = {}) {
     partyError: (status, code, message) => ({ status, body: { success: false, error: { code, message } } }),
   }
   const service = new Function(...Object.keys(deps), `${serviceSource}\nreturn { withTaskContext,taskJson,canManageTask,serializeTask,taskStaff,canAccessTaskLocation,canReadTask,buildPartyTaskListAccessFilter }`)(...Object.values(deps))
-  const bindings = { ...deps, ...service, ensurePartyOrderTasks: async () => {}, loadTaskOrder: async () => null, createPartyTaskForContext: async () => { throw new Error('Unexpected write') } }
+  const bindings = { ...deps, ...service, ensurePartyOrderTasks: async ({ order }) => { migratedOrders.push(order._id) }, loadTaskOrder: async () => null, createPartyTaskForContext: async () => { throw new Error('Unexpected write') } }
   const GET = new Function(...Object.keys(bindings), `${routeSource}\nreturn GET`)(...Object.values(bindings))
-  return { get: (params = '') => GET({ url: `http://localhost/api/party/tasks?${params}` }), calls, service }
+  return { get: (params = '') => GET({ url: `http://localhost/api/party/tasks?${params}` }), calls, service, migratedOrders }
 }
 
 test('GET defaults preserve all statuses, enforce tenant, and page 125 tasks without omissions', async () => {
@@ -208,6 +209,20 @@ test('order task filter cannot open a foreign or inaccessible order', async () =
   assert.equal((await foreign.get(`orderId=${orderId}`)).status, 404)
   const hidden = setup({ tasks, orders: [{ _id: orderId, tenantId, status: 'active' }], context: member() })
   assert.equal((await hidden.get(`orderId=${orderId}`)).status, 404)
+})
+
+test('listing tasks migrates records from accessible legacy orders', async () => {
+  const tasks = [row(1, { orderId })]
+  const orders = [{ _id: orderId, tenantId, title: 'Заказ', status: 'active', additionalEvents: [{}] }]
+  const context = setup({ tasks, orders })
+
+  for (const params of ['', `orderId=${orderId}`]) {
+    const result = await context.get(params)
+    assert.equal(result.status, 200)
+    assert.deepEqual(result.body.data.tasks.map((task) => task._id), [id(1)])
+  }
+
+  assert.deepEqual(context.migratedOrders, [orderId, orderId])
 })
 
 test('canReopen exactly reflects edit plus complete grants and a writable order', () => {

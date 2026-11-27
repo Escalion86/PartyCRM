@@ -1,5 +1,5 @@
 const STATIC_CACHE = 'partycrm-static-v3'
-const PAGE_CACHE = 'partycrm-pages-v3'
+const PAGE_CACHE = 'partycrm-pages-v4'
 
 const isSameOrigin = (url) => url.origin === self.location.origin
 
@@ -16,6 +16,10 @@ const isStaticAsset = (pathname) =>
   pathname === '/manifest.json' ||
   pathname === '/party-manifest.json' ||
   pathname === '/favicon.ico'
+
+const isAccountPage = (pathname) =>
+  /^\/(?:company|performer|cabinet)(?:\/|$)/.test(pathname) ||
+  /^\/party\/(?:entry|start|settings|site-settings|invite)(?:\/|$)/.test(pathname)
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -49,17 +53,19 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname === '/party-sw.js' || url.pathname === '/sw.js') return
 
   if (request.mode === 'navigate') {
+    if (isAccountPage(url.pathname)) return
     event.respondWith(
       (async () => {
         try {
           const response = await fetch(request)
-          if (response.ok) {
+          const cacheControl = response.headers.get('Cache-Control') || ''
+          if (response.ok && !response.redirected && !/\b(?:private|no-store)\b/i.test(cacheControl)) {
             const cache = await caches.open(PAGE_CACHE)
             await cache.put(request, response.clone())
           }
           return response
         } catch {
-          return (await caches.match(request)) || Response.error()
+          return (await caches.match(request, { cacheName: PAGE_CACHE })) || Response.error()
         }
       })()
     )

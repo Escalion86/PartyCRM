@@ -13,7 +13,11 @@ const dateText = (value) => {
 
 const roles = { performer: 'Исполнитель', admin: 'Администратор мероприятия', assistant: 'Помощник' }
 const confirmations = { pending: 'Ожидает ответа', confirmed: 'Подтверждено', declined: 'Отказ', done: 'Завершено' }
-const assignmentPayload = (rows) => rows.map(({ staffId, role }) => ({ staffId, role }))
+const assignmentPayload = (rows) => rows.map((row) => ({
+  staffId: row.staffId,
+  role: row.role,
+  ...(Object.hasOwn(row, 'placeId') ? { placeId: row.placeId || null } : {}),
+}))
 
 function OrderTeamEditor({ companyId, orderId, onSaved }) {
   const [order, setOrder] = useState(null)
@@ -115,6 +119,13 @@ function OrderTeamEditor({ companyId, orderId, onSaved }) {
                     {Object.entries(roles).map(([value, title]) => <option key={value} value={value}>{title}</option>)}
                   </select>
                 </label>
+                {order.places?.length > 0 && <label className="block text-sm">Место назначения
+                  <select className="mt-1 w-full cursor-pointer rounded border bg-white p-2" value={row.placeId || ''} disabled={disabled}
+                    onChange={(event) => { setAssigned((previous) => previous.map((item) => item.staffId === row.staffId ? { ...item, placeId: event.target.value || null } : item)); setNotice('') }}>
+                    <option value="">Весь заказ</option>
+                    {order.places.map((place) => <option key={place.id} value={place.id}>{place.locationTitle || 'Сохранённая площадка'}</option>)}
+                  </select>
+                </label>}
                 {order.assignedStaff?.some((item) => item.staffId === row.staffId) ? (
                   <p className="text-sm text-gray-600">Снятие назначения — через администратора.</p>
                 ) : <button type="button" className={buttonClass} disabled={disabled}

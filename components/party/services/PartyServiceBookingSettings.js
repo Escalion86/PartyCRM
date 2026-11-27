@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
+import Input from '@components/Input'
 
 const input =
   'mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm'
@@ -182,20 +183,18 @@ export default function PartyServiceBookingSettings({
           ) : null}
         </div>
       ) : null}
-      <label className="block text-sm">
-        Минут аренды включено в одно выполнение
-        <input
-          type="number"
-          min={0}
-          max={10080}
-          step={1}
-          className={input}
-          value={value.includedRentalMinutes ?? 0}
-          onChange={(event) =>
-            edit({ includedRentalMinutes: event.target.value })
-          }
-        />
-      </label>
+      <Input
+        label="Минут аренды включено в одно выполнение"
+        type="number"
+        min={0}
+        max={10080}
+        step={5}
+        fullWidth
+        tone="party"
+        disabled={disabled}
+        value={value.includedRentalMinutes ?? 0}
+        onChange={(includedRentalMinutes) => edit({ includedRentalMinutes })}
+      />
       <p className="text-xs text-slate-600">
         Ноль — аренда оплачивается отдельно. При повторе включённое время
         умножается на количество.

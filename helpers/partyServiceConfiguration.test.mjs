@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   calculatePartyServiceConfiguration,
+  editablePartyServiceConfiguration,
   normalizePartyServiceConfiguration,
   redactPartyServiceConfigurationPrices,
 } from './partyServiceConfiguration.js'
@@ -84,4 +85,72 @@ test('signed adjustments can shorten the service and reject negative final value
   assert.equal(calculatePartyServiceConfiguration({ ...service, configuration }, selection).durationMinutes, 30)
   assert.throws(() => calculatePartyServiceConfiguration({ price: 0, duration: 60, configuration }, selection), /стоимость/)
   assert.throws(() => calculatePartyServiceConfiguration({ price: 100, duration: 20, configuration }, selection), /длительность/)
+})
+
+const customFields = [
+  { type: 'number', id: 'area', title: 'Площадь', unit: 'м²', min: 0.5, max: 100, allowDecimal: true, required: true, pricePerUnit: '25,25', durationPerUnit: 3 },
+  { type: 'ranges', mode: 'base', id: 'distance', title: 'Расстояние', unit: 'км', required: true, tiers: [
+    { min: 0, max: 5, price: 500, durationMinutes: 20 },
+    { min: 6, max: 15, price: 800, durationMinutes: 40, includedUnits: 5, pricePerUnit: 150, maxPrice: 1200 },
+  ] },
+  { type: 'ranges', id: 'floors', title: 'Этажи', unit: 'эт.', tiers: [
+    { min: 1, max: 3, price: 0, durationMinutes: 0 },
+    { min: 4, price: 200, durationMinutes: 10, pricePerUnit: -10 },
+  ] },
+  { type: 'select', id: 'finish', title: 'Покрытие', required: true, options: [{ id: 'matte', title: 'Матовое', priceDelta: -30, durationDelta: -5 }] },
+  { type: 'checkboxes', id: 'extras', title: 'Комплектация', options: [
+    { id: 'tape', title: 'Лента', priceDelta: 10 },
+    { id: 'tray', title: 'Лоток', priceDelta: 5 },
+  ] },
+]
+const customService = { price: 900, duration: 60, configuration: normalizePartyServiceConfiguration({ fields: customFields }) }
+const customSelection = { values: { extras: ['tray', 'tape'], finish: 'matte', floors: 4, distance: 10, area: '2,50' } }
+
+test('arbitrary named parameters add rates and adjustments to the selected base range', () => {
+  const result = calculatePartyServiceConfiguration(customService, customSelection)
+  assert.deepEqual(result, {
+    unitPrice: 1438.13,
+    durationMinutes: 53,
+    parameters: { values: { area: 2.5, distance: 10, floors: 4, finish: 'matte', extras: ['tape', 'tray'] } },
+    details: ['Площадь: 2,5 м²', 'Расстояние: 10 км', 'Этажи: 4 эт.', 'Покрытие: Матовое', 'Комплектация: Лента, Лоток'],
+  })
+  const reordered = normalizePartyServiceConfiguration({ fields: customFields.toReversed() })
+  assert.equal(calculatePartyServiceConfiguration({ ...customService, configuration: reordered }, customSelection).unitPrice, result.unitPrice)
+})
+
+test('validates required choices, numeric fields and the limit of an individual range', () => {
+  const calculate = (values) => calculatePartyServiceConfiguration(customService, { values: { ...customSelection.values, ...values } })
+  assert.throws(() => calculate({ area: '' }), { field: 'values.area' })
+  assert.throws(() => calculate({ area: 2.501 }), { field: 'values.area' })
+  assert.throws(() => calculate({ distance: 16 }), { field: 'values.distance' })
+  assert.throws(() => calculate({ finish: 'gone' }), { field: 'values.finish' })
+  assert.throws(() => calculate({ extras: ['gone'] }), { field: 'values.extras' })
+  assert.throws(() => calculate({ old: 'some' }), { status: 400 })
+  const required = normalizePartyServiceConfiguration({ fields: [{ ...customFields.at(-1), required: true }] })
+  assert.throws(() => calculatePartyServiceConfiguration({ configuration: required }, { values: { extras: [] } }), { field: 'values.extras' })
+})
+
+test('validates custom configurations before they are stored in the catalog', () => {
+  assert.equal(normalizePartyServiceConfiguration({ fields: [] }), null)
+  assert.throws(() => normalizePartyServiceConfiguration({ fields: [{ ...customFields[0], unit: '' }] }), /единицу измерения/)
+  assert.throws(() => normalizePartyServiceConfiguration({ fields: [customFields[0], customFields[0]] }), /уникальными/)
+  assert.throws(() => normalizePartyServiceConfiguration({ fields: [customFields[1], { ...customFields[1], id: 'another' }] }), /Только один/)
+  assert.throws(() => normalizePartyServiceConfiguration({ fields: [{ ...customFields[1], tiers: [{ min: 1, max: 2 }, { min: 2 }] }] }), /пересекаться/)
+})
+
+test('price masking keeps custom field labels, values and duration', () => {
+  const configuration = redactPartyServiceConfigurationPrices(customService.configuration)
+  assert.doesNotMatch(JSON.stringify(configuration), /price/i)
+  const masked = calculatePartyServiceConfiguration({ duration: 60, configuration }, customSelection)
+  assert.deepEqual(masked, { ...calculatePartyServiceConfiguration(customService, customSelection), unitPrice: 0 })
+})
+
+test('opening old rules in the custom editor preserves their pricing when saved in the new format', () => {
+  const converted = normalizePartyServiceConfiguration(editablePartyServiceConfiguration(configuration))
+  const customized = { ...service, configuration: converted }
+  const { unitPrice, durationMinutes } = calculate(55, { addonIds: ['photo'], optionIds: { mode: 'extended' } })
+  const calculated = calculatePartyServiceConfiguration(customized, { values: { 'legacy-participants': 55, 'legacy-addons': ['photo'], mode: 'extended' } })
+  assert.equal(calculated.unitPrice, unitPrice)
+  assert.equal(calculated.durationMinutes, durationMinutes)
+  assert.deepEqual(editablePartyServiceConfiguration(null), { fields: [] })
 })

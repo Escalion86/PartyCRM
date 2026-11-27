@@ -4,6 +4,8 @@ import assert from 'node:assert/strict'
 import {
   getPartyDocumentTemplateSource,
   formatPartyDocumentFileDate,
+  getPartyContractServiceTitles,
+  getPartyDocumentDate,
 } from './partyOrderDocuments.js'
 
 test('custom DOCX template is used when company uploaded it', () => {
@@ -11,6 +13,14 @@ test('custom DOCX template is used when company uploaded it', () => {
     type: 'docx',
     templateBase64: 'custom-base64',
   })
+})
+
+test('contract date uses the company day and services use the saved order items', () => {
+  assert.equal(getPartyDocumentDate(new Date('2026-11-28T19:00:00Z'), 'Asia/Krasnoyarsk'), '2026-11-29')
+  assert.deepEqual(getPartyContractServiceTitles({
+    serviceTitle: 'Старая программа',
+    orderItems: [{ title: 'Игра в зале', quantity: 2 }, { title: 'Световое шоу', quantity: 1 }],
+  }), ['Игра в зале × 2', 'Световое шоу'])
 })
 
 test('built-in text template is used when company has no custom DOCX', () => {

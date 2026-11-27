@@ -12,7 +12,7 @@ import { getPartyVenueWindow, getPartyVenueOrderIntervalFilter, PARTY_VENUE_MAX_
 
 const id = (value) => String(value?._id ?? value ?? '')
 const iso = (value) => new Date(value).toISOString()
-const orderFields = '_id tenantId title serviceTitle status workflowStageId locationId eventDate dateEnd rental durationMinutes assignedStaff.staffId assignedStaff.confirmationStatus responsibleStaffId partyEventGroupId sharedLocationBooking'
+const orderFields = '_id tenantId title serviceTitle status workflowStageId locationId eventDate dateEnd rental durationMinutes bookingVersion places.id places.locationId places.eventDate places.dateEnd places.durationMinutes places.rental assignedStaff.staffId assignedStaff.placeId assignedStaff.confirmationStatus responsibleStaffId partyEventGroupId sharedLocationBooking'
 const loadModels = async ({ type, includeTickets }) => {
   const models = await import('./partyModels')
   const Orders = await models.getPartyOrderModel()
@@ -61,6 +61,22 @@ const orderIntervalFilter = (range, buffer = 0) => {
     $or: [
       { dateEnd: { $gt: from } },
       { dateEnd: null, $expr: { $gt: [{ $add: ['$eventDate', { $multiply: [{ $cond: [{ $gt: ['$durationMinutes', 0] }, '$durationMinutes', 60] }, 60000] }] }, from] } },
+    ],
+  }
+}
+
+const locationOrderFilter = (range, resourceIds) => {
+  const buffer = PARTY_VENUE_MAX_BUFFER_MINUTES * 60000
+  const startBefore = new Date(+range.dateTo + buffer)
+  const endAfter = new Date(+range.dateFrom - buffer)
+  return {
+    status: { $ne: 'canceled' },
+    $or: [
+      { bookingVersion: { $ne: 2 }, locationId: { $in: resourceIds }, placeType: { $ne: 'client_address' }, ...getPartyVenueOrderIntervalFilter({ startBefore, endAfter }) },
+      { bookingVersion: 2, places: { $elemMatch: { locationId: { $in: resourceIds }, $or: [
+        { 'rental.startsAt': { $lt: startBefore }, 'rental.endsAt': { $gt: endAfter } },
+        { rental: null, eventDate: { $lt: startBefore }, dateEnd: { $gt: endAfter } },
+      ] } } },
     ],
   }
 }
@@ -138,8 +154,8 @@ export const createPartyResourceCalendarService = ({ getModels = loadModels, now
     } else if (resourceIds.length) {
       const buffer = PARTY_VENUE_MAX_BUFFER_MINUTES * 60000
       const [rows, sessions] = await Promise.all([models.Orders.find({ $and: [
-        buildPartyOrderAccessFilter(context), type === 'location' ? { status: { $ne: 'canceled' }, ...getPartyVenueOrderIntervalFilter({ startBefore: new Date(+query.dateTo + PARTY_VENUE_MAX_BUFFER_MINUTES * 60000), endAfter: new Date(+query.dateFrom - PARTY_VENUE_MAX_BUFFER_MINUTES * 60000) }) } : orderIntervalFilter(query),
-        type === 'location' ? { locationId: { $in: resourceIds }, placeType: { $ne: 'client_address' } } : { 'assignedStaff.staffId': { $in: resourceIds } },
+        buildPartyOrderAccessFilter(context),
+        type === 'location' ? locationOrderFilter(query, resourceIds) : { ...orderIntervalFilter(query), 'assignedStaff.staffId': { $in: resourceIds } },
       ] }).select(orderFields).sort({ eventDate: 1, _id: 1 }).limit(PARTY_RESOURCE_CALENDAR_ENTRY_LIMIT + 1).lean(),
       type === 'location' && access.tickets
         ? models.Sessions.find(models.ticketAccessFilter(context, { status: { $ne: 'canceled' }, locationId: { $in: resourceIds }, startsAt: { $lt: new Date(+query.dateTo + buffer) }, endsAt: { $gt: new Date(+query.dateFrom - buffer) } }))
@@ -149,16 +165,23 @@ export const createPartyResourceCalendarService = ({ getModels = loadModels, now
       partial ||= rows.length > PARTY_RESOURCE_CALENDAR_ENTRY_LIMIT
       ordersLoop: for (const order of rows.slice(0, PARTY_RESOURCE_CALENDAR_ENTRY_LIMIT)) {
         if (!canPartyAccess(context, { resource: 'orders', order })) continue
-        const assignedIds = [...new Set((order.assignedStaff || []).map((assignment) => id(assignment.staffId)))].filter((value) => resourcesById.has(value))
-        const targets = type === 'location' ? [id(order.locationId)] : assignedIds
-        for (const target of targets) {
+        const places = order.bookingVersion === 2 ? order.places || [] : []
+        const assignments = new Map()
+        for (const assignment of order.assignedStaff || []) {
+          const staffId = id(assignment.staffId)
+          if (!assignments.has(staffId)) assignments.set(staffId, assignment)
+        }
+        const orderedPlaces = order.bookingVersion === 2 ? places : [order]
+        const targets = type === 'location' ? orderedPlaces.map((place) => [id(place.locationId), place]) : assignments
+        for (const [target, detail] of targets) {
           const resource = resourcesById.get(target)
           if (!resource) continue
-          const window = windowOfOrder(context, order, type === 'location' ? resource : {}, type === 'location')
+          const place = type === 'location' ? detail : places.find((entry) => entry.id === detail.placeId) || order
+          const window = windowOfOrder(context, place === order ? order : { ...order, ...place }, type === 'location' ? resource : {}, type === 'location')
           if (!window) { partial = true; continue }
           if (!rangeOverlap(window, query)) continue
-          const assignment = type === 'staff' ? (order.assignedStaff || []).find((value) => id(value.staffId) === target) : null
-          entries.push({ id: `order:${id(order)}:${target}`, resourceId: target, kind: 'order', orderId: id(order), title: titleOf(context, order), href: href(context, order._id), ...serializeWindow(window), ...(type === 'location' ? { bufferBeforeMinutes: Number(resource.preparationMinutes || 0), bufferAfterMinutes: Number(resource.cleanupMinutes || 0) } : { confirmationStatus: ['pending', 'confirmed', 'declined', 'done'].includes(assignment?.confirmationStatus) ? assignment.confirmationStatus : 'pending' }), _source: order })
+          const key = type === 'location' && place !== order ? place.id : target
+          entries.push({ id: `order:${id(order)}:${key}`, resourceId: target, kind: 'order', orderId: id(order), title: titleOf(context, order), href: href(context, order._id), ...serializeWindow(window), ...(type === 'location' ? { bufferBeforeMinutes: Number(resource.preparationMinutes || 0), bufferAfterMinutes: Number(resource.cleanupMinutes || 0) } : { confirmationStatus: ['pending', 'confirmed', 'declined', 'done'].includes(detail?.confirmationStatus) ? detail.confirmationStatus : 'pending' }), _source: order })
           if (entries.length > PARTY_RESOURCE_CALENDAR_ENTRY_LIMIT) { partial = true; break ordersLoop }
         }
       }
@@ -184,7 +207,7 @@ export const createPartyResourceCalendarService = ({ getModels = loadModels, now
       generatedAt: iso(now()), timeZone, dateFrom: iso(query.dateFrom), dateTo: iso(query.dateTo), type, resourceSearch, resourceTypes: access.types,
       resources: catalog.map((resource) => ({ id: id(resource), type, title: type === 'staff' ? [resource.firstName, resource.secondName].filter(Boolean).join(' ') || 'Сотрудник' : resource.title || (type === 'location' ? 'Площадка' : 'Реквизит'), status: resource.status, ...(type === 'location' ? { capacity: resource.capacity, usageMode: resource.usageMode || 'exclusive' } : type === 'inventory' ? { capacity: Math.max(0, Number(resource.quantity || 0) - Number(resource.unavailableQuantity || 0)), unit: resource.unit || 'шт.' } : {}) })),
       items, partial, hasMore: partial, notice: PARTY_RESOURCE_CALENDAR_NOTICE,
-      ...(type === 'staff' ? { intervalNotice: 'Сотрудник назначен на весь интервал заказа. Отдельные интервалы участия в услугах пока не ведутся.' } : {}),
+      ...(type === 'staff' ? { intervalNotice: 'Назначения на площадку отображаются по времени её программы. Назначения на весь интервал заказа отображаются по общему времени события.' } : {}),
     }
   }
   return { load }

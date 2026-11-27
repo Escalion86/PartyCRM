@@ -1,5 +1,6 @@
 import crypto from 'node:crypto'
 import { NextResponse } from 'next/server'
+import { getPartySessionUser } from '@server/partyAuth'
 import { getPartyUserModel } from '@server/partyModels'
 import { createPartyGoogleCalendarClient } from '@server/partyGoogleCalendarClient'
 import oauthState from '@server/partyGoogleCalendarOAuthState'
@@ -32,14 +33,18 @@ export const createPerformerCore = () =>
     exchangeCode: exchangeGoogleCalendarCode,
   })
 
-export const authorizePerformerCallback = async ({ userId }) =>
-  Boolean(
+export const authorizePerformerCallback = async ({ userId }) => {
+  const sessionUser = await getPartySessionUser()
+  if (!sessionUser || sessionUser._id !== userId) return false
+
+  return Boolean(
     await (await getPartyUserModel()).exists({
       _id: userId,
       status: 'active',
       interfaceRoles: 'performer',
     })
   )
+}
 
 export const jsonResult = (result) =>
   NextResponse.json(

@@ -307,6 +307,22 @@ const overlap = (s) => {
     })
 }
 
+test('related multi-place orders cannot share a room reservation across orders', async () => {
+  const s = setup()
+  s.state().orders[1].bookingVersion = 2
+  await s.link()
+  await assert.rejects(toggle(s), { status: 409 })
+  assert.notEqual(s.state().groups[0].sharedLocationBooking, true)
+
+  const shared = setup()
+  await shared.link()
+  await toggle(shared)
+  shared.state().orders[2].bookingVersion = 2
+  await assert.rejects(shared.link({ targetOrderId: 'o2', expectedRevision: 2 }), { status: 409 })
+  assert.equal(shared.state().orders[2].partyEventGroupId, null)
+  assert.equal(shared.state().groups[0].revision, 2)
+})
+
 test('sharing defaults off; explicit toggle exposes only server tenant group IDs and touches all members', async () => {
   const s = setup()
   overlap(s)

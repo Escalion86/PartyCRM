@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { partyFetch } from '@helpers/partyImpersonationClient'
 
 const options = [
   {
@@ -49,7 +50,7 @@ export default function PartyStartClient({ user }) {
     setLoading(true)
     setError('')
     try {
-      const response = await fetch('/api/party/auth/me', {
+      const response = await partyFetch('/api/party/auth/me', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

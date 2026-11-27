@@ -4,13 +4,22 @@ import { readFile } from 'node:fs/promises'
 import { compileFunction } from 'node:vm'
 import { getPartyOrderWriteGuard } from '../helpers/partyOrderWriteGuard.js'
 import { canPartyOperationalPermission } from '../helpers/partyOperationalPermissions.js'
+import {
+  buildPartyOrderAccessFilter,
+  canPartyAccess,
+  filterPartyOrderForAccess,
+} from '../helpers/partyRolePermissions.js'
 
 const source = (await readFile(new URL('./partyOrderPricing.js', import.meta.url), 'utf8')).replace(/^import .*\r?\n/gm, '').replaceAll('export const ', 'const ')
 const id = (n) => String(n).padStart(24, '0')
 const match = (row, filter) => Object.entries(filter).every(([key, value]) => {
   if (key === '$or') return value.some((f) => match(row, f))
   if (key === '$and') return value.every((f) => match(row, f))
+  if (key === '$nor') return !value.some((f) => match(row, f))
   if (value?.$in) return value.$in.includes(row[key])
+  if (value?.$nin) return !value.$nin.includes(row[key])
+  if (value?.$elemMatch) return row[key]?.some((entry) => match(entry, value.$elemMatch))
+  if (value && typeof value === 'object' && '$ne' in value) return row[key] !== value.$ne
   if (value?.$lt) return String(row[key]) < value.$lt
   if (value && typeof value === 'object' && '$exists' in value) return (row[key] !== undefined) === value.$exists
   return String(row[key]) === String(value)
@@ -26,7 +35,7 @@ const setup = () => {
     findOne: (f) => { calls.push(['findOne', f]); return query(rows.find((r) => match(r, f))) },
     findOneAndUpdate: (f, update) => { if (race) race(rows[0]); const row = rows.find((r) => match(r, f)); if (row) { writes++; for (const [key, value] of Object.entries(update.$set)) { const [field, child] = key.split('.'); if (child) { row[field] ||= {}; row[field][child] = value } else row[field] = value }; row.commercialRevision = (row.commercialRevision || 0) + update.$inc.commercialRevision } return query(row || null) },
   }
-  const deps = { NextResponse: { json: (body) => ({ status: 200, ...body }) }, canPartyOperationalPermission, getPartyOrderWriteGuard, getPartyRequestContext: async () => ({ context: ctx }), isValidObjectId: (s) => /^[a-f0-9]{24}$/.test(s), partyError: (status, code, message) => ({ status, code, message }), getPartyOrderModel: async () => Orders, recordPartyOrderAudit: async (v) => { calls.push(['audit', v]); if (hookFails) throw Error('audit') }, syncPartyOrderCalendarAfterCrud: async (v) => { calls.push(['calendar', v]); if (hookFails) throw Error('calendar') }, syncPartyOrderInventory: async (v) => { calls.push(['inventory', v]); if (hookFails) throw Error('secret resource details'); return { hasShortage: false } } }
+  const deps = { NextResponse: { json: (body) => ({ status: 200, ...body }) }, canPartyOperationalPermission, buildPartyOrderAccessFilter, canPartyAccess, filterPartyOrderForAccess, getPartyOrderWriteGuard, getPartyRequestContext: async () => ({ context: ctx }), isValidObjectId: (s) => /^[a-f0-9]{24}$/.test(s), partyError: (status, code, message) => ({ status, code, message }), getPartyOrderModel: async () => Orders, recordPartyOrderAudit: async (v) => { calls.push(['audit', v]); if (hookFails) throw Error('audit') }, syncPartyOrderCalendarAfterCrud: async (v) => { calls.push(['calendar', v]); if (hookFails) throw Error('calendar') }, syncPartyOrderInventory: async (v) => { calls.push(['inventory', v]); if (hookFails) throw Error('secret resource details'); return { hasShortage: false } } }
   const api = compileFunction(`${source}\nreturn {partyOrderPricingRoute,listPartyOrderPricing,getPartyOrderPricing,updatePartyOrderPricing}`, Object.keys(deps))(...Object.values(deps))
   return { api, rows, calls, write: (body = { contractAmount: 200, expectedRevision: 0 }) => api.updatePartyOrderPricing({ context: ctx, orderId: id(1), body }), ctx: (v) => { ctx = v }, race: (v) => { race = v }, failHooks: () => { hookFails = true }, writes: () => writes }
 }
@@ -94,4 +103,31 @@ test('actual pricing endpoints bind authenticated tenant, awaited params and str
   const GET = compileFunction(`${listSource}\nreturn GET`, ['listPartyOrderPricing', 'partyOrderPricingRoute'])(s.api.listPartyOrderPricing, s.api.partyOrderPricingRoute)
   assert.equal((await GET({ nextUrl: new URL('https://example.test/api/party/order-pricing') })).data.orders.length, 1)
   assert.equal((await GET({ nextUrl: new URL('https://example.test/api/party/order-pricing?cursor=broken') })).status, 400)
+})
+
+test('multi-place pricing respects every venue scope and keeps canonical prices on narrow writes', async () => {
+  const s = setup()
+  const locationId = id(10)
+  const otherLocationId = id(11)
+  Object.assign(s.rows[0], {
+    bookingVersion: 2,
+    locationId,
+    places: [{ locationId }, { locationId: otherLocationId }],
+  })
+  const scoped = {
+    ...context(),
+    position: {
+      revision: 1,
+      permissions: { orders: 'read', 'finance.clientAmount': 'edit' },
+      orderScope: { locationIds: [locationId], includeUnlocated: false },
+    },
+  }
+  assert.deepEqual((await s.api.listPartyOrderPricing({ tenantId: 'a', context: scoped })).orders, [])
+  await assert.rejects(s.api.getPartyOrderPricing({ tenantId: 'a', orderId: id(1), context: scoped }), { status: 404 })
+
+  const owner = context('owner')
+  s.ctx(owner)
+  assert.equal((await s.api.getPartyOrderPricing({ tenantId: 'a', orderId: id(1), context: owner })).contractAmount, 100)
+  await assert.rejects(s.write(), { status: 409, code: 'partycrm_multi_place_editor_required' })
+  assert.equal(s.writes(), 0)
 })

@@ -26,6 +26,9 @@ import {
 import PartyAuditLog from '@components/party/audit/PartyAuditLog'
 import { PartyEventBriefView } from '@components/party/orders/PartyEventBrief'
 import PartyOrderServiceDetails from '@components/party/orders/PartyOrderServiceDetails'
+import PartyOrderPlacesRead from '@components/party/orders/PartyOrderPlacesRead'
+import PartyOrderCalendarDetails from '@components/party/orders/PartyOrderCalendarDetails'
+import { canPartyAccess } from '@helpers/partyRolePermissions'
 
 const PartyRelatedOrders = dynamic(() => import('@components/party/orders/PartyRelatedOrders'))
 
@@ -258,6 +261,7 @@ export default function OrderViewModal({
   onEdit,
   onUpdateOrder,
   onRelatedOrdersChanged,
+  onCalendarSaved,
 }) {
   const [activeAdditionalEvent, setActiveAdditionalEvent] = useState(null)
   const [editingAdditionalEvent, setEditingAdditionalEvent] = useState(null)
@@ -458,11 +462,11 @@ export default function OrderViewModal({
             <InfoLine label="Формат">
               {PLACE_TYPE_LABELS[order?.placeType] || 'Не указан'}
             </InfoLine>
-            <InfoLine label="Место">
+            {order?.bookingVersion !== 2 && <InfoLine label="Место">
               {order?.placeType === 'company_location'
                 ? location?.title || 'Точка не выбрана'
                 : order?.customAddress || 'Выездной адрес не указан'}
-            </InfoLine>
+            </InfoLine>}
             <InfoLine label="Ответственный">
               {order?.responsibleStaffId
                 ? responsibleStaffMember
@@ -475,6 +479,15 @@ export default function OrderViewModal({
             ) : null}
           </div>
         </Section>
+
+        <PartyOrderCalendarDetails
+          key={String(order._id)}
+          order={order}
+          companyId={activeCompanyId}
+          canReview={canPartyAccess(ticketContext, { resource: 'orders.title', action: 'edit', order })}
+          canChangeSync={canPartyAccess(ticketContext, { resource: 'orders.eventDate', action: 'edit', order })}
+          onSaved={onCalendarSaved}
+        />
 
         <Section title="Бриф праздника">
           <PartyEventBriefView value={order?.eventBrief || {}} companyId={activeCompanyId} orderId={String(order._id)} orderStatus={order.status} servicesIds={order.servicesIds} />
@@ -491,7 +504,7 @@ export default function OrderViewModal({
 
 
 
-        <Section title="Услуги">
+        {order?.bookingVersion === 2 ? <PartyOrderPlacesRead order={order} /> : <Section title="Услуги">
           {Array.isArray(order?.orderItems) && order.orderItems.length > 0 ? (
             <div className="grid gap-2">
               {order.orderItems.map((item, index) => (
@@ -550,7 +563,7 @@ export default function OrderViewModal({
           ) : (
             <p className="text-sm text-slate-500">Услуги не указаны.</p>
           )}
-        </Section>
+        </Section>}
 
         <Section title="Исполнители">
           {order?.performerComment ? (
