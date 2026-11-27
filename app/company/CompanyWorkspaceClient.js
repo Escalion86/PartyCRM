@@ -986,7 +986,7 @@ export default function CompanyWorkspaceClient({ section = 'overview', canSwitch
         `/api/party/orders/${editingOrderId}`,
         buildCompanyRequestOptions(activeCompanyId, {
           method: 'PATCH',
-          body: JSON.stringify(orderDraft),
+          body: JSON.stringify({ ...orderDraft, expectedUpdatedAt: orderDraft.updatedAt }),
         })
       )
       if (response.data) {
@@ -1032,7 +1032,7 @@ export default function CompanyWorkspaceClient({ section = 'overview', canSwitch
           `/api/party/orders/${nextOrder._id}`,
           buildCompanyRequestOptions(activeCompanyId, {
             method: 'PATCH',
-            body: JSON.stringify(nextOrder),
+            body: JSON.stringify({ ...nextOrder, expectedUpdatedAt: nextOrder.updatedAt }),
           })
         )
         if (response.data) {

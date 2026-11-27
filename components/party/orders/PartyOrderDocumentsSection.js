@@ -187,6 +187,7 @@ export default function PartyOrderDocumentsSection({
         companySettings={companySettings}
         activeCompanyId={activeCompanyId}
         onOrderUpdated={onOrderUpdated}
+        disabled={disabled || unsaved}
       />
 
       <PartyOrderContractPanel order={order} companyId={activeCompanyId} services={services} disabled={disabled} unsaved={unsaved} onDownloaded={setContractDate} />

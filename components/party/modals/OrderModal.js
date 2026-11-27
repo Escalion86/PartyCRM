@@ -2,7 +2,7 @@
 
 import { PartyOrderContactRolesEditor } from '@components/party/orders/PartyOrderContactRoles'
 
-import { useState, useCallback, useMemo, useEffect, useId } from 'react'
+import { useState, useCallback, useMemo, useEffect, useId, useLayoutEffect, useRef } from 'react'
 import PartyOrderWizard from '@components/party/orders/PartyOrderWizard'
 import PartyOrderPlacesRead from '@components/party/orders/PartyOrderPlacesRead'
 import { PARTY_ORDER_WIZARD_STEP as STEP } from '@helpers/partyOrderWizardSteps'
@@ -29,6 +29,7 @@ import PartyAddressPoolPicker from '@components/party/inputs/PartyAddressPoolPic
 import PartyOrderTypePicker from '@components/party/inputs/PartyOrderTypePicker'
 import PartyOrderTransactionsSection from '@components/party/orders/PartyOrderTransactionsSection'
 import PartyOrderDocumentsSection from '@components/party/orders/PartyOrderDocumentsSection'
+import PartyOrderBriefLink from '@components/party/orders/PartyOrderBriefLink'
 import { PartyEventBriefEditor } from '@components/party/orders/PartyEventBrief'
 import {
   AdditionalEventCard,
@@ -57,6 +58,7 @@ import { usePartyTransactionsQuery } from '@helpers/usePartyTransactionsQuery'
 import getPersonFullName from '@helpers/getPersonFullName'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
 import { getInitialPartyAssignmentConfirmationStatus } from '@helpers/partyOrderAssignments'
+import { normalizePartyLegacyOrderDraft } from '@helpers/partyLegacyOrderDraft'
 
 // Нормализация телефона: цифры 11 символов, 8xxx → 7xxx
 const normalizePhone = (value) => {
@@ -187,7 +189,12 @@ export default function OrderModal({
   // Ошибка отправки формы (показывается внизу модального окна)
   const [submitError, setSubmitError] = useState('')
   const [focusSection, setFocusSection] = useState('')
-  const hasUnsavedChanges = useUnsavedChanges(orderDraft, open)
+  const [briefRefreshRevision, setBriefRefreshRevision] = useState(0)
+  const hasUnsavedChanges = useUnsavedChanges(orderDraft, open, briefRefreshRevision)
+  const refreshBlocked = useRef(false)
+  useLayoutEffect(() => {
+    refreshBlocked.current = saving || hasUnsavedChanges
+  }, [saving, hasUnsavedChanges])
   const formGuardId = usePartyUnsavedChanges(open && hasUnsavedChanges, {
     label: 'заказ',
     scope: activeCompanyId,
@@ -1100,14 +1107,30 @@ export default function OrderModal({
         </TabPanel>
 
         <TabPanel tabName="Бриф">
-          <PartyEventBriefEditor
-            value={orderDraft.eventBrief || {}}
-            onChange={(eventBrief) => handleChange('eventBrief', eventBrief)}
-            companyId={activeCompanyId}
-            orderId={orderDraft._id || ''}
-            orderStatus={orderDraft.status || 'draft'}
-            servicesIds={orderDraft.servicesIds}
-          />
+          <div className="grid min-w-0 gap-4">
+            {canManage && orderDraft._id ? (
+              <PartyOrderBriefLink
+                companyId={activeCompanyId}
+                orderId={orderDraft._id}
+                canCreate={!['closed', 'canceled'].includes(orderDraft.status)}
+                disabled={saving || hasUnsavedChanges}
+                onOrderRefreshed={(next) => {
+                  if (refreshBlocked.current) throw new Error('Сохраните изменения в заказе и повторите проверку ответов.')
+                  setOrderDraft(normalizePartyLegacyOrderDraft(next))
+                  setBriefRefreshRevision((revision) => revision + 1)
+                  onOrderApplied?.(next)
+                }}
+              />
+            ) : null}
+            <PartyEventBriefEditor
+              value={orderDraft.eventBrief || {}}
+              onChange={(eventBrief) => handleChange('eventBrief', eventBrief)}
+              companyId={activeCompanyId}
+              orderId={orderDraft._id || ''}
+              orderStatus={orderDraft.status || 'draft'}
+              servicesIds={orderDraft.servicesIds}
+            />
+          </div>
         </TabPanel>
 
         {/* ====== Вкладка 2: Клиенты и контакты ====== */}

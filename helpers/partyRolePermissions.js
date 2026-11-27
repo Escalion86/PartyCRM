@@ -217,7 +217,7 @@ const orderFieldResource = (field) => {
 const operationalFields = ['_id', 'tenantId', 'createdAt', 'updatedAt', '__v', 'commercialRevision', 'reportCoordinatorRevision', 'sharedLocationRevision']
 export const filterPartyOrderForAccess = (context, order) => {
   if (!canPartyAccess(context, { resource: 'orders', order })) return null
-  const internalFields = ['createRequestKey', 'createRequestActorId', 'createRequestFingerprint', 'googleCalendarImportKey']
+  const internalFields = ['createRequestKey', 'createRequestActorId', 'createRequestFingerprint', 'googleCalendarImportKey', 'clientBriefLink', 'clientBriefSubmittedAt', 'proposalPublication']
   const hasGoogleCalendarEvent = Boolean(order.googleCalendarEventId)
   if (manager(context)) return {
     ...Object.fromEntries(Object.entries(order).filter(([field]) => !internalFields.includes(field))),

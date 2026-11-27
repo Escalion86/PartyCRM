@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { apiJson } from '@helpers/apiClient'
-import exportDocxFromTemplate from '@helpers/exportDocxFromTemplate'
+import usePartyUnsavedChanges from '@components/party/navigation/usePartyUnsavedChanges'
+import PartyOrderPublicLink, { partyOrderSecondaryButton } from './PartyOrderPublicLink'
 import {
   buildPartyProposalItemsFromOrder,
   calculatePartyProposalItem,
@@ -24,6 +25,7 @@ const STATUS_LABELS = {
   rejected: 'Отклонено',
   expired: 'Истекло',
 }
+const MAX_PUBLIC_VARIANTS = 6
 
 const toDateInput = (value) => {
   if (!value) return ''
@@ -47,10 +49,10 @@ const addDays = (value, days) => {
   return toDateInput(date)
 }
 
-const getClientName = (client = {}) =>
-  [client.secondName, client.firstName, client.thirdName]
+const getClientName = (client) =>
+  [client?.secondName, client?.firstName, client?.thirdName]
     .filter(Boolean)
-    .join(' ')
+    .join(' ') || client?.name || ''
 
 const getOrderAddress = (order = {}) => {
   if (order.bookingVersion === 2) return formatPartyProposalAddress(order)
@@ -126,15 +128,30 @@ export default function PartyOrderProposalsSection({
   companySettings,
   activeCompanyId,
   onOrderUpdated,
+  onDraftChange,
+  disabled = false,
 }) {
-  const documents = companySettings?.documents || {}
+  const [loadedDocuments, setLoadedDocuments] = useState(null)
   const [proposals, setProposals] = useState([])
   const [draft, setDraft] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [historyError, setHistoryError] = useState('')
+  const [preparing, setPreparing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [applyingId, setApplyingId] = useState('')
   const [appliedMessage, setAppliedMessage] = useState('')
   const [error, setError] = useState('')
+  const [selectedVariants, setSelectedVariants] = useState([])
+  const [sharing, setSharing] = useState('')
+  const [shareNotice, setShareNotice] = useState('')
+  const [shareError, setShareError] = useState('')
+
+  const draftOpen = Boolean(draft)
+  usePartyUnsavedChanges(draftOpen, { label: 'коммерческое предложение', scope: activeCompanyId, pending: saving || Boolean(sharing) || Boolean(applyingId) })
+  useEffect(() => {
+    onDraftChange?.(draftOpen)
+    return () => onDraftChange?.(false)
+  }, [draftOpen, onDraftChange])
 
   const headers = useMemo(
     () =>
@@ -144,25 +161,27 @@ export default function PartyOrderProposalsSection({
     [activeCompanyId]
   )
 
-  const loadProposals = useCallback(async () => {
+  const loadProposals = useCallback(async (signal) => {
     if (!order?._id || !activeCompanyId) return
     setLoading(true)
-    setError('')
+    setHistoryError('')
     try {
       const response = await apiJson(
         `/api/party/proposals?orderId=${encodeURIComponent(order._id)}`,
-        { headers, cache: 'no-store' }
+        { headers, cache: 'no-store', signal }
       )
-      setProposals(Array.isArray(response.data) ? response.data : [])
+      if (!signal?.aborted) setProposals(Array.isArray(response.data) ? response.data : [])
     } catch (requestError) {
-      setError(requestError.message || 'Не удалось загрузить КП')
+      if (!signal?.aborted) setHistoryError(requestError.message || 'Не удалось загрузить КП')
     } finally {
-      setLoading(false)
+      if (!signal?.aborted) setLoading(false)
     }
   }, [activeCompanyId, headers, order?._id])
 
   useEffect(() => {
-    loadProposals()
+    const controller = new AbortController()
+    loadProposals(controller.signal)
+    return () => controller.abort()
   }, [loadProposals])
 
   const totals = useMemo(
@@ -170,9 +189,63 @@ export default function PartyOrderProposalsSection({
     [draft?.discount, draft?.items]
   )
 
-  const startNew = () => {
+  const getDocuments = async () => {
+    if (companySettings?.documents) return companySettings.documents
+    if (loadedDocuments) return loadedDocuments
+    const { data } = await apiJson('/api/party/company-settings', { headers, cache: 'no-store' })
+    const documents = data?.settings?.documents || {}
+    setLoadedDocuments(documents)
+    return documents
+  }
+
+  const startNew = async () => {
     setError('')
-    setDraft(buildInitialDraft({ order, client, services, documents }))
+    setPreparing(true)
+    try {
+      const documents = await getDocuments()
+      setDraft(buildInitialDraft({ order, client, services, documents }))
+    } catch (requestError) {
+      setError(requestError.message || 'Не удалось загрузить настройки КП')
+    } finally {
+      setPreparing(false)
+    }
+  }
+
+  const activeProposal = proposals.find((proposal) => proposal.publicPath)
+  const orderIsReadonly = ['closed', 'canceled'].includes(order.status)
+  const shareableVariants = orderIsReadonly ? [] : proposals.filter((proposal) =>
+    ['draft', 'sent'].includes(proposal.status)
+  )
+  const selectedShareableVariants = selectedVariants.filter((id) =>
+    shareableVariants.some((proposal) => String(proposal._id) === id)
+  )
+
+  const toggleVariant = (id, checked) => {
+    setShareNotice('')
+    setSelectedVariants((current) => checked ? [...current, id] : current.filter((value) => value !== id))
+  }
+
+  const changeShare = async (method) => {
+    const anchor = method === 'POST' ? selectedShareableVariants[0] : activeProposal?._id
+    if (!anchor || sharing || disabled) return
+    if (method === 'DELETE' && !window.confirm('Закрыть ссылку? Клиент больше не сможет открыть КП по этому адресу.')) return
+    setSharing(method)
+    setShareNotice('')
+    setShareError('')
+    try {
+      const { data } = await apiJson(`/api/party/proposals/${encodeURIComponent(anchor)}/share`, {
+        method,
+        headers,
+        ...(method === 'POST' ? { body: JSON.stringify({ variantIds: selectedShareableVariants }) } : {}),
+      })
+      setProposals(data)
+      setSelectedVariants([])
+      setShareNotice(method === 'POST' ? 'Ссылка готова к отправке клиенту.' : 'Ссылка закрыта.')
+    } catch (requestError) {
+      setShareError(requestError.message || 'Не удалось изменить ссылку на КП')
+    } finally {
+      setSharing('')
+    }
   }
 
   const updateItem = (index, key, value) => {
@@ -192,7 +265,7 @@ export default function PartyOrderProposalsSection({
   }
 
   const saveProposal = async () => {
-    if (!draft || saving) return
+    if (!draft || saving || disabled) return
     setSaving(true)
     setError('')
     try {
@@ -275,7 +348,9 @@ export default function PartyOrderProposalsSection({
   const downloadProposal = async (proposal) => {
     setError('')
     try {
+      const documents = await getDocuments()
       if (documents.proposalDocxTemplateBase64) {
+        const { default: exportDocxFromTemplate } = await import('@helpers/exportDocxFromTemplate')
         await exportDocxFromTemplate({
           templateBase64: documents.proposalDocxTemplateBase64,
           fileName: `Коммерческое предложение №${proposal.number} v${proposal.version}.docx`,
@@ -303,19 +378,20 @@ export default function PartyOrderProposalsSection({
         <button
           type="button"
           onClick={startNew}
-          className="h-9 cursor-pointer rounded-lg bg-sky-600 px-4 text-sm font-semibold text-white transition hover:bg-sky-700"
+          disabled={disabled || loading || Boolean(historyError) || draftOpen || preparing}
+          className="min-h-11 cursor-pointer rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Создать КП
+          {preparing ? 'Загружаем настройки…' : 'Создать КП'}
         </button>
       </div>
 
-      {error ? (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-          {error}
+      {error || historyError ? (
+        <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {error || historyError}
         </div>
       ) : null}
       {appliedMessage ? (
-        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+        <div role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
           {appliedMessage}
         </div>
       ) : null}
@@ -685,7 +761,7 @@ export default function PartyOrderProposalsSection({
               </button>
               <button
                 type="button"
-                disabled={saving || totals.items.length === 0}
+                disabled={disabled || saving || totals.items.length === 0}
                 onClick={saveProposal}
                 className="h-9 cursor-pointer rounded-lg bg-sky-600 px-4 text-sm font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -696,9 +772,50 @@ export default function PartyOrderProposalsSection({
         </div>
       ) : null}
 
+      {activeProposal || shareableVariants.length > 0 || shareNotice ? (
+        <section className="mt-4 min-w-0 space-y-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3">
+          <h3 className="text-sm font-semibold text-slate-900">Ссылка на КП для клиента</h3>
+          {activeProposal ? (
+            <>
+              <div className="space-y-1 text-sm text-slate-700">
+                {activeProposal.publicVariantIds?.length > 1 ? <p>Вариантов в КП: {activeProposal.publicVariantIds.length}.</p> : null}
+                {activeProposal.publicValidUntil ? <p>Срок действия до {formatPartyProposalDate(activeProposal.publicValidUntil)}.</p> : null}
+                {activeProposal.publicCanRespond === false ? <p>Ответы клиента по этой ссылке больше не принимаются.</p> : null}
+              </div>
+              <PartyOrderPublicLink key={activeProposal.publicPath} path={activeProposal.publicPath} label="Ссылка на коммерческое предложение" openLabel="Открыть КП" />
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className={partyOrderSecondaryButton} disabled={loading || Boolean(sharing)} onClick={() => loadProposals()}>
+                  {loading ? 'Обновляем…' : 'Обновить статусы'}
+                </button>
+                <button type="button" className={partyOrderSecondaryButton} disabled={disabled || loading || Boolean(sharing)} onClick={() => changeShare('DELETE')}>
+                  {sharing === 'DELETE' ? 'Закрываем ссылку…' : 'Закрыть ссылку'}
+                </button>
+              </div>
+            </>
+          ) : shareableVariants.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm text-slate-700">Отметьте до {MAX_PUBLIC_VARIANTS} версий ниже. Клиент сможет выбрать одну из них.</p>
+              <p className="text-sm text-slate-700">Клиент увидит название компании, название и дату мероприятия, позиции с описаниями и ценами, а также условия КП. Проверьте их перед публикацией.</p>
+              <button
+                type="button"
+                disabled={disabled || loading || Boolean(sharing) || selectedShareableVariants.length === 0}
+                onClick={() => changeShare('POST')}
+                className="min-h-11 cursor-pointer rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sharing === 'POST' ? 'Создаём ссылку…' : 'Создать ссылку'}
+              </button>
+            </div>
+          ) : null}
+          {shareNotice ? <p role="status" className="text-sm text-slate-700">{shareNotice}</p> : null}
+          {shareError ? <p role="alert" className="text-sm text-red-800">{shareError}</p> : null}
+        </section>
+      ) : null}
+
       <div className="mt-4 grid gap-2">
-        {loading ? (
-          <div className="text-xs text-slate-500">Загружаем историю...</div>
+        {loading && proposals.length === 0 ? (
+          <div role="status" className="text-sm text-slate-600">Загружаем историю…</div>
+        ) : historyError && proposals.length === 0 ? (
+          <button type="button" className={`${partyOrderSecondaryButton} justify-self-start`} onClick={() => loadProposals()}>Повторить загрузку</button>
         ) : proposals.length === 0 ? (
           <div className="rounded-lg bg-slate-50 px-3 py-3 text-xs text-slate-500">
             Коммерческих предложений пока нет.
@@ -709,8 +826,8 @@ export default function PartyOrderProposalsSection({
               key={proposal._id}
               className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-100 px-3 py-3"
             >
-              <div>
-                <div className="text-sm font-semibold text-slate-700">
+              <div className="min-w-0 break-words">
+                <div className="text-sm font-semibold text-slate-800">
                   КП №{proposal.number}, версия {proposal.version}
                 </div>
                 <div className="mt-1 text-xs text-slate-500">
@@ -718,14 +835,30 @@ export default function PartyOrderProposalsSection({
                   {formatPartyProposalMoney(proposal.total)}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {!activeProposal && shareableVariants.includes(proposal) ? (
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 px-1 text-sm font-medium text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={selectedShareableVariants.includes(String(proposal._id))}
+                      disabled={disabled || loading || Boolean(sharing) || (selectedShareableVariants.length >= MAX_PUBLIC_VARIANTS && !selectedShareableVariants.includes(String(proposal._id)))}
+                      onChange={(event) => toggleVariant(String(proposal._id), event.target.checked)}
+                      aria-label={`В ссылку клиенту: КП №${proposal.number}, версия ${proposal.version}`}
+                      className="size-4 cursor-pointer accent-sky-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed"
+                    />
+                    В ссылку клиенту
+                  </label>
+                ) : proposal.publicPath ? (
+                  <span className="text-sm font-medium text-slate-700">Доступно по ссылке</span>
+                ) : null}
                 <select
                   value={proposal.status}
+                  disabled={disabled || Boolean(proposal.publicPath) || loading || Boolean(sharing)}
                   onChange={(event) =>
                     updateStatus(proposal._id, event.target.value)
                   }
-                  className="h-8 cursor-pointer rounded-lg border border-sky-100 bg-white px-2 text-xs"
-                  aria-label={`Статус КП №${proposal.number}`}
+                  className="min-h-11 cursor-pointer rounded-lg border border-sky-100 bg-white px-2 text-sm focus-visible:outline-2 focus-visible:outline-sky-700 disabled:cursor-default"
+                  aria-label={`Статус КП №${proposal.number}, версия ${proposal.version}`}
                 >
                   {Object.entries(STATUS_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>
@@ -737,12 +870,13 @@ export default function PartyOrderProposalsSection({
                   <button
                     type="button"
                     disabled={
-                      Boolean(applyingId) ||
+                      disabled || Boolean(applyingId) || Boolean(sharing) || loading ||
+                      orderIsReadonly ||
                       String(order.agreedProposal?.proposalId || '') ===
                         String(proposal._id)
                     }
                     onClick={() => applyToOrder(proposal)}
-                    className="h-8 cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="min-h-11 cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {String(order.agreedProposal?.proposalId || '') ===
                     String(proposal._id)
@@ -754,22 +888,23 @@ export default function PartyOrderProposalsSection({
                 ) : null}
                 <button
                   type="button"
+                  disabled={disabled || draftOpen || preparing}
                   onClick={() => setDraft(buildDraftFromProposal(proposal))}
-                  className="h-8 cursor-pointer rounded-lg border border-sky-100 px-3 text-xs font-semibold text-sky-700 hover:bg-sky-50"
+                  className={partyOrderSecondaryButton}
                 >
                   Новая версия
                 </button>
                 <button
                   type="button"
                   onClick={() => printPartyProposal(proposal)}
-                  className="h-8 cursor-pointer rounded-lg border border-sky-100 px-3 text-xs font-semibold text-sky-700 hover:bg-sky-50"
+                  className={partyOrderSecondaryButton}
                 >
                   PDF / печать
                 </button>
                 <button
                   type="button"
                   onClick={() => downloadProposal(proposal)}
-                  className="h-8 cursor-pointer rounded-lg bg-sky-600 px-3 text-xs font-semibold text-white hover:bg-sky-700"
+                  className="min-h-11 cursor-pointer rounded-lg bg-sky-700 px-3 py-2 text-sm font-semibold text-white hover:bg-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-700"
                 >
                   DOCX
                 </button>

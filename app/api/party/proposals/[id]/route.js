@@ -60,12 +60,16 @@ export async function PATCH(req, { params }) {
   }
   const PartyProposals = await getPartyProposalModel()
   const proposal = await PartyProposals.findOneAndUpdate(
-    { _id: id, tenantId: context.tenantId },
+    { _id: id, tenantId: context.tenantId, sharedPublicationId: null },
     { $set: { status, ...statusDates } },
     { returnDocument: 'after' }
   ).lean()
 
   if (!proposal) {
+    const exists = await PartyProposals.exists({ _id: id, tenantId: context.tenantId })
+    if (exists) {
+      return partyError(409, 'partycrm_proposal_published', 'Закройте ссылку на КП, чтобы изменить статус вручную', 'conflict')
+    }
     return partyError(
       404,
       'partycrm_proposal_not_found',

@@ -18,12 +18,12 @@ const normalizeSnapshotValue = (value) => {
 export const getFormSnapshot = (value) =>
   JSON.stringify(normalizeSnapshotValue(value))
 
-export default function useUnsavedChanges(value, open = true) {
+export default function useUnsavedChanges(value, open = true, baselineRevision) {
   const snapshot = useMemo(() => getFormSnapshot(value), [value])
   // Открытие формы начинает новую сессию редактирования. Изменения value внутри
   // открытой сессии не должны обновлять исходный снимок.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const initialSnapshot = useMemo(() => getFormSnapshot(value), [open])
+  const initialSnapshot = useMemo(() => getFormSnapshot(value), [open, baselineRevision])
 
   return Boolean(open && snapshot !== initialSnapshot)
 }

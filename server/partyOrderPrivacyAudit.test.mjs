@@ -102,6 +102,25 @@ test('a title-only custom role preserves hidden fields in a PATCH and cannot spo
   assert.equal(run.writes.length, attempts)
 })
 
+test('an order editor must reload before changing a newly submitted client brief', async () => {
+  const submittedAt = new Date('2026-11-28T10:00:00Z')
+  const run = setup({
+    context: actor({ 'orders.eventBrief': 'edit' }),
+    orderPatch: { clientBriefSubmittedAt: submittedAt, updatedAt: submittedAt },
+  })
+  const editedBrief = { wishes: 'Уточнённые пожелания' }
+  const stale = await run.patch({ eventBrief: editedBrief, expectedUpdatedAt: '2026-11-28T09:59:59Z' })
+  assert.equal(stale.status, 409)
+  assert.equal(stale.body.code, 'partycrm_client_brief_changed')
+  assert.equal(run.writes.length, 0)
+  assert.equal(run.order.eventBrief.wishes, 'Не терять ответ')
+
+  const fresh = await run.patch({ eventBrief: editedBrief, expectedUpdatedAt: submittedAt.toISOString() })
+  assert.equal(fresh.status, 200)
+  assert.equal(run.order.eventBrief.wishes, editedBrief.wishes)
+  assert.equal(fresh.body.data.clientBriefSubmittedAt, undefined)
+})
+
 test('create rejects closed state and injected payout ledger before writes even for an authorized creator', async () => {
   const run = setup({ context: actor({ 'orders.create': 'edit', 'orders.serviceTitle': 'edit' }) })
   assert.equal((await run.post({ title: 'Новая', serviceTitle: 'Анимация', status: 'closed' })).status, 400)

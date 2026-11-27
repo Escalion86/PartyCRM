@@ -13,6 +13,7 @@ import {
   partyError,
 } from '@server/partyApi'
 import getPartyCompanyTariffAccessState from '@server/getPartyCompanyTariffAccess'
+import { listPartyProposalsWithPublication } from '@server/partyProposalPublications'
 import {
   buildPartyProposalRecipientSnapshot,
   buildPartyProposalSenderSnapshot,
@@ -51,15 +52,12 @@ export async function GET(req) {
     )
   }
 
-  const PartyProposals = await getPartyProposalModel()
-  const proposals = await PartyProposals.find({
+  const proposals = await listPartyProposalsWithPublication({
     tenantId: context.tenantId,
     orderId,
   })
-    .sort({ createdAt: -1 })
-    .lean()
 
-  return NextResponse.json({ success: true, data: proposals })
+  return NextResponse.json({ success: true, data: proposals }, { headers: { 'Cache-Control': 'private, no-store' } })
 }
 
 export async function POST(req) {

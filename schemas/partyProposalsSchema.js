@@ -88,6 +88,7 @@ const partyProposalsSchema = {
   sentAt: { type: Date, default: null },
   acceptedAt: { type: Date, default: null },
   rejectedAt: { type: Date, default: null },
+  sharedPublicationId: { type: String, default: null, select: false },
 }
 
 export default partyProposalsSchema

@@ -16,6 +16,7 @@ const q = (value) => ({ select() { return this }, lean: async () => structuredCl
 const matches = (doc, filter) => Object.entries(filter).every(([key, value]) => {
   if (key === '$or') return value.some((part) => matches(doc, part))
   if (key === '$and') return value.every((part) => matches(doc, part))
+  if (value === null) return doc[key] === null || doc[key] === undefined
   if (value && typeof value === 'object' && '$exists' in value) return Object.hasOwn(doc, key) === value.$exists
   return String(doc[key]) === String(value)
 })

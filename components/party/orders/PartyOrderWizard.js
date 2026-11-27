@@ -741,7 +741,10 @@ function Wizard({
           : {}),
         completeBooking: complete,
         ...(existing
-          ? { commercialRevision: order.commercialRevision || 0 }
+          ? {
+              commercialRevision: order.commercialRevision || 0,
+              ...(canEditBrief ? { expectedUpdatedAt: order.updatedAt } : {}),
+            }
           : {
               ...(inboxId ? { inboxId } : {}),
               initialExpectations: expectations.map(

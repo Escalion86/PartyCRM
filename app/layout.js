@@ -12,6 +12,7 @@ import ServiceWorkerRegistration from '@components/ServiceWorkerRegistration'
 import AppSnackbarProvider from '@components/AppSnackbarProvider'
 import AppQueryProvider from '@components/AppQueryProvider'
 import { PARTY_IMPERSONATION_UI_COOKIE } from '@helpers/partyImpersonationConstants'
+import { partyPrivateLinkPath } from '@helpers/partyPrivateLinkPaths'
 import Script from 'next/script'
 
 const rawDomain = process.env.DOMAIN || 'https://partycrm.ru'
@@ -82,7 +83,7 @@ export default function RootLayout({ children }) {
             <>
               <Script id="yandex-metrika" strategy="afterInteractive">
                 {`
-        if (!document.cookie.split('; ').some((cookie) => cookie.startsWith('${PARTY_IMPERSONATION_UI_COOKIE}='))) {
+        if (!${partyPrivateLinkPath}.test(location.pathname) && !document.cookie.split('; ').some((cookie) => cookie.startsWith('${PARTY_IMPERSONATION_UI_COOKIE}='))) {
         (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
         m[i].l=1*new Date();
         for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
@@ -107,6 +108,7 @@ export default function RootLayout({ children }) {
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`https://mc.yandex.ru/watch/${YANDEX_METRIKA_ID}`}
+                    referrerPolicy="no-referrer"
                     style={{ position: 'absolute', left: '-9999px' }}
                     alt=""
                   />

@@ -127,7 +127,7 @@ export async function PATCH(req, { params }) {
   }
 
   const requestBody = await parseJsonBody(req)
-  if (['fulfillment', 'initialPayment', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint'].some((field) => Object.hasOwn(requestBody, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие проведения или оплаты', 'validation')
+  if (['fulfillment', 'initialPayment', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint', 'clientBriefLink', 'clientBriefSubmittedAt', 'proposalPublication'].some((field) => Object.hasOwn(requestBody, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие для защищённых полей заказа', 'validation')
   const PartyOrders = await getPartyOrderModel()
   const currentOrder = await PartyOrders.findOne({
     _id: id,
@@ -163,6 +163,11 @@ export async function PATCH(req, { params }) {
   const body = Object.fromEntries(Object.entries(requestBody).filter(([field]) =>
     !calendarPreferenceFields.includes(field) && !calendarIdentityFields.includes(field)
   ))
+  if (currentOrder.clientBriefSubmittedAt && Object.hasOwn(body, 'eventBrief')) {
+    const expected = Date.parse(body.expectedUpdatedAt || body.updatedAt)
+    if (!Number.isFinite(expected) || expected < currentOrder.clientBriefSubmittedAt.getTime())
+      return partyError(409, 'partycrm_client_brief_changed', 'Клиент заполнил бриф. Откройте заказ заново, чтобы увидеть ответы.', 'conflict')
+  }
   const isMultiPlace = body.bookingVersion === 2 || currentOrder.bookingVersion === 2
   if (body.bookingVersion !== 2 && Object.hasOwn(body, 'places'))
     return partyError(400, 'partycrm_multi_place_editor_required', 'Откройте мастер многоместного заказа', 'validation')
@@ -239,7 +244,7 @@ export async function PATCH(req, { params }) {
             if (hasPartyOrderConflicts(conflicts)) throw Object.assign(new Error('Найдены пересечения по точке или исполнителю'), { status: 409, code: 'partycrm_order_conflict', conflicts })
           }
           return PartyOrders.findOneAndUpdate(
-            { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder) },
+            { _id: id, tenantId: context.tenantId, ...getPartyOrderWriteGuard(currentOrder), clientBriefSubmittedAt: currentOrder.clientBriefSubmittedAt || null },
             { $set: { status: nextStatus, ...(nextStatus === 'closed' ? { eventBrief: await snapshotPartyBriefForClose({ tenantId: context.tenantId, order: currentOrder }) } : {}) }, $inc: { commercialRevision: 1 } },
             { returnDocument: 'after', ...(currentSession ? { session: currentSession } : {}) }
           ).lean()
@@ -449,7 +454,7 @@ export async function PATCH(req, { params }) {
     access
   )
 
-  const revisionFilter = getPartyOrderWriteGuard(currentOrder)
+  const revisionFilter = { ...getPartyOrderWriteGuard(currentOrder), clientBriefSubmittedAt: currentOrder.clientBriefSubmittedAt || null }
   let order
   try {
     order = await withPartyOrderVenueWrite({ tenantId: context.tenantId, previousOrder: currentOrder, nextOrder: limitedPayload, work: async ({ session, legacy }) => {

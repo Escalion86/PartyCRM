@@ -91,6 +91,7 @@ export default function PartyAdvancedOrderEditor({ companyId, order, canSwitchOr
           ...patch,
           bookingVersion: baseline.current.bookingVersion,
           commercialRevision: baseline.current.commercialRevision || 0,
+          ...(Object.hasOwn(patch, 'eventBrief') ? { expectedUpdatedAt: baseline.current.updatedAt } : {}),
         }),
       })
       if (result.inventory?.warning || result.inventory?.hasShortage) {

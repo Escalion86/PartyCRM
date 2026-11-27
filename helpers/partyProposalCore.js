@@ -55,7 +55,9 @@ export const buildPartyProposalItemsFromOrder = (order = {}, services = []) => {
       const { rentalKopecks = 0, rentalExtrasKopecks = 0 } = place.pricingSnapshot || {}
       for (const [title, kopecks] of [['Аренда', rentalKopecks], ['Доплаты за площадку', rentalExtrasKopecks]]) {
         if (kopecks > 0) items.push(calculatePartyProposalItem({
-          title: `${title} — ${place.locationTitle}`, description: formatPartyOrderPlaces([place]), unitPrice: kopecks / 100,
+          title: `${title} — ${place.locationTitle}`,
+          description: formatPartyOrderPlaces([{ ...place, locationAddress: '' }]),
+          unitPrice: kopecks / 100,
         }))
       }
     }

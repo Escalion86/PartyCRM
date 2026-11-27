@@ -432,10 +432,35 @@ const partyOrdersSchema = {
     maxlength: 180,
   },
   eventBrief: { type: partyOrderEventBriefSchema, default: () => ({}) },
+  clientBriefLink: {
+    type: new Schema(
+      {
+        secret: { type: String, required: true },
+        createdAt: { type: Date, required: true },
+      },
+      { _id: false }
+    ),
+    select: false,
+  },
+  clientBriefSubmittedAt: { type: Date },
   orderItems: { type: [partyOrderItemSchema], default: [] },
   agreedProposal: {
     type: partyOrderAgreedProposalSchema,
     default: () => ({}),
+  },
+  proposalPublication: {
+    type: new Schema({
+      publicId: { type: String, required: true },
+      variantIds: { type: [Schema.Types.ObjectId], required: true },
+      validUntil: { type: Date, required: true },
+      timeZone: { type: String, required: true },
+      decision: { type: String, enum: ['', 'accepted', 'rejected'], default: '' },
+      selectedProposalId: { type: Schema.Types.ObjectId, default: null },
+      revision: { type: Number, default: 0 },
+      lockedAt: { type: Date, default: null },
+    }, { _id: false }),
+    default: undefined,
+    select: false,
   },
   commercialRevision: { type: Number, default: 0, min: 0 },
   reportCoordinatorStaffId: {

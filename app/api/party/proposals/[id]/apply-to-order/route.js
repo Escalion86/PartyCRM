@@ -27,8 +27,13 @@ export async function POST(req, { params }) {
     if (!proposal) return partyError(404, 'partycrm_proposal_not_found', 'Коммерческое предложение не найдено')
     if (proposal.status !== 'accepted') return partyError(409, 'partycrm_proposal_not_accepted', 'Сначала отметьте эту версию КП как принятую', 'conflict')
     const Orders = await getPartyOrderModel()
-    const current = await Orders.findOne({ _id: proposal.orderId, tenantId: context.tenantId }).lean()
-    if (!current) return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+    const record = await Orders.findOne({ _id: proposal.orderId, tenantId: context.tenantId }).select('+proposalPublication').lean()
+    if (!record) return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
+    const { proposalPublication, ...current } = record
+    const published = proposalPublication?.variantIds.some((variantId) => String(variantId) === String(proposal._id))
+    if (published && String(proposalPublication.selectedProposalId) !== String(proposal._id)) {
+      return partyError(409, 'partycrm_proposal_not_accepted', 'Клиент изменил выбор. Обновите список КП', 'conflict')
+    }
     if (current.bookingVersion === 2) return partyError(409, 'partycrm_multi_place_editor_required', 'Распределите услуги и обновите стоимость в мастере бронирования площадок', 'conflict')
     if (String(current.agreedProposal?.proposalId || '') === String(proposal._id)) return NextResponse.json({ success: true, data: { order: current, repeated: true, inventory: null } })
     if (['closed', 'canceled'].includes(current.status)) return partyError(409, 'partycrm_order_readonly', 'Закрытый или отменённый заказ нельзя менять', 'conflict')
@@ -41,9 +46,13 @@ export async function POST(req, { params }) {
     const allowedIds = new Set(existingServices.filter((item) => item.status !== 'archived').map((item) => String(item._id)))
     const servicesIds = referencedIds.filter((serviceId) => allowedIds.has(serviceId))
     const revisionFilter = getPartyOrderWriteGuard(current)
+    const publicationFilter = published ? {
+      'proposalPublication.publicId': proposalPublication.publicId,
+      'proposalPublication.revision': proposalPublication.revision,
+    } : {}
     const order = await Orders.findOneAndUpdate(
-      { _id: current._id, tenantId: context.tenantId, ...revisionFilter },
-      { $set: { orderItems: application.orderItems, agreedProposal: application.agreedProposal, servicesIds, serviceTitle: application.serviceTitle, contractAmount: application.contractAmount, 'clientPayment.totalAmount': application.contractAmount }, $inc: { commercialRevision: 1 } },
+      { _id: current._id, tenantId: context.tenantId, ...revisionFilter, ...publicationFilter },
+      { $set: { orderItems: application.orderItems, agreedProposal: application.agreedProposal, servicesIds, serviceTitle: application.serviceTitle, contractAmount: application.contractAmount, 'clientPayment.totalAmount': application.contractAmount, ...(published ? { 'proposalPublication.lockedAt': appliedAt } : {}) }, $inc: { commercialRevision: 1 } },
       { returnDocument: 'after', runValidators: true }
     ).lean()
     if (!order) return partyError(409, 'partycrm_order_revision_conflict', 'Коммерческие условия заказа уже изменились. Обновите заказ.', 'conflict')

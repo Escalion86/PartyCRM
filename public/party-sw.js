@@ -47,8 +47,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (!isSameOrigin(url)) return
   if (url.pathname.startsWith('/api/')) return
-  // Revoked invitations must never reopen from the offline page cache.
-  if (url.pathname.startsWith('/invitation/')) return
+  // A private link can expire or be revoked while the client is offline.
+  if (/^\/(?:invitation|proposal|brief)\//.test(url.pathname)) return
   if (url.pathname.startsWith('/_next/image')) return
   if (url.pathname === '/party-sw.js' || url.pathname === '/sw.js') return
 

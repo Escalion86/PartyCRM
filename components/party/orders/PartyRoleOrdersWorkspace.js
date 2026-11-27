@@ -44,6 +44,7 @@ import {
   PartyOrderContactRolesView,
 } from './PartyOrderContactRoles'
 import { PartyEventBriefEditor, PartyEventBriefView } from './PartyEventBrief'
+import PartyOrderBriefLink from './PartyOrderBriefLink'
 import { PartyOrderCalendarReviewBadge } from './PartyOrderCalendarDetails'
 import PartyRoleOrderClientEditor from './PartyRoleOrderClientEditor'
 import PartyRoleNewClient from './PartyRoleNewClient'
@@ -77,6 +78,7 @@ const PartyOrderReadModal = dynamic(() => import('./PartyOrderReadModal'))
 const PartySavedOrderContract = dynamic(() =>
   import('./PartyOrderDocumentsSection').then(({ PartySavedOrderContract }) => PartySavedOrderContract)
 )
+const PartyOrderProposalsSection = dynamic(() => import('./PartyOrderProposalsSection'))
 const PartyPaymentExpectationsPanel = dynamic(() => import('./PartyPaymentExpectationsPanel'))
 const PartyOrderInvitationPanel = dynamic(() => import('@components/party/invitations/PartyOrderInvitationPanel'))
 
@@ -154,6 +156,7 @@ function RoleOrderEditor({
   options,
   workflow,
   onSaved,
+  onOrderRefreshed,
   onClose,
   onDirtyChange,
   onSwitchToAdvanced,
@@ -237,6 +240,10 @@ function RoleOrderEditor({
     childDirty ||
     initialPaymentDirty ||
     unresolvedCreate
+  const refreshBlocked = useRef(false)
+  useLayoutEffect(() => {
+    refreshBlocked.current = dirty || busy
+  }, [dirty, busy])
   usePartyUnsavedChanges(dirty, {
     label: 'заказ',
     scope: companyId,
@@ -278,6 +285,7 @@ function RoleOrderEditor({
   )
   const dirtyExpectations = useCallback((value) => setReportDirty((previous) => previous.expectations === value ? previous : { ...previous, expectations: value }), [])
   const dirtyInvitation = useCallback((value) => setReportDirty((previous) => previous.invitation === value ? previous : { ...previous, invitation: value }), [])
+  const dirtyProposal = useCallback((value) => setReportDirty((previous) => previous.proposal === value ? previous : { ...previous, proposal: value }), [])
   const dirtyBooking = useCallback((value) => setReportDirty((previous) => previous.booking === value ? previous : { ...previous, booking: value }), [])
   const dirtyPreparation = useCallback(
     (value) =>
@@ -320,6 +328,9 @@ function RoleOrderEditor({
       ...changes.patch,
       ...(existing
         ? { commercialRevision: order.commercialRevision || 0 }
+        : {}),
+      ...(existing && Object.hasOwn(changes.patch, 'eventBrief')
+        ? { expectedUpdatedAt: order.updatedAt }
         : {}),
       ...(initialPaymentDirty ? { initialPayment } : {}),
     }
@@ -426,6 +437,7 @@ function RoleOrderEditor({
         can('finance.expenses') ||
         can('finance.payouts'),
     },
+    { id: 'proposals', title: 'КП', show: canDownloadContract },
     { id: 'tasks', title: 'Задачи', show: existing && can('tasks') },
     { id: 'reports', title: 'Отчёты', show: existing && can('reports') },
     { id: 'invitation', title: 'Приглашение', show: existing && ['orders.title', 'orders.eventDate', 'orders.locationId', 'orders.customAddress'].every((resource) => can(resource)) },
@@ -1080,27 +1092,41 @@ function RoleOrderEditor({
               </div>
             ) : null}
             {item.id === 'brief' ? (
-              editable('eventBrief') ? (
-                <PartyEventBriefEditor
-                  companyId={companyId}
-                  orderId={order._id}
-                  orderStatus={order.status || 'draft'}
-                  value={draft.eventBrief || {}}
-                  servicesIds={
-                    can('orders.servicesIds') ? draft.servicesIds : undefined
-                  }
-                  disabled={busy}
-                  onChange={(value) => change('eventBrief', value)}
-                />
-              ) : (
-                <PartyEventBriefView
-                  companyId={companyId}
-                  orderId={order._id}
-                  orderStatus={order.status || 'draft'}
-                  value={order.eventBrief || {}}
-                  servicesIds={order.servicesIds}
-                />
-              )
+              <div className="grid min-w-0 gap-4">
+                {existing ? (
+                  <PartyOrderBriefLink
+                    companyId={companyId}
+                    orderId={order._id}
+                    canCreate={can('orders.eventBrief', 'edit') && !['closed', 'canceled'].includes(order.status)}
+                    disabled={blocked || busy || dirty}
+                    onOrderRefreshed={(next) => {
+                      if (refreshBlocked.current) throw new Error('Сохраните изменения в заказе и повторите проверку ответов.')
+                      onOrderRefreshed(next)
+                    }}
+                  />
+                ) : null}
+                {editable('eventBrief') ? (
+                  <PartyEventBriefEditor
+                    companyId={companyId}
+                    orderId={order._id}
+                    orderStatus={order.status || 'draft'}
+                    value={draft.eventBrief || {}}
+                    servicesIds={
+                      can('orders.servicesIds') ? draft.servicesIds : undefined
+                    }
+                    disabled={busy}
+                    onChange={(value) => change('eventBrief', value)}
+                  />
+                ) : (
+                  <PartyEventBriefView
+                    companyId={companyId}
+                    orderId={order._id}
+                    orderStatus={order.status || 'draft'}
+                    value={order.eventBrief || {}}
+                    servicesIds={order.servicesIds}
+                  />
+                )}
+              </div>
             ) : null}
             {item.id === 'contacts' ? (
               editable('contactRoles') || editable('otherContacts') ? (
@@ -1359,6 +1385,17 @@ function RoleOrderEditor({
                   </ul>
                 ) : null}
               </div>
+            ) : null}
+            {item.id === 'proposals' ? (
+              <PartyOrderProposalsSection
+                order={order}
+                client={displayClient}
+                services={options.services}
+                activeCompanyId={companyId}
+                disabled={blocked || busy || changes.dirty || contractAmountInvalid || taskDirty || newClientDirty || Object.entries(reportDirty).some(([key, value]) => key !== 'proposal' && value)}
+                onDraftChange={dirtyProposal}
+                onOrderUpdated={(next) => onSaved(next, false, 'proposals')}
+              />
             ) : null}
             {item.id === 'tasks' ? (
               <>
@@ -1838,7 +1875,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
     setEditorMode('details')
     setOverviewVisible(false)
   }
-  const saved = (order, accessChanged) => {
+  const saved = (order, accessChanged, nextTab) => {
     dirtyChanged(false)
     if (accessChanged) {
       returnFocusRequested.current = true
@@ -1848,6 +1885,7 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
       setNotice({ text: 'Заказ передан. На текущем этапе он доступен другим сотрудникам.' })
     } else {
       selectedId.current = String(order._id)
+      if (nextTab === 'proposals') setInitialEditorTab(nextTab)
       setSelected(order)
       setNotice({ text: 'Заказ сохранён.' })
     }
@@ -2474,6 +2512,11 @@ function CompanyRoleOrders({ companyId, canSwitchOrderMode, initialOrderId = '' 
                 workflow={data.workflow}
                 initialTab={initialEditorTab}
                 onSaved={saved}
+                onOrderRefreshed={(record) => {
+                  if (selectedId.current !== String(record._id)) return
+                  setInitialEditorTab('brief')
+                  setSelected(record)
+                }}
                 onClose={close}
                 onDirtyChange={dirtyChanged}
                 onSwitchToAdvanced={canUseAdvancedEditor ? (confirmed) => switchEditor(true, confirmed) : undefined}

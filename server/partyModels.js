@@ -192,6 +192,7 @@ export const getPartyOrderModel = () =>
       schema.index({ tenantId: 1, 'assignedStaff.staffId': 1, eventDate: 1 })
       schema.index({ tenantId: 1, status: 1, 'additionalEvents.date': 1 })
       schema.index({ tenantId: 1, status: 1, 'preparation.enabled': 1, 'preparation.items.status': 1 })
+      schema.index({ 'proposalPublication.publicId': 1 }, { unique: true, sparse: true })
     },
   })
 

@@ -1,7 +1,7 @@
 // Uses only an owned temporary replica set. Never loads .env or an application URI.
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
-import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 import { mkdtemp, readFile } from 'node:fs/promises'
 import net from 'node:net'
 import os from 'node:os'
@@ -13,6 +13,7 @@ import * as serviceConfiguration from '../helpers/partyServiceConfiguration.js'
 import * as multiPlace from '../helpers/partyMultiPlaceBooking.js'
 import { formatAddressPoolShort } from '../helpers/addressPool.js'
 import * as schedules from '../helpers/partyWorkingSchedule.js'
+import { normalizePartyInboxTimeZone } from '../helpers/partyInboxSla.js'
 import * as permissions from '../helpers/partyRolePermissions.js'
 import * as brief from '../helpers/partyBriefTemplates.js'
 import * as expectationHelpers from '../helpers/partyPaymentExpectations.js'
@@ -23,6 +24,8 @@ import * as listHelpers from '../helpers/partyOrderListQuery.js'
 import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import { sharePartyLocationBooking } from '../helpers/partySharedLocationBooking.js'
 import { parsePartyIsoDate } from '../helpers/partyIsoDate.js'
+import { buildPartyProposalApplication } from '../helpers/partyProposalApply.js'
+import { getPartyOrderWriteGuard } from '../helpers/partyOrderWriteGuard.js'
 import { canAccessPartyTransaction } from '../server/partyTransactionAccess.js'
 import { findPartyOrderConflicts, withPartyOrderStaffSchedule } from '../server/partyOrderConflicts.js'
 import {
@@ -138,6 +141,7 @@ try {
     'partyTransactionsSchema',
     'partyOrderTypesSchema',
     'partyPaymentExpectationsSchema',
+    'partyProposalsSchema',
   ]
   const schemas = Object.fromEntries(
     await Promise.all(
@@ -151,7 +155,7 @@ try {
   const getters = await compile(
     'server/partyModels.js',
     { ...base, ...schemas },
-    '{getPartyCompanyModel,getPartyClientModel,getPartyLocationModel,getPartyOrderModel,getPartyServiceModel,getPartyStaffModel,getPartyTransactionModel,getPartyOrderTypeModel,getPartyPaymentExpectationModel}'
+    '{getPartyCompanyModel,getPartyClientModel,getPartyLocationModel,getPartyOrderModel,getPartyServiceModel,getPartyStaffModel,getPartyTransactionModel,getPartyOrderTypeModel,getPartyPaymentExpectationModel,getPartyProposalModel}'
   )
   const models = Object.fromEntries(
     await Promise.all(
@@ -1497,6 +1501,88 @@ try {
     assert.equal(prepared.eventBrief.customAnswers.contact.phone, contact.phone)
     const foreign = await Clients.create({ tenantId: foreignTenantId, firstName: 'Другой клиент' })
     await assert.rejects(prepare({ context, previous, body: { bookingVersion: 1, eventBrief: { customAnswers: { contact: { clientId: String(foreign._id) } } } }, payload: { ...previous, eventBrief: { customAnswers: { contact: { clientId: String(foreign._id) } } } } }), { status: 400 })
+  })
+  await check('published proposal variants keep tenant scope and persist exactly one client choice', async () => {
+    const publication = await compile('server/partyProposalPublications.js', {
+      ...modelGetters,
+      process: { env: { AUTH_SECRET: randomBytes(32).toString('hex') } },
+      createHmac, randomBytes, timingSafeEqual, normalizePartyInboxTimeZone,
+      partyDateAtTime: schedules.partyDateAtTime,
+      isValidObjectId: (id) => /^[a-f\d]{24}$/i.test(id),
+    }, '{changePartyProposalPublication,getPublicPartyProposal,answerPublicPartyProposal,listPartyProposalsWithPublication}')
+    const Proposals = models.getPartyProposalModel
+    await Proposals.init()
+    const order = await newOrder()
+    const foreignOrder = await newOrder({ tenantId: foreignTenantId })
+    const proposal = (tenant, target, version) => ({
+      tenantId: tenant, orderId: target._id, number: 'КП-публикация', version,
+      senderSnapshot: { displayName: 'Компания', inn: 'Скрытый реквизит' },
+      recipientSnapshot: { displayName: 'Клиент', phone: 'Скрытый телефон' },
+      eventSnapshot: { title: 'Праздник', address: 'Скрытый адрес' },
+      items: [{ title: 'Программа', quantity: version, unitPrice: 1000, total: version * 1000 }],
+      total: version * 1000,
+    })
+    const [first, second, foreign] = await Proposals.create([
+      proposal(tenantId, order, 1), proposal(tenantId, order, 2), proposal(foreignTenantId, foreignOrder, 1),
+    ])
+    const input = { tenantId, proposalId: String(first._id), publish: true, requestedIds: [String(first._id), String(second._id)] }
+    await assert.rejects(publication.changePartyProposalPublication({ ...input, tenantId: foreignTenantId }), { status: 404 })
+    await assert.rejects(publication.changePartyProposalPublication({ ...input, requestedIds: [String(first._id), String(foreign._id)] }), { status: 404 })
+
+    const listed = await publication.changePartyProposalPublication(input)
+    const token = listed[0].publicPath.split('/').at(-1)
+    assert.equal(listed[0].publicPath, listed[1].publicPath)
+    assert.ok(listed.every((item) => item.status === 'sent' && !item.sharedPublicationId))
+    assert.equal((await Orders.findById(order._id).lean()).proposalPublication, undefined)
+    const alteredToken = `${token.slice(0, -1)}${token.endsWith('0') ? '1' : '0'}`
+    assert.equal(await publication.getPublicPartyProposal(alteredToken), null)
+    const tokenForAnotherTenant = [String(foreignTenantId), ...token.split('.').slice(1)].join('.')
+    assert.equal(await publication.getPublicPartyProposal(tokenForAnotherTenant), null)
+    const initial = await publication.getPublicPartyProposal(token)
+    assert.equal(initial.variants.length, 2)
+    assert.equal(initial.variants[1].total, 2000)
+    assert.doesNotMatch(JSON.stringify(initial), /Скрытый|tenantId|orderId|serviceId/)
+
+    const choice = await Promise.allSettled([0, 1].map((variant) =>
+      publication.answerPublicPartyProposal(token, { action: 'accept', variant, revision: initial.revision })
+    ))
+    assert.equal(choice.filter(({ status }) => status === 'fulfilled').length, 1)
+    assert.equal(choice.find(({ status }) => status === 'rejected').reason.status, 409)
+    const selected = choice.find(({ status }) => status === 'fulfilled').value
+    const revisions = await publication.listPartyProposalsWithPublication({ tenantId, orderId: order._id })
+    assert.equal(revisions.filter(({ status }) => status === 'accepted').length, 1)
+    assert.equal((await Orders.findById(order._id).lean()).contractAmount, 1000)
+
+    const reset = await publication.answerPublicPartyProposal(token, { action: 'reset', revision: selected.revision })
+    assert.equal(reset.decision, '')
+    const declined = await publication.answerPublicPartyProposal(token, { action: 'reject', revision: reset.revision })
+    assert.equal(declined.decision, 'rejected')
+    const accepted = await publication.answerPublicPartyProposal(token, { action: 'accept', variant: 1, revision: declined.revision })
+    const apply = await compile('app/api/party/proposals/[id]/apply-to-order/route.js', {
+      ...modelGetters, buildPartyProposalApplication, getPartyOrderWriteGuard,
+      getPartyRequestContext: async () => ({ context }),
+      getPartyCompanyTariffAccessState: async () => ({ access: { allowDocuments: true } }),
+      isValidObjectId: (id) => /^[a-f\d]{24}$/i.test(id),
+      parseJsonBody: async () => ({ expectedCommercialRevision: 0 }),
+      partyError: (status, code, message) => ({ status, code, message }),
+      NextResponse: { json: (body) => ({ status: 200, body }) },
+      syncPartyOrderInventory: async () => null,
+      syncPartyOrderCalendarAfterCrud: async () => {},
+      recordPartyOrderAudit: async () => {},
+    }, 'POST')
+    assert.equal((await apply({}, { params: { id: String(second._id) } })).status, 200)
+    assert.equal((await Orders.findById(order._id).lean()).contractAmount, 2000)
+    assert.equal((await publication.getPublicPartyProposal(token)).canRespond, false)
+    await assert.rejects(publication.answerPublicPartyProposal(token, { action: 'reset', revision: accepted.revision }), { status: 409 })
+
+    await Orders.updateOne({ _id: order._id, tenantId }, { $unset: { 'proposalPublication.lockedAt': '', agreedProposal: '' } })
+    await Orders.updateOne({ _id: order._id, tenantId }, { $set: { 'proposalPublication.validUntil': new Date(0) } })
+    assert.equal((await publication.getPublicPartyProposal(token)).canRespond, false)
+    await assert.rejects(publication.answerPublicPartyProposal(token, { action: 'reset', revision: accepted.revision }), { status: 409 })
+    const revoked = await publication.changePartyProposalPublication({ ...input, publish: false })
+    assert.equal(await publication.getPublicPartyProposal(token), null)
+    assert.equal(revoked.filter(({ status }) => status === 'accepted').length, 1)
+    assert.ok(revoked.every(({ publicPath }) => !publicPath))
   })
   if (process.argv.includes('--browser')) {
     const { runPartyBookingBrowserTest } =

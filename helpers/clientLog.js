@@ -1,5 +1,7 @@
+import { partyPrivateLinkPath } from './partyPrivateLinkPaths'
+
 export const sendClientLog = (payload) => {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || partyPrivateLinkPath.test(window.location.pathname)) return
   try {
     const body = JSON.stringify(payload)
     if (navigator?.sendBeacon) {
