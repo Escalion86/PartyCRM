@@ -26,8 +26,78 @@ import {
   hasPartyBriefAnswer,
 } from '../helpers/partyBriefTemplates.js'
 import { isPartyWithinWorkingSchedule } from '../helpers/partyWorkingSchedule.js'
+import { calculatePartyServiceConfiguration } from '../helpers/partyServiceConfiguration.js'
+import { canPartyAccess } from '../helpers/partyRolePermissions.js'
 
 const changed = (body, field) => Object.hasOwn(body, field)
+
+const buildServiceItem = ({ service, selection, prior, order, sameContext }) => {
+  const snapshot = prior?.serviceConfiguration
+  const hasParameters = changed(selection, 'parameters')
+  const definition =
+    snapshot?.definition || (!prior || hasParameters ? service?.configuration : null)
+  const sameQuantity = prior && Number(prior.quantity) === Number(selection.quantity)
+  if (sameQuantity && sameContext && !hasParameters) return { ...prior }
+  if (hasParameters && !definition)
+    partyBookingFailure(
+      'Обновите список услуг: настройки выбранной услуги больше недоступны',
+      400,
+      'partycrm_service_configuration_unavailable'
+    )
+
+  const basePrice = snapshot?.basePrice ?? service?.price ?? 0
+  const baseDuration = snapshot?.baseDuration ?? service?.duration ?? 0
+  const calculation = definition && (!snapshot || hasParameters)
+    ? calculatePartyServiceConfiguration(
+        { configuration: definition, price: basePrice, duration: baseDuration },
+        selection.parameters
+      )
+    : null
+  const parametersChanged = calculation && (
+    !snapshot || JSON.stringify(calculation.parameters) !== JSON.stringify(snapshot.parameters)
+  )
+  if (sameQuantity && sameContext && !parametersChanged) return { ...prior }
+  if (!isPartyServiceAvailable(service, order))
+    partyBookingFailure(
+      `Услуга «${service?.title || 'не найдена'}» недоступна для выбранного типа и места`
+    )
+  if (sameQuantity && !parametersChanged) return { ...prior }
+
+  const quantity = validatePartyServiceQuantity(service, selection.quantity)
+  const unitPrice = parametersChanged ? calculation.unitPrice : prior?.unitPrice ?? service.price ?? 0
+  const unitPriceKopecks = partyMoneyKopecks(unitPrice)
+  const discount = prior?.discount ?? 0
+  const item = prior || {
+    serviceId: service._id,
+    title: service.title,
+    description: (service.description || '').slice(0, 1000),
+    unit: 'услуга',
+    durationMinutes: Number(service.duration) || null,
+    includedRentalMinutes: service.includedRentalMinutes || 0,
+  }
+  return {
+    ...item,
+    ...(parametersChanged ? {
+      durationMinutes: calculation.durationMinutes || null,
+      serviceConfiguration: {
+        definition,
+        parameters: calculation.parameters,
+        details: calculation.details,
+        basePrice,
+        baseDuration,
+      },
+    } : {}),
+    quantity,
+    unitPrice,
+    discount,
+    total: (unitPriceKopecks * quantity - partyMoneyKopecks(discount)) / 100,
+  }
+}
+
+const hasConfiguredService = (order) =>
+  (order?.orderItems || []).some((item) => item.serviceConfiguration)
+const timestamp = (value) => value ? +new Date(value) : null
+
 export const validatePartyBookingBriefAnswers = async ({
   tenantId,
   order,
@@ -128,6 +198,16 @@ export const preparePartyOrderBooking = async ({
     return result
   }
   result.bookingVersion = 1
+  if (hasConfiguredService(previous)) {
+    // The generic payload accepts legacy order items. A configured line is
+    // changed through selections only, using its original rules.
+    result.orderItems = previous.orderItems
+    result.contractAmount = previous.contractAmount
+    result.clientPayment = {
+      ...result.clientPayment,
+      totalAmount: previous.clientPayment?.totalAmount ?? previous.contractAmount,
+    }
+  }
   const orderTypeId = changed(body, 'orderTypeId')
     ? body.orderTypeId
     : previous?.orderTypeId
@@ -190,6 +270,8 @@ export const preparePartyOrderBooking = async ({
     }
   }
   if (recalculate) {
+    if (!changed(body, 'serviceSelections') && changed(body, 'servicesIds') && !Array.isArray(body.servicesIds))
+      partyBookingFailure('Проверьте выбранные услуги')
     const selections = changed(body, 'serviceSelections')
       ? body.serviceSelections
       : changed(body, 'servicesIds')
@@ -227,48 +309,22 @@ export const preparePartyOrderBooking = async ({
     const byId = new Map(
       services.map((service) => [String(service._id), service])
     )
-    result.orderItems = selections.map((selection) => {
-      const service = byId.get(String(selection.serviceId))
-      const prior = (previous?.orderItems || []).find(
-        (item) => String(item.serviceId) === String(selection.serviceId)
-      )
-      const unchanged =
-        prior && Number(prior.quantity) === Number(selection.quantity)
-      const sameContext =
-        previous &&
-        String(previous.orderTypeId) === String(result.orderTypeId) &&
-        previous.placeType === result.placeType &&
-        String(previous.locationId) === String(result.locationId)
-      if (unchanged && sameContext) return { ...prior }
-      if (!isPartyServiceAvailable(service, result))
-        partyBookingFailure(
-          `Услуга «${service?.title || 'не найдена'}» недоступна для выбранного типа и места`
-        )
-      if (unchanged) return { ...prior }
-      const quantity = validatePartyServiceQuantity(service, selection.quantity)
-      if (prior)
-        return {
-          ...prior,
-          quantity,
-          total:
-            Math.round(
-              partyMoneyKopecks(prior.unitPrice || 0) * quantity -
-                partyMoneyKopecks(prior.discount || 0)
-            ) / 100,
-        }
-      return {
-        serviceId: service._id,
-        title: service.title,
-        description: service.description || '',
-        quantity,
-        unit: 'услуга',
-        durationMinutes: Number(service.duration) || null,
-        includedRentalMinutes: service.includedRentalMinutes || 0,
-        unitPrice: service.price || 0,
-        discount: 0,
-        total: (partyMoneyKopecks(service.price || 0) * quantity) / 100,
-      }
-    })
+    const sameContext =
+      previous &&
+      String(previous.orderTypeId) === String(result.orderTypeId) &&
+      previous.placeType === result.placeType &&
+      String(previous.locationId) === String(result.locationId)
+    result.orderItems = selections.map((selection) =>
+      buildServiceItem({
+        service: byId.get(String(selection.serviceId)),
+        selection,
+        prior: (previous?.orderItems || []).find(
+          (item) => String(item.serviceId) === String(selection.serviceId)
+        ),
+        order: result,
+        sameContext,
+      })
+    )
     result.orderItems.push(
       ...(previous?.orderItems || []).filter((item) => !item.serviceId)
     )
@@ -321,14 +377,27 @@ export const preparePartyOrderBooking = async ({
     result.durationMinutes =
       calculation.durationMinutes ||
       (result.rental ? calculation.rentalMinutes : 60)
-    if (result.eventDate && calculation.durationMinutes)
+    const includesConfiguration = hasConfiguredService(result) || hasConfiguredService(previous)
+    if (result.eventDate && (calculation.durationMinutes || (includesConfiguration && !result.rental)))
       result.dateEnd = new Date(
-        +new Date(result.eventDate) + calculation.durationMinutes * 60000
+        +new Date(result.eventDate) + result.durationMinutes * 60000
       )
     else if (!calculation.durationMinutes && result.rental) {
       result.eventDate = new Date(result.rental.startsAt)
       result.dateEnd = new Date(result.rental.endsAt)
     } else if (!result.eventDate) result.dateEnd = null
+    if (includesConfiguration && (result.eventDate || previous?.eventDate)) {
+      const timing = previous || {}
+      for (const field of ['eventDate', 'dateEnd']) {
+        if (timestamp(timing[field]) !== timestamp(result[field]) &&
+          !canPartyAccess(context, { resource: `orders.${field}`, action: 'edit', order: previous || result }))
+          partyBookingFailure(
+            'Недостаточно прав для изменения времени заказа',
+            403,
+            'partycrm_forbidden_order_fields'
+          )
+      }
+    }
     if (result.eventDate) {
       if (location && !result.rental)
         partyBookingFailure('Укажите отдельный интервал аренды')

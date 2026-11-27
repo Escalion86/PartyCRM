@@ -25,6 +25,7 @@ import {
 } from '@helpers/partyOrderTransactions'
 import PartyAuditLog from '@components/party/audit/PartyAuditLog'
 import { PartyEventBriefView } from '@components/party/orders/PartyEventBrief'
+import PartyOrderServiceDetails from '@components/party/orders/PartyOrderServiceDetails'
 
 const PartyRelatedOrders = dynamic(() => import('@components/party/orders/PartyRelatedOrders'))
 
@@ -511,6 +512,7 @@ export default function OrderViewModal({
                       ? ` · скидка ${formatMoney(Number(item.discount))}`
                       : ''}
                   </p>
+                  <PartyOrderServiceDetails item={item} />
                   {item.description ? (
                     <p className="mt-1 whitespace-pre-wrap text-xs text-slate-600">
                       {item.description}

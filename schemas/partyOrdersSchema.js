@@ -246,6 +246,7 @@ const partyOrderItemSchema = new Schema(
     unit: { type: String, trim: true, default: 'услуга', maxlength: 40 },
     durationMinutes: { type: Number, default: null, min: 1, max: 10080 },
     includedRentalMinutes: { type: Number, default: 0, min: 0 },
+    serviceConfiguration: { type: Schema.Types.Mixed, default: undefined },
     unitPrice: { type: Number, default: 0, min: 0 },
     discount: { type: Number, default: 0, min: 0 },
     total: { type: Number, default: 0, min: 0 },

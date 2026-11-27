@@ -9,6 +9,7 @@ import path from 'node:path'
 import { compileFunction } from 'node:vm'
 import mongoose, { Schema, Types } from 'mongoose'
 import * as booking from '../helpers/partyOrderBooking.js'
+import * as serviceConfiguration from '../helpers/partyServiceConfiguration.js'
 import * as schedules from '../helpers/partyWorkingSchedule.js'
 import * as permissions from '../helpers/partyRolePermissions.js'
 import * as brief from '../helpers/partyBriefTemplates.js'
@@ -267,6 +268,8 @@ try {
       ...modelGetters,
       ...booking,
       ...schedules,
+      ...serviceConfiguration,
+      ...permissions,
       ...brief,
       ...briefService,
       ...typeHelpers,
@@ -478,6 +481,82 @@ try {
         { _id: service._id, tenantId },
         { $set: { price: 1000, duration: 30 } }
       )
+    }
+  )
+  await check(
+    'configured services calculate and persist exact terms, protect scheduling and retain catalog snapshots',
+    async () => {
+      const flexible = await Services.create({
+        tenantId,
+        title: 'Игра',
+        price: 1000,
+        duration: 30,
+        configuration: serviceConfiguration.normalizePartyServiceConfiguration({
+          participantTiers: [
+            { min: 1, max: 10, price: 1000, durationMinutes: 30 },
+            { min: 11, max: 20, price: 1400, durationMinutes: 45 },
+          ],
+          addons: [{ id: 'props', title: 'Реквизит', priceDelta: 200, durationDelta: 5 }],
+          optionGroups: [{
+            id: 'format', title: 'Формат', required: true,
+            options: [
+              { id: 'regular', title: 'Стандарт', priceDelta: 0, durationDelta: 0 },
+              { id: 'extended', title: 'Расширенный', priceDelta: 300, durationDelta: 10 },
+            ],
+          }],
+        }),
+      })
+      const eventDate = at('12:00')
+      const payload = { ...emptyPayload, placeType: 'client_address', locationId: null, eventDate }
+      const select = (parameters) => [{
+        serviceId: String(flexible._id), quantity: 1, parameters,
+      }]
+      const extended = { participants: 12, addonIds: ['props'], optionIds: { format: 'extended' } }
+      const regular = { participants: 10, addonIds: [], optionIds: { format: 'regular' } }
+      const body = { bookingVersion: 1, serviceSelections: select(extended) }
+      const prepared = await prepare({ context, body, payload })
+      assert.equal(prepared.contractAmount, 1900)
+      assert.equal(prepared.clientPayment.totalAmount, 1900)
+      assert.equal(prepared.durationMinutes, 60)
+      assert.equal(prepared.dateEnd.toISOString(), at('13:00'))
+      const saved = await Orders.create({ tenantId, ...prepared })
+      const previous = await Orders.findById(saved._id).lean()
+      assert.deepEqual(previous.orderItems[0].serviceConfiguration.parameters, extended)
+
+      await assert.rejects(prepare({
+        context,
+        body: { ...body, serviceSelections: select({ ...extended, participants: 21 }) },
+        payload,
+      }), { status: 400 })
+      await Services.updateOne({ tenantId, _id: flexible._id }, { $set: { configuration: null, price: 9000, duration: 150 } })
+      const unchanged = await prepare({
+        context, previous, body: { adminComment: 'Уточнить реквизит' },
+        payload: { ...previous, orderItems: [], contractAmount: 1 },
+      })
+      assert.deepEqual(unchanged.orderItems, previous.orderItems)
+      assert.equal(unchanged.contractAmount, 1900)
+
+      const selectionBody = { serviceSelections: select(regular) }
+      const restricted = {
+        ...context,
+        role: 'admin',
+        staff: { ...context.staff, role: 'admin' },
+        position: { permissions: { 'orders.servicesIds': 'edit', 'orders.dateEnd': 'read' } },
+      }
+      await assert.rejects(
+        prepare({ context: restricted, previous, body: selectionBody, payload: previous }),
+        { status: 403 }
+      )
+      const configuredOperator = {
+        ...restricted,
+        position: { permissions: { 'orders.servicesIds': 'edit', 'orders.dateEnd': 'edit' } },
+      }
+      const updated = await prepare({ context: configuredOperator, previous, body: selectionBody, payload: previous })
+      assert.equal(updated.contractAmount, 1000)
+      assert.equal(updated.durationMinutes, 30)
+      assert.equal(updated.dateEnd.toISOString(), at('12:30'))
+      assert.equal(updated.orderItems[0].serviceConfiguration.basePrice, 1000)
+      assert.deepEqual(updated.orderItems[0].serviceConfiguration.parameters, regular)
     }
   )
   await check(

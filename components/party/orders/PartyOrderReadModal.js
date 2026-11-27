@@ -5,6 +5,7 @@ import Modal from '@components/Modal'
 import { apiJson } from '@helpers/apiClient'
 import { canPartyAccess } from '@helpers/partyRolePermissions'
 import { PartyEventBriefView } from './PartyEventBrief'
+import PartyOrderServiceDetails from './PartyOrderServiceDetails'
 import { getOrderPaymentState } from '@helpers/partyOrderTransactions'
 
 const button =
@@ -196,12 +197,13 @@ export default function PartyOrderReadModal({
                     className="flex min-w-0 items-baseline justify-between gap-3 py-2"
                     key={`${item.serviceId}:${index}`}
                   >
-                    <span className="min-w-0 [overflow-wrap:anywhere]">
+                    <div className="min-w-0 [overflow-wrap:anywhere]">
                       {item.title} × {item.quantity}
                       {item.durationMinutes
                         ? ` · ${item.durationMinutes * item.quantity} мин`
                         : ''}
-                    </span>
+                      <PartyOrderServiceDetails item={item} />
+                    </div>
                     <span className="shrink-0 tabular-nums">
                       {money(item.total)}
                     </span>
@@ -210,13 +212,18 @@ export default function PartyOrderReadModal({
               </ul>
             </section>
           ) : order.serviceSelections?.length ? (
-            <ul>
-              {order.serviceSelections.map((item) => (
-                <li key={item.serviceId} className="[overflow-wrap:anywhere]">
-                  {item.title} × {item.quantity}
-                </li>
-              ))}
-            </ul>
+            <section>
+              <h2 className="mb-2 font-semibold">Услуги</h2>
+              <ul className="divide-y divide-slate-100">
+                {order.serviceSelections.map((item) => (
+                  <li key={item.serviceId} className="py-2 [overflow-wrap:anywhere]">
+                    {item.title} × {item.quantity}
+                    {item.durationMinutes ? ` · ${item.durationMinutes * item.quantity} мин` : ''}
+                    <PartyOrderServiceDetails item={item} />
+                  </li>
+                ))}
+              </ul>
+            </section>
           ) : order.serviceTitle ? (
             <p className="[overflow-wrap:anywhere]">{order.serviceTitle}</p>
           ) : null}

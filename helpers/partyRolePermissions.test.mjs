@@ -116,6 +116,36 @@ test('client amount can be read without disclosing deposits or payouts', () => {
   assert.equal(safe.contractAmount, 10000)
 })
 
+test('service configuration follows service access and hides rates from operations staff', () => {
+  const context = member()
+  const source = order({ bookingVersion: 1, orderItems: [{
+    serviceId: 'game', title: 'Игра', quantity: 1, durationMinutes: 60, unitPrice: 5000,
+    serviceConfiguration: {
+      definition: {
+        participantTiers: [{ min: 1, max: 10, price: 5000, durationMinutes: 60 }],
+        addons: [{ id: 'photo', title: 'Фото', priceDelta: 300, durationDelta: 5 }],
+        optionGroups: [],
+      },
+      parameters: { participants: 5, addonIds: [], optionIds: {} },
+      details: ['Участников: 5'],
+      basePrice: 5000,
+      baseDuration: 50,
+    },
+  }] })
+  context.position.permissions['orders.servicesIds'] = 'edit'
+  const operational = filterPartyOrderForAccess(context, source)
+  assert.deepEqual(operational.serviceSelections[0].serviceConfiguration.details, ['Участников: 5'])
+  assert.equal(operational.serviceSelections[0].durationMinutes, 60)
+  assert.doesNotMatch(JSON.stringify(operational), /price|5000/i)
+
+  context.position.permissions['finance.clientAmount'] = 'read'
+  assert.equal(filterPartyOrderForAccess(context, source).orderItems[0].serviceConfiguration.basePrice, 5000)
+  delete context.position.permissions['orders.servicesIds']
+  const financeOnly = filterPartyOrderForAccess(context, source)
+  assert.equal(financeOnly.serviceSelections, undefined)
+  assert.equal(financeOnly.orderItems[0].serviceConfiguration, undefined)
+})
+
 test('an administrative position uses its configured permissions rather than implicit administrator grants', () => {
   const context = member({ role: 'admin', staff: { ...member().staff, role: 'admin' } })
   assert.equal(canPartyAccess(context, { resource: 'finance.payments' }), false)

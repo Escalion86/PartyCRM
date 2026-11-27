@@ -42,12 +42,12 @@ const ServiceCard = ({ service, canManage, onEdit, onDelete }) => {
   const details = (
     <>
       <span className="block text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">{title}</span>
-      {(service.specialization || service.duration > 0) && (
+      {(service.specialization || (!service.configuration && service.duration > 0)) && (
         <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-600">
           {service.specialization && (
             <span>{specializationLabels[service.specialization] || service.specialization}</span>
           )}
-          {service.duration > 0 && <span>{service.duration} мин</span>}
+          {!service.configuration && service.duration > 0 && <span>{service.duration} мин</span>}
         </span>
       )}
     </>
@@ -67,7 +67,9 @@ const ServiceCard = ({ service, canManage, onEdit, onDelete }) => {
         <div className="min-w-0 flex-[1_1_10rem]">{details}</div>
       )}
       <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
-        {service.price > 0 && (
+        {service.configuration ? (
+          <span className="text-sm font-medium text-slate-700">Расчёт по параметрам</span>
+        ) : service.price > 0 && (
           <span className="whitespace-nowrap text-sm font-semibold text-slate-900 tabular-nums">
             {formatMoney(service.price)}
           </span>

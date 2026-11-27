@@ -162,6 +162,7 @@ function RoleOrderEditor({
   const existing = Boolean(order._id)
   const [draft, setDraft] = useState(() => createPartyRoleOrderDraft(order))
   const [bookingOpen, setBookingOpen] = useState(false)
+  const [bookingStep, setBookingStep] = useState(0)
   const [tab, setTab] = useState(initialTab)
   const [visited, setVisited] = useState([initialTab])
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -460,6 +461,8 @@ function RoleOrderEditor({
     showAddress && draft.customAddress,
   ].filter(Boolean).join(' · ')
   const serviceIds = (draft.servicesIds || []).map(String)
+  const fixedCatalogServices = options.services.filter((service) => !service.configuration)
+  const hasConfigurableServices = fixedCatalogServices.length < options.services.length
   const serviceSelections = canonicalBooking && order.serviceSelections?.length
     ? order.serviceSelections
     : serviceIds.map((serviceId) => ({ serviceId }))
@@ -653,7 +656,7 @@ function RoleOrderEditor({
               type="button"
               className={button}
               disabled={busy || dirty}
-              onClick={() => setBookingOpen(true)}
+              onClick={() => { setBookingStep(0); setBookingOpen(true) }}
             >
               Редактировать по шагам
             </button>
@@ -968,7 +971,7 @@ function RoleOrderEditor({
                           <fieldset disabled={busy} className="min-w-0 rounded-lg border border-slate-200 p-3 sm:col-span-2">
                             <legend className="px-1 text-sm font-medium text-slate-700">Услуги</legend>
                             <div className="grid gap-1 sm:grid-cols-2">
-                              {options.services.map((service) => (
+                              {fixedCatalogServices.map((service) => (
                                 <label key={service._id} className="flex min-h-10 min-w-0 cursor-pointer items-center gap-2 text-sm">
                                   <input
                                     type="checkbox"
@@ -984,6 +987,12 @@ function RoleOrderEditor({
                                 </label>
                               ))}
                             </div>
+                            {hasConfigurableServices && canOpenWizard && (
+                              <button type="button" className={button} disabled={busy || dirty}
+                                onClick={() => { setBookingStep(order.orderTypeId ? 2 : 0); setBookingOpen(true) }}>
+                                Настроить гибкие услуги
+                              </button>
+                            )}
                           </fieldset>
                         ) : null}
                       </div>
@@ -1421,6 +1430,7 @@ function RoleOrderEditor({
           companyId={companyId}
           order={order}
           options={options}
+          initialStep={bookingStep}
           onSaved={(next, accessChanged) => {
             setBookingOpen(false)
             onSaved(next, accessChanged)

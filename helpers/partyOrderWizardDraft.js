@@ -3,13 +3,20 @@ const MAX_AGE = 24 * 60 * 60 * 1000
 const MAX_SIZE = 200000
 const record = (value) => value && typeof value === 'object' && !Array.isArray(value)
 const numericInput = (value) => ['string', 'number'].includes(typeof value) && Number.isFinite(Number(value))
+const isOptionId = (value) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value)
+const validServiceParameters = (parameters) => record(parameters) &&
+  (parameters.participants === null || numericInput(parameters.participants)) &&
+  Array.isArray(parameters.addonIds) && parameters.addonIds.length <= 50 && parameters.addonIds.every(isOptionId) &&
+  record(parameters.optionIds) && Object.keys(parameters.optionIds).length <= 50 &&
+  Object.entries(parameters.optionIds).every(([groupId, optionId]) => isOptionId(groupId) && isOptionId(optionId))
 const validDraft = (draft) => record(draft) &&
   ['orderTypeId', 'locationId', 'customAddress', 'eventDate', 'clientId'].every((key) => typeof draft[key] === 'string') &&
   (draft.clientAddress === undefined || (record(draft.clientAddress) && ['town', 'street', 'house', 'room', 'comment'].every((key) => typeof draft.clientAddress[key] === 'string'))) &&
   (draft.adminComment === undefined || typeof draft.adminComment === 'string') &&
   ['company_location', 'client_address'].includes(draft.placeType) &&
   Array.isArray(draft.serviceSelections) && draft.serviceSelections.length <= 500 &&
-  draft.serviceSelections.every((item) => record(item) && typeof item.serviceId === 'string' && numericInput(item.quantity)) &&
+  draft.serviceSelections.every((item) => record(item) && typeof item.serviceId === 'string' && numericInput(item.quantity) &&
+    (item.parameters === undefined || validServiceParameters(item.parameters))) &&
   record(draft.eventBrief) && record(draft.discount) && ['amount', 'percent'].includes(draft.discount.type) && numericInput(draft.discount.value) &&
   (draft.rental === null || (record(draft.rental) && ['startsAt', 'endsAt'].every((key) => typeof draft.rental[key] === 'string')))
 

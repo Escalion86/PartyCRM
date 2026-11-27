@@ -1,5 +1,47 @@
 import { Schema } from 'mongoose'
 
+const participantTierSchema = new Schema(
+  {
+    min: { type: Number, required: true },
+    max: { type: Number, default: null },
+    price: { type: Number, default: null },
+    durationMinutes: { type: Number, default: null },
+    includedParticipants: { type: Number, default: null },
+    pricePerParticipant: { type: Number, default: 0 },
+    maxPrice: { type: Number, default: null },
+  },
+  { _id: false }
+)
+
+const serviceAdjustmentSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    title: { type: String, required: true },
+    priceDelta: { type: Number, default: 0 },
+    durationDelta: { type: Number, default: 0 },
+  },
+  { _id: false }
+)
+
+const optionGroupSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    title: { type: String, required: true },
+    required: { type: Boolean, default: false },
+    options: { type: [serviceAdjustmentSchema], default: [] },
+  },
+  { _id: false }
+)
+
+const serviceConfigurationSchema = new Schema(
+  {
+    participantTiers: { type: [participantTierSchema], default: [] },
+    addons: { type: [serviceAdjustmentSchema], default: [] },
+    optionGroups: { type: [optionGroupSchema], default: [] },
+  },
+  { _id: false }
+)
+
 const partyServicesSchema = {
   tenantId: {
     type: Schema.Types.ObjectId,
@@ -37,6 +79,7 @@ const partyServicesSchema = {
     default: 0,
     min: 0,
   },
+  configuration: { type: serviceConfigurationSchema, default: null },
   groupId: {
     type: Schema.Types.ObjectId,
     ref: 'ServiceGroup',

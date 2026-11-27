@@ -298,6 +298,7 @@ export const validateOrderReferences = async ({
   tenantId,
   payload,
   orderId = null,
+  previous = null,
 }) => {
   const parsedContactRoles = parsePartyOrderContactRoles(payload.contactRoles)
   if (parsedContactRoles.error) {
@@ -428,6 +429,30 @@ export const validateOrderReferences = async ({
         'Одна из услуг согласованного состава недоступна в этой компании',
         'validation'
       )
+    }
+  }
+
+  if (payload.bookingVersion !== 1) {
+    const existingIds = new Set([
+      ...(previous?.servicesIds || []),
+      ...(previous?.orderItems || []).map((item) => item.serviceId).filter(Boolean),
+    ].map(String))
+    const selectedIds = new Set([...(payload.servicesIds || []).map(String), ...snapshotServiceIds])
+    const addedIds = [...selectedIds].filter((id) => !existingIds.has(id))
+    if (addedIds.length) {
+      const PartyServices = await getPartyServiceModel()
+      const configurationCount = await PartyServices.countDocuments({
+        _id: { $in: addedIds },
+        tenantId,
+        configuration: { $ne: null },
+      })
+      if (configurationCount)
+        return partyError(
+          400,
+          'partycrm_service_configuration_requires_booking',
+          'Для настройки параметров услуги откройте последовательную форму заказа',
+          'validation'
+        )
     }
   }
 
@@ -626,6 +651,13 @@ export async function POST(req) {
   if (!canPartyAccess(context, { resource: 'orders', action: 'create' })) return partyError(403, 'partycrm_forbidden', 'Нет права создавать заказы')
 
   const body = await parseJsonBody(req)
+  if (body.bookingVersion !== 1 && Object.hasOwn(body, 'serviceSelections'))
+    return partyError(
+      400,
+      'partycrm_service_configuration_requires_booking',
+      'Для настройки параметров услуги откройте последовательную форму заказа',
+      'validation'
+    )
   if (['fulfillment', 'pricingSnapshot', 'orderTypeSnapshot', 'createRequestKey', 'createRequestActorId', 'createRequestFingerprint'].some((field) => Object.hasOwn(body, field))) return partyError(400, 'partycrm_order_server_fields', 'Используйте отдельное действие для отметки проведения', 'validation')
   if (body.status === 'closed' || body.status === 'canceled') return partyError(400, 'partycrm_invalid_initial_status', 'Создайте заявку, затем используйте действие закрытия или отмены')
   if ((body.transactions || []).some((transaction) => transaction.category === 'payout')) return partyError(400, 'partycrm_use_payout_action', 'Выплату исполнителю проводите отдельным действием после сохранения заказа')

@@ -4,10 +4,11 @@ import { readFile } from 'node:fs/promises'
 import { canPartyAccess, buildPartyOrderAccessFilter } from '../helpers/partyRolePermissions.js'
 import { isPartyCompanyModuleEnabled } from '../helpers/partyCompanyModules.js'
 import { canOpenPartyOrderWizard, getPartyOrderWizardInitialStep } from '../helpers/partyOrderWizardStart.js'
+import { redactPartyServiceConfigurationPrices } from '../helpers/partyServiceConfiguration.js'
 
 const tenantId = 'a'.repeat(24), orderId = 'b'.repeat(24), staffId = 'c'.repeat(24), managerId = 'd'.repeat(24), clientId = 'e'.repeat(24)
 const code = (await readFile(new URL('../app/api/party/order-options/route.js', import.meta.url), 'utf8')).replace(/^import[\s\S]*?from '[^']+'\r?\n/gm, '').replace(/^export /gm, '')
-function setup(grants = {}, patch = {}, brief = async () => ({ ok: true })) {
+function setup(grants = {}, patch = {}, brief = async () => ({ ok: true }), catalog = []) {
   const context = { tenantId, role: 'performer', staff: { _id: 'f'.repeat(24), tenantId, status: 'active', role: 'performer', positionId: 'position' }, position: { active: true, permissions: { orders: 'read', 'orders.assignedStaff': 'read', 'orders.client.name': 'read', ...grants }, orderScope: { locationIds: ['own'] } }, company: { _id: tenantId, settings: {} } }
   const order = { _id: orderId, tenantId, locationId: 'own', status: 'active', clientId, assignedStaff: [{ staffId }], responsibleStaffId: managerId, ...patch }
   const filters = [], lookups = []
@@ -17,6 +18,7 @@ function setup(grants = {}, patch = {}, brief = async () => ({ ok: true })) {
   const deps = {
     canPartyAccess, buildPartyOrderAccessFilter,
     isPartyCompanyModuleEnabled, canOpenPartyOrderWizard, getPartyOrderWizardInitialStep,
+    redactPartyServiceConfigurationPrices,
     getPartyOrderTypes: async () => [],
     validatePartyBriefForTransition: brief,
     isValidObjectId: (id) => /^[a-f\d]{24}$/i.test(id), getPartyRequestContext: async () => ({ context }),
@@ -24,7 +26,21 @@ function setup(grants = {}, patch = {}, brief = async () => ({ ok: true })) {
     getPartyOrderModel: async () => { modelCalls++; return { findOne(filter) { lookups.push(filter); return q(order) }, find() { assert.fail('a contextual request must not use the first 120 orders') } } },
     getPartyStaffModel: async () => { modelCalls++; return { find(filter) { filters.push(filter); return q(people.filter((person) => !filter._id || filter._id.$in.includes(person._id))) } } },
     getPartyClientModel: async () => { modelCalls++; return { find(filter) { assert.equal(filter.tenantId, tenantId); assert.deepEqual(filter._id.$in, [clientId]); return q([{ _id: clientId, firstName: 'Заказчик', phone: 'private-phone', email: 'private-email' }]) } } },
-    getPartyServiceModel: async () => { modelCalls++; return {} }, getPartyLocationModel: async () => { modelCalls++; return {} },
+    getPartyServiceModel: async () => {
+      modelCalls++
+      return { find(filter) {
+        assert.equal(filter.tenantId, tenantId)
+        return {
+          select(fields) {
+            const projected = catalog.map((service) =>
+              Object.fromEntries(Object.entries(service).filter(([key]) => fields.split(' ').includes(key)))
+            )
+            return q(projected)
+          },
+        }
+      } }
+    },
+    getPartyLocationModel: async () => { modelCalls++; return {} },
   }
   const GET = new Function(...Object.keys(deps), `${code}\nreturn GET`)(...Object.values(deps))
   return { context, filters, lookups, models: () => modelCalls, request: (id = orderId) => GET({ url: `https://party.test/api/party/order-options?orderId=${id}` }) }
@@ -55,6 +71,27 @@ test('manager-only access does not disclose the hidden team', async () => {
   const result = await state.request()
   assert.deepEqual(state.filters[0]._id.$in, [managerId])
   assert.deepEqual(result.body.data.staff.map((person) => person._id), [managerId])
+})
+
+test('service catalogs expose configurable durations without leaking prices to staff without finance access', async () => {
+  const configuration = {
+    participantTiers: [{ min: 1, max: 10, includedParticipants: 5, durationMinutes: 90, price: 2000, pricePerParticipant: 100, maxPrice: 2500 }],
+    addons: [{ id: 'props', title: 'Реквизит', priceDelta: 300, durationDelta: 15 }],
+    optionGroups: [{ id: 'format', title: 'Формат', required: true, options: [{ id: 'long', title: 'Длинный', priceDelta: 500, durationDelta: 30 }] }],
+  }
+  const catalog = [{ title: 'Игра', duration: 60, price: 1500, configuration }]
+  const withoutPrice = await setup({ 'orders.servicesIds': 'read' }, {}, undefined, catalog).request()
+  assert.deepEqual(withoutPrice.body.data.services, [{
+    title: 'Игра',
+    duration: 60,
+    configuration: {
+      participantTiers: [{ min: 1, max: 10, includedParticipants: 5, durationMinutes: 90 }],
+      addons: [{ id: 'props', title: 'Реквизит', durationDelta: 15 }],
+      optionGroups: [{ id: 'format', title: 'Формат', required: true, options: [{ id: 'long', title: 'Длинный', durationDelta: 30 }] }],
+    },
+  }])
+  const withPrice = await setup({ 'orders.servicesIds': 'read', 'finance.clientAmount': 'read' }, {}, undefined, catalog).request()
+  assert.deepEqual(withPrice.body.data.services, catalog)
 })
 
 test('foreign tenant or revoked order scope cannot enumerate contextual catalogs', async () => {

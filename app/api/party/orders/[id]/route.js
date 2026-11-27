@@ -134,6 +134,13 @@ export async function PATCH(req, { params }) {
     return partyError(404, 'partycrm_order_not_found', 'Заказ не найден')
   }
 
+  if (body.bookingVersion !== 1 && currentOrder.bookingVersion !== 1 && Object.hasOwn(body, 'serviceSelections'))
+    return partyError(
+      400,
+      'partycrm_service_configuration_requires_booking',
+      'Для настройки параметров услуги откройте последовательную форму заказа',
+      'validation'
+    )
   if (Object.hasOwn(body, 'workflowStageId') && body.workflowStageId !== (currentOrder.workflowStageId || '')) return partyError(400, 'partycrm_use_stage_transition', 'Для смены этапа используйте действие передачи заказа')
   if (['pricingSnapshot', 'orderTypeSnapshot'].some((field) => Object.hasOwn(body, field) && JSON.stringify(body[field]) !== JSON.stringify(currentOrder[field]))) return partyError(400, 'partycrm_order_server_fields', 'Расчёт и название типа формируются сервером')
   const changedPatch = Object.fromEntries(Object.entries(body).filter(([key, value]) => !['_id', 'tenantId', 'commercialRevision', 'expectedUpdatedAt', 'expectedRevision', 'transactions', 'completeBooking', 'bookingVersion'].includes(key) && JSON.stringify(value) !== JSON.stringify(currentOrder[key])))
@@ -361,6 +368,7 @@ export async function PATCH(req, { params }) {
     tenantId: context.tenantId,
     payload,
     orderId: id,
+    previous: currentOrder,
   })
   if (referenceError) return referenceError
   if (nextStatus === 'closed') {

@@ -1,4 +1,5 @@
 import { getPartyWorkflow } from './partyWorkflow.js'
+import { redactPartyServiceConfigurationPrices } from './partyServiceConfiguration.js'
 
 export const PARTY_ROLE_PERMISSION_GROUPS = Object.freeze([
   { key: 'orders', label: 'Заказы' },
@@ -206,8 +207,26 @@ export const filterPartyOrderForAccess = (context, order) => {
   const internalFields = ['createRequestKey', 'createRequestActorId', 'createRequestFingerprint']
   if (manager(context)) return Object.fromEntries(Object.entries(order).filter(([field]) => !internalFields.includes(field)))
   const output = {}
-  if (canPartyAccess(context, { resource: 'orders.servicesIds', order }) && order.bookingVersion) {
-    output.serviceSelections = (order.orderItems || []).filter((item) => item.serviceId).map((item) => ({ serviceId: String(item.serviceId), quantity: item.quantity, title: item.title, durationMinutes: item.durationMinutes, includedRentalMinutes: item.includedRentalMinutes }))
+  const canSeeServices = canPartyAccess(context, { resource: 'orders.servicesIds', order })
+  if (canSeeServices && order.bookingVersion) {
+    output.serviceSelections = (order.orderItems || []).filter((item) => item.serviceId).map((item) => {
+      const snapshot = item.serviceConfiguration
+      return {
+        serviceId: String(item.serviceId),
+        quantity: item.quantity,
+        title: item.title,
+        durationMinutes: item.durationMinutes,
+        includedRentalMinutes: item.includedRentalMinutes,
+        ...(snapshot ? {
+          serviceConfiguration: {
+            definition: redactPartyServiceConfigurationPrices(snapshot.definition),
+            parameters: snapshot.parameters,
+            details: snapshot.details,
+            baseDuration: snapshot.baseDuration,
+          },
+        } : {}),
+      }
+    })
   }
   for (const [field, value] of Object.entries(order)) {
     if (internalFields.includes(field)) continue
@@ -244,6 +263,10 @@ export const filterPartyOrderForAccess = (context, order) => {
       continue
     }
     if (!canPartyAccess(context, { resource: orderFieldResource(field), order })) continue
+    if (field === 'orderItems' && Array.isArray(value) && !canSeeServices) {
+      output.orderItems = value.map(({ serviceConfiguration: _configuration, ...item }) => item)
+      continue
+    }
     if (field === 'eventBrief' && value) {
       const maskContacts = (answer) => {
         if (Array.isArray(answer)) return answer.map(maskContacts)

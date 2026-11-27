@@ -17,6 +17,19 @@ test('a contact lead is recoverable without a type, address or event date', () =
   assert.deepEqual(decodePartyOrderWizardDraft(scope, encodePartyOrderWizardDraft(scope, value, now), now), value)
 })
 
+test('unfinished service choices survive reload and malformed option IDs are rejected', () => {
+  const value = snapshot()
+  value.step = value.reachedStep = 2
+  value.draft.serviceSelections = [
+    { serviceId: 'fixed', quantity: 1 },
+    { serviceId: 'configured', quantity: 1, parameters: { participants: '', addonIds: ['props'], optionIds: { format: 'large' } } },
+  ]
+  const restore = () => decodePartyOrderWizardDraft(scope, encodePartyOrderWizardDraft(scope, value, now), now)
+  assert.deepEqual(restore(), value)
+  value.draft.serviceSelections[1].parameters.optionIds.format = { id: 'large' }
+  assert.equal(restore(), null)
+})
+
 test('client creation preserves the editable name line and legacy drafts are still recoverable', () => {
   const value = snapshot()
   value.clientForm = { open: true, draft: { firstName: 'Анна', secondName: 'Иванова', thirdName: '', phone: null, email: '' } }

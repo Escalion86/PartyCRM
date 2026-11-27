@@ -24,11 +24,13 @@ import PartyOrderClientPicker from './PartyOrderClientPicker'
 import PartyOrderTypeCreateModal from './PartyOrderTypeCreateModal'
 import PartyOrderAddressEditor from './PartyOrderAddressEditor'
 import PartyOrderServiceModal from './PartyOrderServiceModal'
+import PartyOrderServiceParameters from './PartyOrderServiceParameters'
 import PartyOrderScheduleModal from './PartyOrderScheduleModal'
 import PartyOrderAvailabilityPicker from './PartyOrderAvailabilityPicker'
 import PartyInitialExpectations from './PartyInitialExpectations'
 import usePartyOrderWizardDraft from './usePartyOrderWizardDraft'
 import { getPartyOrderWizardDraftScope } from '@helpers/partyOrderWizardDraft'
+import { emptyPartyOrderServiceParameters, previewPartyOrderService } from '@helpers/partyOrderServicePreview'
 import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
 
 const input =
@@ -40,13 +42,13 @@ const editorButton =
 const steps = ['Тип', 'Место', 'Услуги', 'Время', 'Клиент и бриф', 'Финансы']
 const money = (value) => Number(value || 0).toLocaleString('ru-RU') + ' ₽'
 const selectionOf = (order) =>
-  order.serviceSelections ||
-  (order.orderItems?.length
-    ? order.orderItems
+  (order.serviceSelections || order.orderItems?.length
+    ? (order.serviceSelections || order.orderItems)
         .filter((item) => item.serviceId)
         .map((item) => ({
           serviceId: String(item.serviceId),
           quantity: item.quantity,
+          ...(item.serviceConfiguration?.parameters ? { parameters: item.serviceConfiguration.parameters } : {}),
         }))
     : (order.servicesIds || []).map((serviceId) => ({
         serviceId: String(serviceId),
@@ -303,36 +305,31 @@ function Wizard({
       ),
     [options.services, catalogChanges]
   )
-  const items = draft.serviceSelections.map((selection) => {
-    const service = servicesById.get(String(selection.serviceId))
-    const prior =
-      order.orderItems?.find(
-        (item) => String(item.serviceId) === String(selection.serviceId)
-      ) ||
-      order.serviceSelections?.find(
-        (item) => String(item.serviceId) === String(selection.serviceId)
-      )
-    return {
-      ...service,
-      ...prior,
-      serviceId: selection.serviceId,
-      quantity: selection.quantity,
-      unitPrice: prior?.unitPrice ?? service?.price ?? 0,
-      durationMinutes: prior?.durationMinutes ?? service?.duration ?? 0,
-      includedRentalMinutes:
-        prior?.includedRentalMinutes ?? service?.includedRentalMinutes ?? 0,
-      title: prior?.title || service?.title || 'Сохранённая услуга',
-    }
+  const priorItems = new Map((order.orderItems || order.serviceSelections || [])
+    .filter((item) => item.serviceId).map((item) => [String(item.serviceId), item]))
+  const previewServices = (selections, changedService) => selections.map((selection) => {
+    const id = String(selection.serviceId)
+    const service = String(changedService?._id) === id ? changedService : servicesById.get(id)
+    return previewPartyOrderService(service, priorItems.get(id), selection)
   })
+  const servicePreviews = previewServices(draft.serviceSelections)
+  const invalidService = servicePreviews.find(({ error }) => error)
+  const configurationError = invalidService
+    ? invalidService.configuration
+      ? `Проверьте параметры услуги «${invalidService.item.title}».`
+      : invalidService.error.message
+    : ''
   const preservedItems = (order.orderItems || []).filter((item) => !item.serviceId)
-  const incompatible = draft.serviceSelections.filter((selection) => {
-    const prior = selectionOf(order).find(
+  const initialSelections = selectionOf(order)
+  const incompatible = draft.serviceSelections.filter((selection, index) => {
+    const prior = initialSelections.find(
       (item) => String(item.serviceId) === String(selection.serviceId)
     )
     const unchanged =
       existing &&
       prior &&
       Number(prior.quantity) === Number(selection.quantity) &&
+      JSON.stringify(prior.parameters) === JSON.stringify(servicePreviews[index].normalizedParameters ?? selection.parameters) &&
       String(order.orderTypeId || '') === draft.orderTypeId &&
       String(order.locationId || '') === draft.locationId &&
       order.placeType === draft.placeType
@@ -347,8 +344,8 @@ function Wizard({
   let calculation,
     calculationError = ''
   try {
-    calculation = calculatePartyBooking({
-      items: [...items, ...preservedItems],
+    if (!invalidService) calculation = calculatePartyBooking({
+      items: [...servicePreviews.map(({ item }) => item), ...preservedItems],
       rental: draft.rental,
       placeType: draft.placeType,
       hourlyRate:
@@ -360,9 +357,13 @@ function Wizard({
   } catch (cause) {
     calculationError = cause.message
   }
-  const duration = Math.ceil(calculation?.durationMinutes || 0)
+  const duration = invalidService ? 0 : Math.ceil(
+    [...servicePreviews.map(({ item }) => item), ...preservedItems].reduce((total, item) =>
+      total + (Number(item.durationMinutes) || 0) * (Number(item.quantity) || 0), 0)
+  )
+  const programTooLong = duration > 10080
   const dateEnd =
-    draft.eventDate && duration
+    draft.eventDate && duration > 0 && !programTooLong
       ? new Date(+new Date(draft.eventDate) + duration * 60000).toISOString()
       : draft.rental?.endsAt || ''
   const dateText = (value) =>
@@ -383,14 +384,9 @@ function Wizard({
   const selectServices = (selections, changedService) => {
     edit({ serviceSelections: selections })
     if (!draft.eventDate) {
-      const nextDuration = selections.reduce(
-        (sum, item) => {
-          const service = String(changedService?._id) === String(item.serviceId)
-            ? changedService : servicesById.get(String(item.serviceId))
-          return sum + (Number(service?.duration) || 0) * Number(item.quantity || 0)
-        },
-        0
-      )
+      const nextDuration = previewServices(selections, changedService).reduce(
+        (sum, { item, error }) => error ? sum : sum + Number(item.durationMinutes || 0) * Number(item.quantity || 0),
+        0)
       setRentalMinutes(Math.max(1, nextDuration || 60))
     }
   }
@@ -414,10 +410,25 @@ function Wizard({
         : 'Для выбранного типа заказа и места нет доступных услуг. Измените тип или место либо попросите администратора проверить доступность услуги.'
     }
   }
-  const addService = (serviceId) =>
-    selectServices([...draft.serviceSelections, { serviceId: String(serviceId), quantity: 1 }])
+  const addServiceSelection = (service) => ({
+    serviceId: String(service._id),
+    quantity: 1,
+    ...(service.configuration ? { parameters: emptyPartyOrderServiceParameters() } : {}),
+  })
+  const focusServiceParameters = (serviceId) => {
+    const row = Array.from(stepSection.current?.querySelectorAll('[data-order-service-id]') || [])
+      .find((element) => element.dataset.orderServiceId === serviceId)
+    const control = row?.querySelector('[data-service-parameters] :is(input, select):not(:disabled)')
+    control?.focus()
+    return Boolean(control)
+  }
+  const addService = (serviceId) => {
+    const service = servicesById.get(String(serviceId))
+    selectServices([...draft.serviceSelections, addServiceSelection(service)])
+    if (service.configuration) requestAnimationFrame(() => focusServiceParameters(String(serviceId)))
+  }
   const serviceDetails = (service) =>
-    `${service.duration || 0} мин${canPrice ? ` · ${money(service.price)}` : ''}`
+    service.configuration ? 'Настраиваемая услуга' : `${service.duration || 0} мин${canPrice ? ` · ${money(service.price)}` : ''}`
   const changeType = async (orderTypeId) => {
     if (childDirty) { setError('Сначала сохраните или отмените новый контакт.'); return }
     const archivedAnswers = [...(draft.eventBrief.archivedAnswers || [])]
@@ -452,20 +463,27 @@ function Wizard({
     serviceEditorTrigger.current = trigger
     setServiceEditor({ serviceId })
   }
-  const closeServiceEditor = () => {
+  const closeServiceEditor = (focusServiceId) => {
     setServiceEditor(null)
-    requestAnimationFrame(() => serviceEditorTrigger.current?.focus())
+    requestAnimationFrame(() => {
+      if (!focusServiceId || !focusServiceParameters(focusServiceId)) serviceEditorTrigger.current?.focus()
+    })
   }
   const applySavedService = (service, created) => {
     const serviceId = String(service._id)
     setCatalogChanges((previous) => ({ ...previous, [serviceId]: service }))
     if (!created || isPartyServiceAvailable(service, draft)) {
-      const selections = created ? [...draft.serviceSelections, { serviceId, quantity: 1 }] : draft.serviceSelections
+      const selections = created && !draft.serviceSelections.some((item) => item.serviceId === serviceId)
+        ? [...draft.serviceSelections, addServiceSelection(service)]
+        : !service.configuration && !priorItems.get(serviceId)?.serviceConfiguration
+          ? draft.serviceSelections.map((item) => item.serviceId === serviceId
+            ? { serviceId: item.serviceId, quantity: item.quantity } : item)
+          : draft.serviceSelections
       selectServices(selections, service)
     } else {
       setError('Услуга сохранена. Проверьте её доступность для выбранного типа заказа и места.')
     }
-    closeServiceEditor()
+    closeServiceEditor(created && service.configuration ? serviceId : null)
   }
   const closeSchedule = () => {
     setScheduleOpen(false)
@@ -484,23 +502,29 @@ function Wizard({
       +new Date(dateEnd) > +new Date(draft.rental.endsAt))
       ? 'Аренда должна полностью вмещать программу. Увеличьте время аренды или измените начало программы.'
       : ''
-  const stepError = (index) =>
-    index === 0 && !draft.orderTypeId
-      ? 'Выберите тип заказа.'
-      : index === 1 &&
-          (draft.placeType === 'company_location'
-            ? !draft.locationId
-            : !draft.customAddress.trim())
-        ? 'Укажите помещение или адрес выезда.'
-        : index === 2 && incompatible.length
-          ? 'Уберите несовместимые услуги или измените тип и место.'
-        : (index === 2 || index === 3) && draft.placeType === 'client_address' && !duration
-            ? 'Добавьте услугу с указанной длительностью.'
-          : index === 3 && (!draft.eventDate || timeError)
-            ? timeError || 'Выберите свободное время.'
-            : index === 4 && can('orders.clientId') && !draft.clientId
-              ? 'Выберите или создайте клиента.'
-              : index === 4 ? briefError : ''
+  const durationError = programTooLong
+    ? 'Сократите программу до семи дней.'
+    : draft.placeType === 'client_address' && !duration
+      ? 'Добавьте услугу с указанной длительностью.'
+      : ''
+  const stepError = (index) => {
+    switch (index) {
+      case 0:
+        return draft.orderTypeId ? '' : 'Выберите тип заказа.'
+      case 1: {
+        const place = draft.placeType === 'company_location' ? draft.locationId : draft.customAddress.trim()
+        return place ? '' : 'Укажите помещение или адрес выезда.'
+      }
+      case 2:
+        return configurationError || (incompatible.length ? 'Уберите несовместимые услуги или измените тип и место.' : durationError)
+      case 3:
+        return durationError || timeError || (draft.eventDate ? '' : 'Выберите свободное время.')
+      case 4:
+        return can('orders.clientId') && !draft.clientId ? 'Выберите или создайте клиента.' : briefError
+      default:
+        return ''
+    }
+  }
   const leaveWizard = (callback, target) => {
     if (
       !busy &&
@@ -514,6 +538,14 @@ function Wizard({
   const close = () => leaveWizard(onClose, 'close-order-wizard')
   const save = async (complete) => {
     if (saving.current || childDirty) return
+    if (!unresolved && (configurationError || (programTooLong && !leadMode))) {
+      reportValidation(2, configurationError || durationError)
+      return
+    }
+    if (!unresolved && !leadMode && draft.eventDate && timeError) {
+      reportValidation(3, timeError)
+      return
+    }
     if (!unresolved && leadMode && !draft.clientId && !draft.adminComment?.trim()) {
       reportValidation(-1, 'Выберите клиента, создайте нового или запишите суть обращения.')
       return
@@ -540,9 +572,10 @@ function Wizard({
         ...(can('orders.servicesIds', 'edit')
           ? {
               serviceSelections: draft.serviceSelections.map(
-                ({ serviceId, quantity }) => ({
+                ({ serviceId, quantity }, index) => ({
                   serviceId,
                   quantity: Number(quantity),
+                  ...(servicePreviews[index].configuration ? { parameters: servicePreviews[index].normalizedParameters } : {}),
                 })
               ),
             }
@@ -754,7 +787,8 @@ function Wizard({
               disabled={disabled || childDirty || (step === 0 && !orderTypes.length)}
               onClick={() => {
                 const message = stepError(step)
-                if (message) reportValidation(step, message)
+                if (step > 2 && configurationError) reportValidation(2, configurationError)
+                else if (message) reportValidation(step, message)
                 else navigateTo(step + 1)
               }}
             >
@@ -820,7 +854,10 @@ function Wizard({
                 disabled={disabled || childDirty || index > reachedStep}
                 aria-current={step === index ? 'step' : undefined}
                 className={`${button} ${step === index ? 'border-sky-700 bg-sky-50 text-sky-950' : 'border-transparent text-slate-600'}`}
-                onClick={() => navigateTo(index)}
+                onClick={() => {
+                  if (index > 2 && configurationError) reportValidation(2, configurationError)
+                  else navigateTo(index)
+                }}
               >
                 {index + 1}. {label}
               </button>
@@ -1005,12 +1042,15 @@ function Wizard({
                   </button>
                 </div>
               ) : null}
-              {items.length ? (
+              {servicePreviews.length ? (
                 <div className="space-y-2">
                   <h3 className="text-sm font-semibold text-slate-900">Выбранные услуги</h3>
                   <ul className="space-y-3" role="list" aria-label="Выбранные услуги">
-                    {items.map((item, index) => {
+                    {servicePreviews.map(({ item, configuration, parameters, error: serviceError }, index) => {
                       const service = servicesById.get(String(item.serviceId))
+                      const changeSelection = (patch) => selectServices(draft.serviceSelections.map((entry, position) =>
+                        position === index ? { ...entry, ...patch } : entry
+                      ))
                       return (
                         <li
                           className={`grid items-end gap-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-950 ${
@@ -1019,22 +1059,26 @@ function Wizard({
                               : 'sm:grid-cols-[minmax(0,1fr)_auto]'
                           }`}
                           key={String(item.serviceId)}
+                          data-order-service-id={String(item.serviceId)}
                         >
                           <div className="min-w-0">
                             <p className="flex items-start gap-2 font-semibold">
                               <FontAwesomeIcon icon={faCheck} aria-hidden="true" className="mt-1 size-4 shrink-0 text-sky-700" />
                               <span className="min-w-0 [overflow-wrap:anywhere]">{item.title}</span>
                             </p>
-                            <p className="mt-1 pl-6 text-sm text-sky-900">
-                              {item.durationMinutes || 0} мин за выполнение
-                              {canPrice ? ` · ${money(item.unitPrice)}` : ''}
-                              {!service?.repeatable && Number(item.quantity) > 1
-                                ? ` · ${item.quantity} шт.`
-                                : ''}
-                              {draft.placeType === 'company_location' &&
-                              item.includedRentalMinutes
-                                ? ` · аренда включена: ${item.includedRentalMinutes} мин`
-                                : ''}
+                            <p className="mt-1 pl-6 text-sm text-sky-900" aria-live={configuration ? 'polite' : undefined}>
+                              {serviceError ? 'Заполните параметры для расчёта' : (
+                                <>
+                                  {item.durationMinutes || 0} мин за выполнение
+                                  {canPrice ? ` · ${money(item.unitPrice)}` : ''}
+                                  {!service?.repeatable && Number(item.quantity) > 1
+                                    ? ` · ${item.quantity} шт.`
+                                    : ''}
+                                  {draft.placeType === 'company_location' && item.includedRentalMinutes
+                                    ? ` · аренда включена: ${item.includedRentalMinutes} мин`
+                                    : ''}
+                                </>
+                              )}
                             </p>
                           </div>
                           {service?.repeatable ? (
@@ -1048,15 +1092,7 @@ function Wizard({
                                 step={1}
                                 disabled={!canEditServices}
                                 value={item.quantity}
-                                onChange={(event) =>
-                                  selectServices(
-                                    draft.serviceSelections.map((entry, position) =>
-                                      position === index
-                                        ? { ...entry, quantity: event.target.value }
-                                        : entry
-                                    )
-                                  )
-                                }
+                                onChange={(event) => changeSelection({ quantity: event.target.value })}
                               />
                             </label>
                           ) : null}
@@ -1072,6 +1108,28 @@ function Wizard({
                               Убрать
                             </button>
                           </div>
+                          {configuration ? (
+                            <PartyOrderServiceParameters
+                              title={item.title}
+                              configuration={configuration}
+                              parameters={parameters}
+                              error={serviceError}
+                              showError={validationStep === 2}
+                              canEdit={canEditServices}
+                              canPrice={canPrice}
+                              onChange={(value) => changeSelection({ parameters: value })}
+                            />
+                          ) : canEditServices && service?.configuration && (
+                            <div className="sm:col-span-full">
+                              <button className={editorButton} type="button"
+                                onClick={() => {
+                                  changeSelection({ parameters: emptyPartyOrderServiceParameters() })
+                                  requestAnimationFrame(() => focusServiceParameters(String(item.serviceId)))
+                                }}>
+                                Настроить по справочнику
+                              </button>
+                            </div>
+                          )}
                         </li>
                       )
                     })}
@@ -1145,10 +1203,15 @@ function Wizard({
                 </details>
               )}
               <p className="text-sm font-semibold">
-                Программа: {duration} мин
-                {draft.placeType === 'company_location'
-                  ? ` · включено аренды: ${calculation?.includedRentalMinutes || 0} мин`
-                  : ''}
+                {invalidService ? 'Итог программы появится после заполнения параметров.' : (
+                  <>
+                    Программа: {duration} мин
+                    {canPrice && calculation ? ` · услуги на ${money(calculation.servicesKopecks / 100)}` : ''}
+                    {draft.placeType === 'company_location'
+                      ? ` · включено аренды: ${calculation?.includedRentalMinutes || 0} мин`
+                      : ''}
+                  </>
+                )}
               </p>
               <p className="text-xs text-slate-600">
                 Услуги идут последовательно. Для аренды без программы можно
@@ -1209,6 +1272,8 @@ function Wizard({
                 timeZone={timeZone}
                 disabled={
                   disabled ||
+                  Boolean(invalidService) ||
+                  programTooLong ||
                   !can('orders.eventDate', 'edit') ||
                   !can('orders.dateEnd', 'edit')
                 }

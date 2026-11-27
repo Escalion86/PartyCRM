@@ -149,6 +149,7 @@ export default function OrderModal({
 }) {
   const [clientModal, setClientModal] = useState('')
   const [bookingOpen, setBookingOpen] = useState(false)
+  const [bookingStep, setBookingStep] = useState(0)
   const [localFormVariant, setLocalFormVariant] = useState(null)
   const layoutSelectId = useId()
   const [canonicalTypes, setCanonicalTypes] = useState([])
@@ -916,7 +917,7 @@ export default function OrderModal({
         <TabPanel tabName="Основное">
           <div className="flex flex-col gap-2">
             <div data-order-group="Услуги" className="grid gap-2">
-              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => setBookingOpen(true)}>Редактировать по шагам</button> : null}
+              {orderDraft._id ? <button type="button" disabled={saving || hasUnsavedChanges} className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-50" onClick={() => { setBookingStep(0); setBookingOpen(true) }}>Редактировать по шагам</button> : null}
               <PartyOrderTypePicker
                 value={orderDraft.title || ''}
                 onChange={(val) => handleChange('title', val || '')}
@@ -928,12 +929,26 @@ export default function OrderModal({
               <ServiceMultiSelect
                 value={orderDraft.servicesIds || []}
                 onChange={(val) => handleChange('servicesIds', val)}
-                services={services}
+                services={services?.filter((service) => !service.configuration)}
                 atom={partyServicesAtom}
                 onCreate={() => setServiceModal(true)}
                 required
                 tone="party"
               />
+              {(services || []).some((service) => service.configuration) ? (
+                <div className="space-y-2 text-sm text-slate-700">
+                  {(services || []).filter((service) => service.configuration && (orderDraft.servicesIds || []).includes(service._id)).map((service) => (
+                    <p key={service._id} className="[overflow-wrap:anywhere]">{service.title}</p>
+                  ))}
+                  {orderDraft._id && (
+                    <button type="button" disabled={saving || hasUnsavedChanges}
+                      className="min-h-11 cursor-pointer rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() => { setBookingStep(orderDraft.orderTypeId ? 2 : 0); setBookingOpen(true) }}>
+                      Настроить гибкие услуги
+                    </button>
+                  )}
+                </div>
+              ) : null}
             </div>
             <div data-order-group="Дата и ответственный" className="grid gap-2">
               <div className="flex flex-col gap-2 md:flex-row">
@@ -1435,7 +1450,7 @@ export default function OrderModal({
         onCompanySettingsChange={onCompanySettingsChange}
       />
 
-      {bookingOpen ? <PartyOrderWizard companyId={activeCompanyId} order={orderDraft} onClose={() => setBookingOpen(false)} onShowDetails={() => setBookingOpen(false)} onSaved={(next) => { setBookingOpen(false); onOrderApplied?.(next); onClose?.() }} /> : null}
+      {bookingOpen ? <PartyOrderWizard companyId={activeCompanyId} order={orderDraft} initialStep={bookingStep} onClose={() => setBookingOpen(false)} onShowDetails={() => setBookingOpen(false)} onSaved={(next) => { setBookingOpen(false); onOrderApplied?.(next); onClose?.() }} /> : null}
       {editingAdditionalEvent !== null ? (
         <AdditionalEventEditModal
           open={true}

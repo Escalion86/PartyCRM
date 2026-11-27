@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getPartyOrderTypes } from '@server/partyOrderTypes'
 import { validatePartyBriefForTransition } from '@server/partyBriefTemplates'
 import { isPartyCompanyModuleEnabled } from '@helpers/partyCompanyModules'
+import { redactPartyServiceConfigurationPrices } from '@helpers/partyServiceConfiguration'
 import {
   canOpenPartyOrderWizard,
   getPartyOrderWizardInitialStep,
@@ -77,6 +78,7 @@ export async function GET(req) {
     can('orders.client.phone') ||
     can('orders.client.email')
   const canReadManager = can('orders.responsibleStaffId')
+  const canReadClientAmount = can('finance.clientAmount')
   const canChooseStaff =
     can('orders.assignedStaff', 'edit') ||
     can('orders.responsibleStaffId', 'edit')
@@ -150,7 +152,7 @@ export async function GET(req) {
           tenantId: context.tenantId,
           status: { $ne: 'archived' },
         })
-          .select('_id title status duration availabilityConfigured orderTypeIds locationIds offsiteAllowed repeatable maxQuantity includedRentalMinutes' + (can('finance.clientAmount') ? ' price' : ''))
+          .select('_id title status duration availabilityConfigured orderTypeIds locationIds offsiteAllowed repeatable maxQuantity includedRentalMinutes configuration' + (canReadClientAmount ? ' price' : ''))
           .sort({ title: 1 })
           .limit(500)
           .lean()
@@ -163,7 +165,7 @@ export async function GET(req) {
             ? { _id: { $in: context.position.orderScope.locationIds } }
             : {}),
         })
-          .select('_id title address status bookingEnabled workingSchedule preparationMinutes cleanupMinutes' + (can('finance.clientAmount') ? ' hourlyRentalRate' : ''))
+          .select('_id title address status bookingEnabled workingSchedule preparationMinutes cleanupMinutes' + (canReadClientAmount ? ' hourlyRentalRate' : ''))
           .sort({ title: 1 })
           .limit(500)
           .lean()
@@ -213,7 +215,13 @@ export async function GET(req) {
           ? { phone: person.phone }
           : {}),
       })),
-      services,
+      services: canReadClientAmount
+        ? services
+        : services.map((service) =>
+            service.configuration
+              ? { ...service, configuration: redactPartyServiceConfigurationPrices(service.configuration) }
+              : service
+          ),
       locations,
       orderTypes,
       ...(selectedOrder ? { initialWizardStep } : {}),

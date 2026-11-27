@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { normalizePartyServiceConfiguration } from '@helpers/partyServiceConfiguration'
 import { getPartyOrderModel, getPartyServiceModel } from '@server/partyModels'
 import { validatePartyServiceBookingSettings } from '@server/partyOrderTypes'
 import {
@@ -20,6 +21,8 @@ const pickServicePatch = (body) => {
     patch.specialization = body.specialization
   }
   if (body.price !== undefined) patch.price = Number(body.price || 0)
+  if (Object.hasOwn(body, 'configuration'))
+    patch.configuration = normalizePartyServiceConfiguration(body.configuration)
   if (body.groupId !== undefined) patch.groupId = body.groupId || null
   if (body.status === 'active' || body.status === 'archived') {
     patch.status = body.status

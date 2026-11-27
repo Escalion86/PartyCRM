@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { normalizePartyServiceConfiguration } from '@helpers/partyServiceConfiguration'
 import { getPartyServiceModel } from '@server/partyModels'
 import { validatePartyServiceBookingSettings } from '@server/partyOrderTypes'
 import {
@@ -15,6 +16,7 @@ const normalizeServicePayload = (body) => ({
   specialization:
     typeof body.specialization === 'string' ? body.specialization : 'other',
   price: Number(body.price || 0),
+  configuration: normalizePartyServiceConfiguration(body.configuration),
   groupId: body.groupId || null,
   status: body.status === 'archived' ? 'archived' : 'active',
 })

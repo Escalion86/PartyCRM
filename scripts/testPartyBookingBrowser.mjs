@@ -263,6 +263,78 @@ export async function runPartyBookingBrowserTest({
         if (width === 390) assert.ok(bounds.height >= 840, 'Mobile dialog should fill screen')
       }
     }
+    if (process.argv.includes('--flexible-only')) {
+      await selectExistingClient()
+      await dialog.getByRole('button', { name: 'Оформить бронирование', exact: true }).click()
+      await dialog.getByLabel('Тип заказа', { exact: true }).selectOption(String(type._id))
+      await dialog.getByRole('button', { name: 'Далее', exact: true }).click()
+      await dialog.getByLabel('Место проведения', { exact: true }).selectOption('company_location')
+      await dialog.getByLabel('Помещение', { exact: true }).selectOption(String(location._id))
+      await dialog.getByRole('button', { name: 'Далее', exact: true }).click()
+      await dialog.getByRole('button', { name: 'Создать услугу', exact: true }).click()
+
+      const editor = page.getByRole('dialog', { name: 'Новая услуга', exact: true })
+      const title = 'Игра с гибким расчётом'
+      await editor.getByLabel('Название услуги', { exact: true }).fill(title)
+      await editor.getByLabel('Длительность, мин', { exact: true }).fill('50')
+      await editor.getByText('Диапазоны участников', { exact: true }).click()
+      await editor.getByRole('button', { name: 'Добавить диапазон', exact: true }).click()
+      const tier = editor.getByRole('group', { name: 'Диапазон 1', exact: true })
+      await tier.getByLabel('До, человек', { exact: true }).fill('20')
+      await tier.getByLabel('Цена диапазона, ₽', { exact: true }).fill('1400')
+      await editor.getByText('Дополнения', { exact: true }).click()
+      await editor.getByRole('button', { name: 'Добавить дополнение', exact: true }).click()
+      const addon = editor.getByRole('group', { name: 'Дополнение 1', exact: true })
+      await addon.getByLabel('Название', { exact: true }).fill('Дополнительный реквизит')
+      await addon.getByLabel('Изменение цены, ₽', { exact: true }).fill('300')
+      await addon.getByLabel('Изменение минут', { exact: true }).fill('15')
+      await editor.getByText('Списки вариантов', { exact: true }).click()
+      await editor.getByRole('button', { name: 'Добавить список', exact: true }).click()
+      const group = editor.getByRole('group', { name: 'Список 1', exact: true })
+      await group.getByLabel('Название списка', { exact: true }).fill('Формат игры')
+      await group.getByRole('checkbox', { name: 'Обязательно выбрать вариант', exact: true }).check()
+      const variant = group.getByRole('group', { name: 'Вариант 1', exact: true })
+      await variant.getByLabel('Название', { exact: true }).fill('С финалом')
+      await variant.getByLabel('Изменение цены, ₽', { exact: true }).fill('250')
+      await variant.getByLabel('Изменение минут', { exact: true }).fill('10')
+      await editor.getByRole('button', { name: 'Сохранить', exact: true }).click()
+      await editor.waitFor({ state: 'hidden' })
+
+      const item = dialog.getByRole('list', { name: 'Выбранные услуги' }).getByRole('listitem').filter({ hasText: title })
+      const participants = item.getByRole('spinbutton', { name: 'Участники', exact: true })
+      await participants.fill('21')
+      await item.getByText('Для такого количества участников нет диапазона', { exact: true }).waitFor()
+      await participants.fill('12')
+      await item.getByRole('checkbox', { name: /Дополнительный реквизит/ }).check()
+      await dialog.getByRole('button', { name: 'Далее', exact: true }).click()
+      await item.getByText('Выберите вариант в списке «Формат игры»', { exact: true }).waitFor()
+      const format = item.getByRole('combobox', { name: 'Формат игры', exact: true })
+      await format.selectOption({ label: 'С финалом (+250 ₽ · +10 мин)' })
+      await item.getByText(/75 мин за выполнение.*1[\s\u00A0]950 ₽/).waitFor()
+      await dialog.getByText(/Программа: 75 мин.*1[\s\u00A0]950 ₽/).waitFor()
+      await checkLayout()
+
+      const [savedResponse] = await Promise.all([
+        page.waitForResponse((response) => new URL(response.url()).pathname === '/api/party/orders' && response.request().method() === 'POST'),
+        dialog.getByRole('button', { name: 'Сохранить как заявку', exact: true }).click(),
+      ])
+      const saved = await savedResponse.json()
+      assert.ok(savedResponse.ok(), JSON.stringify(saved.error))
+      const stored = await connection.db.collection('orders').findOne({ _id: new Types.ObjectId(saved.data._id), tenantId: company._id })
+      assert.equal(stored.contractAmount, 1950)
+      assert.equal(stored.durationMinutes, 75)
+      assert.deepEqual(stored.orderItems[0].serviceConfiguration.details, ['Участников: 12', 'Дополнительный реквизит', 'Формат игры: С финалом'])
+      await page.goto(`${origin}/company/work?companyId=${company._id}&orderId=${saved.data._id}&mode=view`, { waitUntil: 'domcontentloaded' })
+      const preview = page.getByRole('dialog')
+      for (const detail of stored.orderItems[0].serviceConfiguration.details) {
+        await preview.getByText(detail, { exact: true }).waitFor()
+      }
+      await preview.getByText(/75 мин/).waitFor()
+      console.log('PASS browser: catalog configuration, participant limit, required options, live calculation at 390 and 1280 px, saved order preview')
+      await context.close()
+      assert.deepEqual(errors, [], 'Browser runtime errors')
+      return
+    }
     await dialog.getByRole('button', { name: 'Сохранить заявку', exact: true }).click()
     await page.waitForFunction(() => document.activeElement?.getAttribute('aria-invalid') === 'true')
     const directClient = dialog.getByRole('button', { name: 'Создать клиента', exact: true })

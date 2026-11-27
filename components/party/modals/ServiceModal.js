@@ -10,7 +10,9 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import serviceGroupsAtom from '@state/atoms/serviceGroupsAtom'
 import { apiJson } from '@helpers/apiClient'
 import useUnsavedChanges from '@helpers/useUnsavedChanges'
+import { normalizePartyServiceConfiguration } from '@helpers/partyServiceConfiguration'
 import PartyServiceBookingSettings from '@components/party/services/PartyServiceBookingSettings'
+import PartyServiceConfigurationEditor from '@components/party/services/PartyServiceConfigurationEditor'
 
 const specializationOptions = [
   { value: 'animator', label: 'Аниматор' },
@@ -95,6 +97,7 @@ export function ServiceCreateModal({
       return
     }
     try {
+      normalizePartyServiceConfiguration(serviceDraft.configuration)
       await onSubmit()
     } catch (error) {
       setSubmitError(error.message || 'Не удалось сохранить услугу')
@@ -198,7 +201,7 @@ export function ServiceCreateModal({
             tone="party"
           />
           <Input
-            label="Длительность, мин"
+            label={serviceDraft.configuration ? 'Базовая длительность, мин' : 'Длительность, мин'}
             type="number"
             value={serviceDraft.duration || ''}
             onChange={handleChange('duration')}
@@ -207,13 +210,18 @@ export function ServiceCreateModal({
             tone="party"
           />
           <Input
-            label="Цена, ₽"
+            label={serviceDraft.configuration ? 'Базовая цена, ₽' : 'Цена, ₽'}
             type="number"
             value={serviceDraft.price || ''}
             onChange={handleChange('price')}
             step={1000}
             fullWidth
             tone="party"
+          />
+          <PartyServiceConfigurationEditor
+            value={serviceDraft.configuration}
+            onChange={handleChange('configuration')}
+            disabled={saving}
           />
           <PartyServiceBookingSettings companyId={activeCompanyId} value={serviceDraft} onChange={setServiceDraft} disabled={saving} />
         </div>

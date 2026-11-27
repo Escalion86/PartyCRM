@@ -28,7 +28,7 @@ const tenantId = 'a'.repeat(24), actorId = 'b'.repeat(24), orderId = 'c'.repeat(
 const owner = { tenantId, role: 'owner', staff: { _id: actorId, tenantId, role: 'owner', status: 'active' }, company: { settings: {} } }
 const body = { title: 'Мероприятие', serviceTitle: 'Шоу', contractAmount: 1000, initialPayment: { amount: '500.01', paymentMethod: 'cash' } }
 const actor = (grants) => ({ ...owner, role: 'performer', staff: { ...owner.staff, role: 'performer' }, position: { permissions: { orders: 'read', 'orders.create': 'edit', 'orders.title': 'edit', 'orders.serviceTitle': 'edit', 'finance.clientAmount': 'edit', 'finance.payments': 'edit', ...grants }, orderScope: {} } })
-function setup(context = owner, { storedInboxState = null, sourceOrderId = null, transactionsAvailable = true } = {}) {
+function setup(context = owner, { storedInboxState = null, sourceOrderId = null, transactionsAvailable = true, configuredServiceId = null } = {}) {
   let orders = [], payments = [], inboxState = storedInboxState, serial = Promise.resolve()
   const guards = [], effects = [], active = new Set()
   const q = (value) => ({ select() { return this }, session() { return this }, lean: async () => value })
@@ -80,7 +80,13 @@ function setup(context = owner, { storedInboxState = null, sourceOrderId = null,
     partyError: (status, code, message, type, extra) => ({ status, body: { code, message, type, ...extra } }),
     getPartyOrderModel: async () => Model,
     getPartyStaffModel: async () => ({ find: () => q([]), countDocuments: async () => 1 }),
-    getPartyClientModel: async () => ({ countDocuments: async () => 1 }), getPartyServiceModel: async () => ({ countDocuments: async () => 1 }), getPartyLocationModel: async () => ({ exists: async () => true }),
+    getPartyClientModel: async () => ({ countDocuments: async () => 1 }),
+    getPartyServiceModel: async () => ({
+      countDocuments: async (filter) => filter.configuration
+        ? Number(filter.tenantId === tenantId && filter._id.$in.includes(configuredServiceId))
+        : filter._id.$in.length,
+    }),
+    getPartyLocationModel: async () => ({ exists: async () => true }),
     getPartyCompanyTariffAccessState: async () => ({ access: {} }), filterPartyOrderPayloadByTariffAccess: (payload) => payload, canCreatePartyOrderByTariff: () => ({ ok: true }),
     withPartyOrderVenueWrite: async ({ work }) => work({ session: null, legacy: true }),
     findPartyOrderConflicts: async () => ({}), hasPartyOrderConflicts: () => false,
@@ -114,6 +120,19 @@ test('main order creation refuses a new offsite order before saving when the blo
   assert.equal(state.orders.length, 0)
   assert.equal(state.payments.length, 0)
   assert.deepEqual(state.effects, [])
+})
+
+test('legacy order creation directs newly configured services to the booking wizard', async () => {
+  const configuredServiceId = 'e'.repeat(24)
+  const state = setup(owner, { configuredServiceId })
+  const response = await state.post({ servicesIds: [configuredServiceId] }, '')
+  assert.equal(response.status, 400)
+  assert.equal(response.body.code, 'partycrm_service_configuration_requires_booking')
+  assert.equal(state.orders.length, 0)
+
+  const fixedResponse = await state.post({ servicesIds: ['f'.repeat(24)] }, '')
+  assert.equal(fixedResponse.status, 201)
+  assert.equal(state.orders.length, 1)
 })
 
 test('an idempotency key remains supported if a short lead omits empty expectations', async () => {
