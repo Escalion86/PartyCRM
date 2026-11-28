@@ -887,6 +887,86 @@ try {
       await Bookings.deleteMany({ tenantId })
     }
   )
+  await check('disabled booking hours still check venue buffers, overnight slots and room hours', async () => {
+    const day = '2028-02-06'
+    const room = await Locations.create({ tenantId, title: 'Зал без графика', preparationMinutes: 15, cleanupMinutes: 15 })
+    const secondRoom = await Locations.create({ tenantId, title: 'Вторая площадка без графика' })
+    const roomIds = [room._id, secondRoom._id]
+    const orderIds = []
+    const setCompanySchedule = (workingSchedule) => Companies.updateOne({ _id: tenantId, tenantId }, { $set: { 'settings.workingSchedule': workingSchedule } })
+    const withCurrentCompany = async () => ({ ...context, company: await Companies.findOne({ _id: tenantId, tenantId }).lean() })
+    const bookingOptions = { dateFrom: day, durationMinutes: 60 }
+    const placeOptions = { ...bookingOptions, placeType: 'company_location', locationId: String(room._id) }
+    const orderDraft = { ...emptyPayload, status: 'active', clientId: client._id }
+    const reserve = async (prepared) => {
+      const order = await venueWrite({
+        tenantId, nextOrder: prepared,
+        work: async ({ session }) => (await Orders.create([{ ...prepared, tenantId }], { session }))[0],
+      })
+      orderIds.push(order._id)
+      return order
+    }
+    try {
+      await setCompanySchedule(null)
+      const disabledContext = await withCurrentCompany()
+      await Bookings.create([
+        { startsAt: at('23:00', '2028-02-05'), endsAt: at('23:35', '2028-02-05') },
+        { startsAt: at('00:50', '2028-02-07'), endsAt: at('01:20', '2028-02-07') },
+      ].map((interval) => ({
+        ...venueHelpers.getPartyVenueWindow(interval, room),
+        tenantId, locationId: room._id, sourceType: 'ticket_session', sourceId: new Types.ObjectId(), capacity: 1,
+      })))
+      const slots = await availability({ context: disabledContext, body: placeOptions })
+      assert.equal(slots.configured, true)
+      const available = new Map(slots.days[0].slots.map((slot) => [slot.startsAt, slot]))
+      assert.equal(available.has(at('00:00', day)), false, 'start buffer overlaps the preceding-day ticket')
+      assert.equal(available.has(at('23:30', day)), false, 'end buffer overlaps the next-day ticket')
+      const early = available.get(at('00:15', day))
+      const overnight = available.get(at('23:15', day))
+      assert.equal(early?.endsAt, at('01:15', day))
+      assert.equal(overnight?.endsAt, at('00:15', '2028-02-07'))
+
+      const single = await reserve(await prepare({
+        context: disabledContext,
+        body: { bookingVersion: 1, orderTypeId: String(type._id), rental: early, eventDate: early.startsAt },
+        payload: { ...orderDraft, locationId: room._id, eventDate: early.startsAt },
+      }))
+      assert.ok(await Bookings.exists({ tenantId, sourceType: 'order', sourceId: single._id }))
+      const multiBody = {
+        bookingVersion: 2, orderTypeId: String(type._id),
+        places: roomIds.map((id, index) => ({
+          id: `room-${index + 1}`, locationId: String(id), eventDate: overnight.startsAt, rental: overnight, serviceSelections: [],
+        })),
+      }
+      const multiple = await reserve(await prepare({ context: disabledContext, body: multiBody, payload: orderDraft }))
+      assert.equal(await Bookings.countDocuments({ tenantId, sourceType: 'order_place', orderId: multiple._id }), 2)
+
+      await Locations.updateOne({ _id: secondRoom._id, tenantId }, { $set: {
+        workingSchedule: { ...schedule, exceptions: [{ date: day, closed: true, opens: '09:00', closes: '21:00' }] },
+      } })
+      const ownHours = await availability({ context: disabledContext, body: { ...placeOptions, locationId: String(secondRoom._id), days: 2 } })
+      assert.deepEqual(ownHours.days[0].slots, [])
+      assert.equal(ownHours.days[1].slots[0].startsAt, at('09:00', '2028-02-07'))
+      await assert.rejects(prepare({ context: disabledContext, body: multiBody, payload: orderDraft }), /выходит за рабочий график/)
+
+      await Companies.updateOne({ _id: tenantId, tenantId }, { $unset: { 'settings.workingSchedule': '' } })
+      const legacyContext = await withCurrentCompany()
+      const offsite = await availability({ context: legacyContext, body: { ...bookingOptions, placeType: 'client_address', durationMinutes: 30 } })
+      const chosen = offsite.days[0].slots.find((slot) => slot.startsAt === at('23:45', day))
+      assert.equal(chosen?.endsAt, at('00:15', '2028-02-07'))
+      const offsitePayload = await prepare({
+        context: legacyContext,
+        body: { bookingVersion: 1, orderTypeId: String(type._id), serviceSelections: [{ serviceId: String(service._id), quantity: 1 }] },
+        payload: { ...orderDraft, placeType: 'client_address', locationId: null, eventDate: chosen.startsAt },
+      })
+      assert.equal(offsitePayload.dateEnd.toISOString(), chosen.endsAt)
+    } finally {
+      await setCompanySchedule(schedule)
+      await Bookings.deleteMany({ tenantId, locationId: { $in: roomIds } })
+      await Orders.deleteMany({ tenantId, _id: { $in: orderIds } })
+      await Locations.deleteMany({ tenantId, _id: { $in: roomIds } })
+    }
+  })
   await check(
     'order, actual advance, expectations and venue commit atomically and retry once',
     async () => {

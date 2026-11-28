@@ -76,23 +76,25 @@ export const isPartyWithinWorkingSchedule = ({
   schedule,
   timeZone,
 }) => {
+  const start = +new Date(startsAt)
+  const end = +new Date(endsAt)
   if (
-    !schedule ||
     !startsAt ||
     !endsAt ||
-    !Number.isFinite(+new Date(startsAt)) ||
-    !Number.isFinite(+new Date(endsAt))
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end <= start
   )
     return false
+  if (schedule == null) return true
   const window = partyWorkingWindow(
-    partyDateInZone(startsAt, timeZone),
+    partyDateInZone(start, timeZone),
     schedule,
     timeZone
   )
   return Boolean(
     window &&
-    +new Date(startsAt) >= +window.startsAt &&
-    +new Date(endsAt) <= +window.endsAt &&
-    +new Date(endsAt) > +new Date(startsAt)
+    start >= +window.startsAt &&
+    end <= +window.endsAt
   )
 }

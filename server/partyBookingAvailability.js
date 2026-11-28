@@ -14,6 +14,10 @@ import { partyBookingFailure } from '../helpers/partyOrderBooking.js'
 import { canPartySetOffsiteOrder, PARTY_OFFSITE_DISABLED_MESSAGE } from '../helpers/partyCompanyModules.js'
 import { sharePartyLocationBooking } from '../helpers/partySharedLocationBooking.js'
 
+const minuteMs = 60_000
+const dayMs = 86_400_000
+const slotMs = 15 * minuteMs
+
 export const loadPartyBookingAvailability = async ({ context, body }) => {
   if (
     !canPartyAccess(context, { resource: 'orders.eventDate' }) ||
@@ -90,23 +94,17 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
   const schedule =
     location?.workingSchedule || context.company.settings?.workingSchedule
   const timeZone = context.company.settings?.timeZone || 'Asia/Krasnoyarsk'
-  if (!schedule)
-    return {
-      configured: false,
-      timeZone,
-      days: [],
-      notice:
-        'Рабочий график не настроен. Обратитесь к администратору; заявку можно сохранить без даты.',
-    }
   const preparation = Number(location?.preparationMinutes) || 0
   const cleanup = Number(location?.cleanupMinutes) || 0
-  const lastDate = new Date(Date.parse(date) + count * 86400000)
-    .toISOString()
-    .slice(0, 10)
-  const from = partyDateAtTime(date, '00:00', timeZone)
-  const to = partyDateAtTime(lastDate, '00:00', timeZone)
+  const firstDay = Date.parse(date)
+  const dateAt = (index) => new Date(firstDay + index * dayMs).toISOString().slice(0, 10)
+  const midnightAt = (index) => +partyDateAtTime(dateAt(index), '00:00', timeZone)
+  const bufferedDuration = (duration + cleanup) * minuteMs
   const busy = []
   if (location) {
+    // Without a closing time, a late start can still overlap bookings on later days.
+    const startBefore = new Date(midnightAt(count) + preparation * minuteMs + (schedule ? 0 : bufferedDuration))
+    const endAfter = new Date(midnightAt(0) - (cleanup + (schedule ? 0 : preparation)) * minuteMs)
     const Bookings = await getPartyVenueBookingModel({ readOnly: true })
     const [orders, bookings] = await Promise.all([
       Orders.find({
@@ -115,10 +113,7 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
         bookingVersion: { $ne: 2 },
         status: { $ne: 'canceled' },
         ...(selectedOrder ? { _id: { $ne: selectedOrder._id } } : {}),
-        ...getPartyVenueOrderIntervalFilter({
-          startBefore: new Date(+to + preparation * 60000),
-          endAfter: new Date(+from - cleanup * 60000),
-        }),
+        ...getPartyVenueOrderIntervalFilter({ startBefore, endAfter }),
       })
         .select(
           '_id rental eventDate dateEnd durationMinutes partyEventGroupId sharedLocationBooking'
@@ -128,8 +123,8 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
         tenantId: context.tenantId,
         locationId: location._id,
         sourceType: { $in: ['order_place', 'ticket_session'] },
-        startsAt: { $lt: new Date(+to + preparation * 60000) },
-        endsAt: { $gt: new Date(+from - cleanup * 60000) },
+        startsAt: { $lt: startBefore },
+        endsAt: { $gt: endAfter },
       })
         .select('startsAt endsAt sourceType orderId')
         .lean(),
@@ -141,33 +136,36 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
         order.dateEnd ||
         new Date(
           +new Date(order.eventDate) +
-            (Number(order.durationMinutes) || 60) * 60000
+            (Number(order.durationMinutes) || 60) * minuteMs
         )
       const window = getPartyVenueWindow({ ...order, endsAt }, location)
       if (window) busy.push(window)
     }
     for (const booking of bookings) {
       if (booking.sourceType === 'order_place' && selectedOrder && String(booking.orderId) === String(selectedOrder._id)) continue
-      busy.push(getPartyVenueWindow(booking, location))
+      const window = getPartyVenueWindow(booking, location)
+      if (window) busy.push(window)
     }
   }
   const days = []
   for (let index = 0; index < count; index++) {
-    const day = new Date(Date.parse(date) + index * 86400000)
-      .toISOString()
-      .slice(0, 10)
+    const day = dateAt(index)
     const window = partyWorkingWindow(day, schedule, timeZone)
     const slots = []
-    if (window)
+    if (window || !schedule) {
+      // Keep the existing grid anchored at the opening time for configured schedules.
+      const firstStart = window
+        ? +window.startsAt + Math.max(0, Math.ceil(preparation / 15)) * slotMs
+        : midnightAt(index)
+      const lastStart = window ? +window.endsAt - bufferedDuration : midnightAt(index + 1) - 1
       for (
-        let start = +window.startsAt;
-        start + (duration + cleanup) * 60000 <= +window.endsAt;
-        start += 15 * 60000
+        let start = firstStart;
+        start <= lastStart;
+        start += slotMs
       ) {
-        const occupiedFrom = new Date(start - preparation * 60000)
-        const occupiedUntil = new Date(start + (duration + cleanup) * 60000)
+        const occupiedFrom = new Date(start - preparation * minuteMs)
+        const occupiedUntil = new Date(start + bufferedDuration)
         if (
-          +occupiedFrom < +window.startsAt ||
           busy.some((entry) =>
             partyVenueWindowsOverlap({ occupiedFrom, occupiedUntil }, entry)
           )
@@ -175,9 +173,10 @@ export const loadPartyBookingAvailability = async ({ context, body }) => {
           continue
         slots.push({
           startsAt: new Date(start).toISOString(),
-          endsAt: new Date(start + duration * 60000).toISOString(),
+          endsAt: new Date(start + duration * minuteMs).toISOString(),
         })
       }
+    }
     days.push({ date: day, slots })
   }
   return { configured: true, timeZone, days }

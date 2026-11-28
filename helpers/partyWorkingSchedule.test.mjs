@@ -35,16 +35,16 @@ test('a date exception replaces the weekly window and closed dates have no slots
   )
   assert.equal(partyWorkingWindow('2026-11-05', parsed, timeZone), null)
 })
-test('availability requires a configured schedule and includes the full buffered occupation', () => {
-  assert.equal(
-    isPartyWithinWorkingSchedule({
-      startsAt: '2026-11-03T02:00:00Z',
-      endsAt: '2026-11-03T03:00:00Z',
-      timeZone,
-      schedule: null,
-    }),
-    false
-  )
+test('disabled schedule accepts a valid interval across local midnight', () => {
+  const interval = { startsAt: '2026-11-03T16:45:00Z', endsAt: '2026-11-03T18:00:00Z', timeZone }
+  for (const disabled of [null, undefined]) {
+    assert.equal(isPartyWithinWorkingSchedule({ ...interval, schedule: disabled }), true)
+    assert.equal(isPartyWithinWorkingSchedule({ ...interval, endsAt: null, schedule: disabled }), false)
+    assert.equal(isPartyWithinWorkingSchedule({ ...interval, endsAt: 'invalid', schedule: disabled }), false)
+    assert.equal(isPartyWithinWorkingSchedule({ ...interval, endsAt: interval.startsAt, schedule: disabled }), false)
+  }
+})
+test('configured schedule includes the full buffered occupation', () => {
   assert.equal(
     isPartyWithinWorkingSchedule({
       startsAt: '2026-11-03T02:00:00Z',
